@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/source/**",
+
+                "${workspaceFolder}/ext_includes",
+                "${workspaceFolder}/ext_includes/STBI",
+
+                "${workspaceFolder}/ext_sources/glfw/include",
+                "${workspaceFolder}/ext_sources/imgui",
+                "${workspaceFolder}/ext_sources/volk",
+
+                "${VULKAN_SDK}/Include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,35 @@
+# A one-night idea of a runtime-defined parser
+# What tokens it should know (has special behaviour): TOK, RX, GLOB, DEF, EXPR, REDEF, UNDEF, EOF, File
+# Make it forget some tokens in code block
+DEF DEF DEF
+DEF RX RX
+DEF TOK TOK
+DEF GLOB GLOB
+DEF EXPR EXPR
+
+DEF EOL \r?\n
+DEF COMM #.*EOL
+
+EXPR TOK (::= RX [\x21-\x7E]+|StrExpr [\x21-\x7E]+) # redo to do something like ${TOK}
+EXPR Beg EXPR (EOL EXPR)* End
+
+
+Beg
+
+Sym ::= [\x21-\x7E]
+Wrd ::= Sym+
+SymPairL ::= Sym
+SymPairR ::= Sym
+SymPair ::= Sym
+SymPair ''
+SymPair ""
+
+Sym #
+WrdPair /* */
+Comment 
+
+SymPair ()
+SymPair {}
+Wrd
+
+End

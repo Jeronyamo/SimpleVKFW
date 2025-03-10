@@ -1,0 +1,12 @@
+[submodule "ext_sources/rtaudio"]
+	path = ext_sources/rtaudio
+	url = https://github.com/thestk/rtaudio
+[submodule "ext_sources/imgui"]
+	path = ext_sources/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "ext_sources/volk"]
+	path = ext_sources/volk
+	url = https://github.com/zeux/volk
+[submodule "ext_sources/glfw"]
+	path = ext_sources/glfw
+	url = https://github.com/glfw/glfw

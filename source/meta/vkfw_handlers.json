@@ -1,0 +1,1450 @@
+[
+    {
+        "EntityType": "Preprocessor",
+        "dir_type": "IFNDEF",
+        "args": [
+            "SVKFW_VKFW_HANDLERS_H"
+        ],
+        "empty_lines": [
+            0,
+            0
+        ],
+        "child_entities": [
+            {
+                "EntityType": "Preprocessor",
+                "dir_type": "DEFINE",
+                "args": [
+                    "SVKFW_VKFW_HANDLERS_H"
+                ],
+                "empty_lines": [
+                    0,
+                    0
+                ]
+            },
+            {
+                "EntityType": "Preprocessor",
+                "dir_type": "INCLUDE",
+                "args": [
+                    "\"vkfw_base.h\""
+                ],
+                "empty_lines": [
+                    1,
+                    0
+                ]
+            },
+            {
+                "EntityType": "Incap",
+                "incap_type": "NAMESPACE",
+                "incap_name": "Simple",
+                "needs_semicolon": true,
+                "indent": 0,
+                "indent_fixed": false,
+                "empty_lines": [
+                    2,
+                    1
+                ],
+                "child_entities": [
+                    {
+                        "EntityType": "Incap",
+                        "incap_type": "NAMESPACE",
+                        "incap_name": "VKFW",
+                        "needs_semicolon": true,
+                        "indent": 0,
+                        "indent_fixed": false,
+                        "empty_lines": [
+                            0,
+                            0
+                        ],
+                        "child_entities": [
+                            {
+                                "EntityType": "Comment",
+                                "comm_type": "ONELINE_L",
+                                "lines": [
+                                    "Vulkan framework - handlers"
+                                ],
+                                "empty_lines": [
+                                    1,
+                                    0
+                                ],
+                                "indent": 0,
+                                "indent_fixed": true
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Instance",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkInstance",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "PhysicalDevice",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPhysicalDevice",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Device",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDevice",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Queue",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkQueue",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Semaphore",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkSemaphore",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CommandBuffer",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCommandBuffer",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Fence",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkFence",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DeviceMemory",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDeviceMemory",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Buffer",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkBuffer",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Image",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkImage",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Event",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkEvent",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "QueryPool",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkQueryPool",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "BufferView",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkBufferView",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "ImageView",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkImageView",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "ShaderModule",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkShaderModule",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "PipelineCache",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPipelineCache",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "PipelineLayout",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPipelineLayout",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "RenderPass",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkRenderPass",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Pipeline",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPipeline",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DescriptorSetLayout",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDescriptorSetLayout",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Sampler",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkSampler",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DescriptorPool",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDescriptorPool",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DescriptorSet",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDescriptorSet",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "Framebuffer",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkFramebuffer",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CommandPool",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCommandPool",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "SamplerYcbcrConversion",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkSamplerYcbcrConversion",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DescriptorUpdateTemplate",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDescriptorUpdateTemplate",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "PrivateDataSlot",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPrivateDataSlot",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "SurfaceKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkSurfaceKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_instance, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "SwapchainKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkSwapchainKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DisplayKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDisplayKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DisplayModeKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDisplayModeKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DebugReportCallbackEXT",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDebugReportCallbackEXT",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_instance, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "VideoSessionKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkVideoSessionKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "VideoSessionParametersKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkVideoSessionParametersKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CuModuleNVX",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCuModuleNVX",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CuFunctionNVX",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCuFunctionNVX",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DebugUtilsMessengerEXT",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDebugUtilsMessengerEXT",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_instance, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "AccelerationStructureKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkAccelerationStructureKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "ValidationCacheEXT",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkValidationCacheEXT",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "AccelerationStructureNV",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkAccelerationStructureNV",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "PerformanceConfigurationINTEL",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkPerformanceConfigurationINTEL",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": false,
+                                        "destroy_param_str": "",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "DeferredOperationKHR",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkDeferredOperationKHR",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "IndirectCommandsLayoutNV",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkIndirectCommandsLayoutNV",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CudaModuleNV",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCudaModuleNV",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "CudaFunctionNV",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkCudaFunctionNV",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "MicromapEXT",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkMicromapEXT",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "OpticalFlowSessionNV",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkOpticalFlowSessionNV",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "EntityType": "Incap",
+                                "incap_type": "NAMESPACE",
+                                "incap_name": "ShaderEXT",
+                                "needs_semicolon": true,
+                                "indent": 0,
+                                "indent_fixed": false,
+                                "empty_lines": [
+                                    2,
+                                    0
+                                ],
+                                "child_entities": [
+                                    {
+                                        "EntityType": "VKFWHandlers",
+                                        "object_type": "VkShaderEXT",
+                                        "object_default_val": "VK_NULL_HANDLE",
+                                        "destroyable": true,
+                                        "destroy_param_str": "_device, ",
+                                        "has_vec_handler": true,
+                                        "indent": 0,
+                                        "indent_fixed": false,
+                                        "empty_lines": [
+                                            0,
+                                            0
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+]
