@@ -73,32 +73,10 @@ set(EXTERN_SRC_IMGUI_DIR ${SVKFW_EXTERN_SRC_DIR}/imgui)
 set(EXTERN_SRC_VOLK_DIR  ${SVKFW_EXTERN_SRC_DIR}/volk)
 set(EXTERN_SRC_GLFW_DIR  ${SVKFW_EXTERN_SRC_DIR}/glfw)
 ### Libraries
-# set(EXTERN_LIB_GLFW_DIR   ${SVKFW_EXTERN_LIB_DIR}/glfw_340/lib-mingw-w64)
-# set(EXTERN_LIB_CSOUND_DIR ${SVKFW_EXTERN_LIB_DIR}/csound_6_18_1/Release)
+# Note: includes from ext_libs should be declared here
 
 
 ##  ============  External  ============  ##
-
-## CSound TODO: not sure it places files where it should be (ext_includes/csound)
-# set(HEADER_INSTALL_DIR ${EXTERN_INC_CSOUND_DIR})
-# set(TMP_CURR_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-# set(CMAKE_CURRENT_SOURCE_DIR ${EXTERN_INC_CSOUND_DIR})
-# include(${EXTERN_INC_CSOUND_DIR}/CMakeLists.txt)
-# set(CMAKE_CURRENT_SOURCE_DIR ${TMP_CURR_SRC_DIR})
-
-# set(CMAKE_PREFIX_PATH ${EXTERN_LIB_CSOUND_DIR} ${CMAKE_PREFIX_PATH})
-# find_library(EXTERN_LIB_CSND6_PATH csnd6)
-
-# target_link_directories(svkfw_test PRIVATE ${EXTERN_LIB_CSOUND_DIR})
-
-# add_library(csound64 SHARED IMPORTED)
-# set_target_properties(csound64 PROPERTIES IMPORTED_LOCATION ${EXTERN_LIB_CSOUND_DIR}/csound64.dll
-#                                           IMPORTED_IMPLIB   ${EXTERN_LIB_CSOUND_DIR}/csound64.lib)
-# add_library(csnd6 SHARED IMPORTED)
-# set_property(TARGET csnd6 APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
-# set_target_properties(csnd6 PROPERTIES IMPORTED_LOCATION "${EXTERN_LIB_CSOUND_DIR}/csnd6.dll")
-# set_target_properties(csnd6 PROPERTIES MAP_IMPORTED_CONFIG_DEBUG Debug)
-
 
 ## GLFW
 set(GLFW_LIBRARY_TYPE SHARED)
@@ -149,9 +127,8 @@ PUBLIC
 
 PRIVATE
     ## External
-    # GLAD not needed for vulkan/volk (SOGLFW legacy):
+    # Note: GLAD not needed for vulkan/volk (SOGLFW legacy):
     # ${EXTERN_INC_GLAD_DIR}
-    # ${SVKFW_EXTERN_INC_DIR}/csound
     ${EXTERN_INC_STBI_DIR}
     ${EXTERN_INC_GLFW_DIR}
     ${EXTERN_INC_CSOUND_DIR}
