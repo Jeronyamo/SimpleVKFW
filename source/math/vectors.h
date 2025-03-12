@@ -788,11 +788,11 @@ namespace Simple {
         Mat2Base(C m0, C m1, C m2, C m3) : M{{ m0, m1 }, { m2, m3 }} {}
         template <class Y> Mat2Base(const Mat2Base<Y> &_mat) {
             for (uint32_t i = 0u; i < 4u; ++i)
-                (*M)[i] = static_cast<C>((*_mat.M)[i]);
+                M[i >> 1][i & 1] = static_cast<C>(_mat.M[i >> 1][i & 1]);
         }
         Mat2Base(C _val) {
             for (uint32_t i = 0u; i < 4u; ++i)
-                (*M)[i] = _val;
+                M[i >> 1][i & 1] = _val;
         }
 
 
@@ -800,10 +800,10 @@ namespace Simple {
         template <typename Y> Mat2Base<Util::remove_ref<Y>> cast() const { return *this; }
 
         void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[1][2], M[2][1]); }
-        Mat2Base <C> T() const { return { (*M)[0], (*M)[2], (*M)[1], (*M)[3] }; }
+        Mat2Base <C> T() const { return { M[0][0], M[1][0], M[0][1], M[1][1] }; }
 
         template <typename Y = double>
-        Y det() const { return (*M)[0] * (*M)[3] - (*M)[1] * (*M)[2]; }
+        Y det() const { return M[0][0] * M[1][1] - M[0][1] * M[1][0]; }
 
         bool invertible() const { return !Math::closeToZero(this->det(), SVKFW_EPS4); }
 
@@ -812,66 +812,66 @@ namespace Simple {
             Y determinant = this->det<Y>();
             if (!Math::closeToZero(determinant, SVKFW_EPS4)) {
                 determinant = 1. / determinant;
-                return { (*M)[3] * determinant, -(*M)[1] * determinant,
-                        -(*M)[2] * determinant,  (*M)[0] * determinant };
+                return { M[1][1] * determinant, -M[0][1] * determinant,
+                        -M[1][0] * determinant,  M[0][0] * determinant };
             }
             return *this;
         }
 
         Mat2Base<C> operator+() const
-            { return { abs((*M)[0]), abs((*M)[1]), abs((*M)[2]), abs((*M)[3]) }; }
+            { return { abs(M[0][0]), abs(M[0][1]), abs(M[1][0]), abs(M[1][1]) }; }
         Mat2Base<C> operator-() const
-            { return { -(*M)[0], -(*M)[1], -(*M)[2], -(*M)[3] }; }
+            { return { -M[0][0], -M[0][1], -M[1][0], -M[1][1] }; }
 
         template <class Y> Mat2Base<Util::comm_type<C,Y>> operator+(const Mat2Base<Y> &_m) const
-            { return { (*M)[0] + (*_m.M)[0], (*M)[1] + (*_m.M)[1], (*M)[2] + (*_m.M)[2], (*M)[3] + (*_m.M)[3] }; }
+            { return { M[0][0] + _m.M[0][0], M[0][1] + _m.M[0][1], M[1][0] + _m.M[1][0], M[1][1] + _m.M[1][1] }; }
         template <class Y> Mat2Base<Util::comm_vecsub_type<C,Y>> operator-(const Mat2Base<Y> &_m) const
-            { return { (*M)[0] - (*_m.M)[0], (*M)[1] - (*_m.M)[1], (*M)[2] - (*_m.M)[2], (*M)[3] - (*_m.M)[3] }; }
+            { return { M[0][0] - _m.M[0][0], M[0][1] - _m.M[0][1], M[1][0] - _m.M[1][0], M[1][1] - _m.M[1][1] }; }
         template <class Y> Mat2Base<Util::comm_type<C,Y>> operator*(const Mat2Base<Y> &_m) const
-            { return { (*M)[0] * (*_m.M)[0], (*M)[1] * (*_m.M)[1], (*M)[2] * (*_m.M)[2], (*M)[3] * (*_m.M)[3] }; }
+            { return { M[0][0] * _m.M[0][0], M[0][1] * _m.M[0][1], M[1][0] * _m.M[1][0], M[1][1] * _m.M[1][1] }; }
         template <class Y> Mat2Base<Util::comm_type<C,Y>> operator/(const Mat2Base<Y> &_m) const
-            { return { (*M)[0] / (*_m.M)[0], (*M)[1] / (*_m.M)[1], (*M)[2] / (*_m.M)[2], (*M)[3] / (*_m.M)[3] }; }
+            { return { M[0][0] / _m.M[0][0], M[0][1] / _m.M[0][1], M[1][0] / _m.M[1][0], M[1][1] / _m.M[1][1] }; }
 
-        template <class Y> void operator+=(const Mat2Base<Y> &_m) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] += (*_m.M)[i]; }
-        template <class Y> void operator-=(const Mat2Base<Y> &_m) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] -= (*_m.M)[i]; }
-        template <class Y> void operator*=(const Mat2Base<Y> &_m) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] *= (*_m.M)[i]; }
-        template <class Y> void operator/=(const Mat2Base<Y> &_m) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] /= (*_m.M)[i]; }
-        void operator+=(C _op) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] += _op; }
-        void operator-=(C _op) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] -= _op; }
-        void operator*=(C _op) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] *= _op; }
-        void operator/=(C _op) { for (uint32_t i = 0; i < 4u; ++i) (*M)[i] /= _op; }
+        template <class Y> void operator+=(const Mat2Base<Y> &_m) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] += _m.M[i][j]; }
+        template <class Y> void operator-=(const Mat2Base<Y> &_m) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] -= _m.M[i][j]; }
+        template <class Y> void operator*=(const Mat2Base<Y> &_m) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] *= _m.M[i][j]; }
+        template <class Y> void operator/=(const Mat2Base<Y> &_m) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] /= _m.M[i][j]; }
+        void operator+=(C _op) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] += _op; }
+        void operator-=(C _op) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] -= _op; }
+        void operator*=(C _op) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] *= _op; }
+        void operator/=(C _op) { for (uint32_t i=0; i<2u; ++i) for (uint32_t j=0; j<2u; ++j) M[i][j] /= _op; }
 
         Mat2Base<C> operator+(C _op) const
-            { return { (*M)[0] + _op, (*M)[1] + _op, (*M)[2] + _op, (*M)[3] + _op }; }
+            { return { M[0][0] + _op, M[0][1] + _op, M[1][0] + _op, M[1][1] + _op }; }
         Mat2Base<C> operator-(C _op) const
-            { return { (*M)[0] - _op, (*M)[1] - _op, (*M)[2] - _op, (*M)[3] - _op }; }
+            { return { M[0][0] - _op, M[0][1] - _op, M[1][0] - _op, M[1][1] - _op }; }
         Mat2Base<C> operator*(C _op) const
-            { return { (*M)[0] * _op, (*M)[1] * _op, (*M)[2] * _op, (*M)[3] * _op }; }
+            { return { M[0][0] * _op, M[0][1] * _op, M[1][0] * _op, M[1][1] * _op }; }
         Mat2Base<C> operator/(C _op) const
-            { return { (*M)[0] / _op, (*M)[1] / _op, (*M)[2] / _op, (*M)[3] / _op }; }
+            { return { M[0][0] / _op, M[0][1] / _op, M[1][0] / _op, M[1][1] / _op }; }
 
         template <class Y> Vec2Base<Util::comm_type<C,Y>> operator&(const Vec2Base<Y> &vec) const {
-            return { vec.x * (*M)[0] + vec.y * (*M)[1], vec.x * (*M)[2] + vec.y * (*M)[3] };
+            return { vec.x * M[0][0] + vec.y * M[0][1], vec.x * M[1][0] + vec.y * M[1][1] };
         }
         template <class Y> Mat2Base<Util::comm_type<C,Y>> operator&(const Mat2Base<Y> &_m) const {
-            return { (*_m.M)[0] * (*M)[0] + (*_m.M)[2] * (*M)[1],
-                     (*_m.M)[1] * (*M)[0] + (*_m.M)[3] * (*M)[1],
-                     (*_m.M)[0] * (*M)[2] + (*_m.M)[2] * (*M)[3],
-                     (*_m.M)[1] * (*M)[2] + (*_m.M)[3] * (*M)[3] };
+            return { _m.M[0][0] * M[0][0] + _m.M[1][0] * M[0][1],
+                     _m.M[0][1] * M[0][0] + _m.M[1][1] * M[0][1],
+                     _m.M[0][0] * M[1][0] + _m.M[1][0] * M[1][1],
+                     _m.M[0][1] * M[1][0] + _m.M[1][1] * M[1][1] };
         }
         template <class Y> void operator&=(const Mat2Base<Y> &_m) {
-            *this= { (*_m.M)[0] * (*M)[0] + (*_m.M)[2] * (*M)[1],
-                     (*_m.M)[1] * (*M)[0] + (*_m.M)[3] * (*M)[1],
-                     (*_m.M)[0] * (*M)[2] + (*_m.M)[2] * (*M)[3],
-                     (*_m.M)[1] * (*M)[2] + (*_m.M)[3] * (*M)[3] };
+            *this= { _m.M[0][0] * M[0][0] + _m.M[1][0] * M[0][1],
+                     _m.M[0][1] * M[0][0] + _m.M[1][1] * M[0][1],
+                     _m.M[0][0] * M[1][0] + _m.M[1][0] * M[1][1],
+                     _m.M[0][1] * M[1][0] + _m.M[1][1] * M[1][1] };
         }
 
         C& operator[](vec2i ind)       { return M[ind.x][ind.y]; }
         C  operator[](vec2i ind) const { return M[ind.x][ind.y]; }
         Vec2Base<C&> operator[](uint32_t ind)       { return { M[ind][0], M[ind][1] }; }
         Vec2Base<C > operator[](uint32_t ind) const { return { M[ind][0], M[ind][1] }; }
-        Mat2RefBase<C> operator[](Mat::Placeholder) { return {&(*(M)[0]), &(*(M)[1])}; }
-        const Mat2RefBase<const C> operator[](Mat::Placeholder) const { return {&(*(M)[0]), &(*(M)[1])}; }
+        Mat2RefBase<C> operator[](Mat::Placeholder) { return {  &M[0][0],  &M[1][1] }; }
+        const Mat2RefBase<const C> operator[](Mat::Placeholder) const { return { &M[0][0], &M[1][1] }; }
     }; // Mat2Base END
 
     template <class C>
@@ -895,12 +895,14 @@ namespace Simple {
         Mat3Base(C m0, C m1, C m2, C m3, C m4, C m5, C m6, C m7, C m8) :
             M{{ m0, m1, m2 }, { m3, m4, m5 }, { m6, m7, m8 }} {}
         template <class Y> Mat3Base(const Mat3Base<Y> &_mat) {
-            for (uint32_t i = 0u; i < 9u; ++i)
-                    (*M)[i] = static_cast<C>((*_mat.M)[i]);
+            for (uint32_t i = 0u; i < 3u; ++i)
+                for (uint32_t j = 0u; j < 3u; ++j)
+                    M[i][j] = static_cast<C>(_mat.M[i][j]);
         }
         Mat3Base(C _val) {
-            for (uint32_t i = 0u; i < 9u; ++i)
-                    (*M)[i] = _val;
+            for (uint32_t i = 0u; i < 3u; ++i)
+                for (uint32_t j = 0u; j < 3u; ++j)
+                    M[i][j] = _val;
         }
 
 
@@ -908,25 +910,25 @@ namespace Simple {
         template <typename Y> Mat3Base<Util::remove_ref<Y>> cast() const { return *this; }
 
         void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[1][2], M[2][1]); }
-        Mat3Base <C> T() const { return { (*M)[0], (*M)[3], (*M)[6], (*M)[1], (*M)[4], (*M)[7], (*M)[2], (*M)[5], (*M)[8] }; }
+        Mat3Base <C> T() const { return { M[0][0], M[1][0], M[2][0], M[0][1], M[1][1], M[2][1], M[0][2], M[1][2], M[2][2] }; }
 
         template <typename Y = double>
-        Y det() const { return (*M)[0] * ((*M)[4] * (*M)[8] - (*M)[5] * (*M)[7]) -
-                               (*M)[1] * ((*M)[3] * (*M)[8] - (*M)[5] * (*M)[6]) +
-                               (*M)[2] * ((*M)[3] * (*M)[7] - (*M)[4] * (*M)[6]); }
+        Y det() const { return M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
+                               M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
+                               M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]); }
 
         bool invertible() const { return !Math::closeToZero(this->det(), SVKFW_EPS4); }
 
         template <typename Y = flt_t>
         Mat3Base<Y> inverse() const {
-            Y tmp[3]{(*M)[4] * (*M)[8] - (*M)[5] * (*M)[7], (*M)[5] * (*M)[6] - (*M)[3] * (*M)[8], (*M)[3] * (*M)[7] - (*M)[4] * (*M)[6]};
-            Y determinant = (*M)[0] * tmp[0] + (*M)[1] * tmp[1] + (*M)[2] * tmp[2];
+            Y tmp[3]{M[1][1] * M[2][2] - M[1][2] * M[2][1], M[1][2] * M[2][0] - M[1][0] * M[2][2], M[1][0] * M[2][1] - M[1][1] * M[2][0]};
+            Y determinant = M[0][0] * tmp[0] + M[0][1] * tmp[1] + M[0][2] * tmp[2];
 
             if (!Math::closeToZero(determinant, SVKFW_EPS4)) {
                 determinant = 1. / determinant;
-                return Mat3Base<Y>(tmp[0], (*M)[2] * (*M)[7] - (*M)[1] * (*M)[8], (*M)[1] * (*M)[5] - (*M)[2] * (*M)[4],
-                                   tmp[1], (*M)[0] * (*M)[8] - (*M)[2] * (*M)[6], (*M)[2] * (*M)[3] - (*M)[0] * (*M)[5],
-                                   tmp[2], (*M)[1] * (*M)[6] - (*M)[0] * (*M)[7], (*M)[0] * (*M)[4] - (*M)[1] * (*M)[3])
+                return Mat3Base<Y>(tmp[0], M[0][2] * M[2][1] - M[0][1] * M[2][2], M[0][1] * M[1][2] - M[0][2] * M[1][1],
+                                   tmp[1], M[0][0] * M[2][2] - M[0][2] * M[2][0], M[0][2] * M[1][0] - M[0][0] * M[1][2],
+                                   tmp[2], M[0][1] * M[2][0] - M[0][0] * M[2][1], M[0][0] * M[1][1] - M[0][1] * M[1][0])
                     * determinant;
             }
 
@@ -934,61 +936,61 @@ namespace Simple {
         }
 
         Mat3Base<C> operator+() const
-            { return {abs((*M)[0]), abs((*M)[1]), abs((*M)[2]),
-                      abs((*M)[3]), abs((*M)[4]), abs((*M)[5]),
-                      abs((*M)[6]), abs((*M)[7]), abs((*M)[8])}; }
+            { return {abs(M[0][0]), abs(M[0][1]), abs(M[0][2]),
+                      abs(M[1][0]), abs(M[1][1]), abs(M[1][2]),
+                      abs(M[2][0]), abs(M[2][1]), abs(M[2][2])}; }
         Mat3Base<C> operator-() const
-            { return { -(*M)[0], -(*M)[1], -(*M)[2],
-                       -(*M)[3], -(*M)[4], -(*M)[5],
-                       -(*M)[6], -(*M)[7], -(*M)[8] }; }
+            { return { -M[0][0], -M[0][1], -M[0][2],
+                       -M[1][0], -M[1][1], -M[1][2],
+                       -M[2][0], -M[2][1], -M[2][2] }; }
 
         template <class Y> Mat3Base<Util::comm_type<C,Y>> operator+(const Mat3Base<Y> &_m) const
-            { return { (*M)[0] + (*_m.M)[0], (*M)[1] + (*_m.M)[1], (*M)[2] + (*_m.M)[2],
-                       (*M)[3] + (*_m.M)[3], (*M)[4] + (*_m.M)[4], (*M)[5] + (*_m.M)[5],
-                       (*M)[6] + (*_m.M)[6], (*M)[7] + (*_m.M)[7], (*M)[8] + (*_m.M)[8] }; }
+            { return { M[0][0] + _m.M[0][0], M[0][1] + _m.M[0][1], M[0][2] + _m.M[0][2],
+                       M[1][0] + _m.M[1][0], M[1][1] + _m.M[1][1], M[1][2] + _m.M[1][2],
+                       M[2][0] + _m.M[2][0], M[2][1] + _m.M[2][1], M[2][2] + _m.M[2][2] }; }
         template <class Y> Mat3Base<Util::comm_vecsub_type<C,Y>> operator-(const Mat3Base<Y> &_m) const
-            { return { (*M)[0] - (*_m.M)[0], (*M)[1] - (*_m.M)[1], (*M)[2] - (*_m.M)[2],
-                       (*M)[3] - (*_m.M)[3], (*M)[4] - (*_m.M)[4], (*M)[5] - (*_m.M)[5],
-                       (*M)[6] - (*_m.M)[6], (*M)[7] - (*_m.M)[7], (*M)[8] - (*_m.M)[8] }; }
+            { return { M[0][0] - _m.M[0][0], M[0][1] - _m.M[0][1], M[0][2] - _m.M[0][2],
+                       M[1][0] - _m.M[1][0], M[1][1] - _m.M[1][1], M[1][2] - _m.M[1][2],
+                       M[2][0] - _m.M[2][0], M[2][1] - _m.M[2][1], M[2][2] - _m.M[2][2] }; }
         template <class Y> Mat3Base<Util::comm_type<C,Y>> operator*(const Mat3Base<Y> &_m) const
-            { return { (*M)[0] * (*_m.M)[0], (*M)[1] * (*_m.M)[1], (*M)[2] * (*_m.M)[2],
-                       (*M)[3] * (*_m.M)[3], (*M)[4] * (*_m.M)[4], (*M)[5] * (*_m.M)[5],
-                       (*M)[6] * (*_m.M)[6], (*M)[7] * (*_m.M)[7], (*M)[8] * (*_m.M)[8] }; }
+            { return { M[0][0] * _m.M[0][0], M[0][1] * _m.M[0][1], M[0][2] * _m.M[0][2],
+                       M[1][0] * _m.M[1][0], M[1][1] * _m.M[1][1], M[1][2] * _m.M[1][2],
+                       M[2][0] * _m.M[2][0], M[2][1] * _m.M[2][1], M[2][2] * _m.M[2][2] }; }
         template <class Y> Mat3Base<Util::comm_type<C,Y>> operator/(const Mat3Base<Y> &_m) const
-            { return { (*M)[0] / (*_m.M)[0], (*M)[1] / (*_m.M)[1], (*M)[2] / (*_m.M)[2],
-                       (*M)[3] / (*_m.M)[3], (*M)[4] / (*_m.M)[4], (*M)[5] / (*_m.M)[5],
-                       (*M)[6] / (*_m.M)[6], (*M)[7] / (*_m.M)[7], (*M)[8] / (*_m.M)[8] }; }
+            { return { M[0][0] / _m.M[0][0], M[0][1] / _m.M[0][1], M[0][2] / _m.M[0][2],
+                       M[1][0] / _m.M[1][0], M[1][1] / _m.M[1][1], M[1][2] / _m.M[1][2],
+                       M[2][0] / _m.M[2][0], M[2][1] / _m.M[2][1], M[2][2] / _m.M[2][2] }; }
 
-        template <class Y> void operator+=(const Mat3Base<Y> &_m) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] += (*_m.M)[i]; }
-        template <class Y> void operator-=(const Mat3Base<Y> &_m) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] -= (*_m.M)[i]; }
-        template <class Y> void operator*=(const Mat3Base<Y> &_m) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] *= (*_m.M)[i]; }
-        template <class Y> void operator/=(const Mat3Base<Y> &_m) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] /= (*_m.M)[i]; }
-        void operator+=(C _op) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] += _op; }
-        void operator-=(C _op) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] -= _op; }
-        void operator*=(C _op) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] *= _op; }
-        void operator/=(C _op) { for (uint32_t i = 0; i < 9u; ++i) (*M)[i] /= _op; }
+        template <class Y> void operator+=(const Mat3Base<Y> &_m) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] += _m.M[i][j]; }
+        template <class Y> void operator-=(const Mat3Base<Y> &_m) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] -= _m.M[i][j]; }
+        template <class Y> void operator*=(const Mat3Base<Y> &_m) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] *= _m.M[i][j]; }
+        template <class Y> void operator/=(const Mat3Base<Y> &_m) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] /= _m.M[i][j]; }
+        void operator+=(C _op) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] += _op; }
+        void operator-=(C _op) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] -= _op; }
+        void operator*=(C _op) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] *= _op; }
+        void operator/=(C _op) { for (uint32_t i=0; i<3u; ++i) for (uint32_t j=0; j<3u; ++j) M[i][j] /= _op; }
 
         Mat3Base<C> operator+(C _op) const
-            { return { (*M)[0] + _op, (*M)[1] + _op, (*M)[2] + _op,
-                       (*M)[3] + _op, (*M)[4] + _op, (*M)[5] + _op,
-                       (*M)[6] + _op, (*M)[7] + _op, (*M)[8] + _op }; }
+            { return { M[0][0] + _op, M[0][1] + _op, M[0][2] + _op,
+                       M[1][0] + _op, M[1][1] + _op, M[1][2] + _op,
+                       M[2][0] + _op, M[2][1] + _op, M[2][2] + _op }; }
         Mat3Base<C> operator-(C _op) const
-            { return { (*M)[0] - _op, (*M)[1] - _op, (*M)[2] - _op,
-                       (*M)[3] - _op, (*M)[4] - _op, (*M)[5] - _op,
-                       (*M)[6] - _op, (*M)[7] - _op, (*M)[8] - _op }; }
+            { return { M[0][0] - _op, M[0][1] - _op, M[0][2] - _op,
+                       M[1][0] - _op, M[1][1] - _op, M[1][2] - _op,
+                       M[2][0] - _op, M[2][1] - _op, M[2][2] - _op }; }
         Mat3Base<C> operator*(C _op) const
-            { return { (*M)[0] * _op, (*M)[1] * _op, (*M)[2] * _op,
-                       (*M)[3] * _op, (*M)[4] * _op, (*M)[5] * _op,
-                       (*M)[6] * _op, (*M)[7] * _op, (*M)[8] * _op }; }
+            { return { M[0][0] * _op, M[0][1] * _op, M[0][2] * _op,
+                       M[1][0] * _op, M[1][1] * _op, M[1][2] * _op,
+                       M[2][0] * _op, M[2][1] * _op, M[2][2] * _op }; }
         Mat3Base<C> operator/(C _op) const
-            { return { (*M)[0] / _op, (*M)[1] / _op, (*M)[2] / _op,
-                       (*M)[3] / _op, (*M)[4] / _op, (*M)[5] / _op,
-                       (*M)[6] / _op, (*M)[7] / _op, (*M)[8] / _op }; }
+            { return { M[0][0] / _op, M[0][1] / _op, M[0][2] / _op,
+                       M[1][0] / _op, M[1][1] / _op, M[1][2] / _op,
+                       M[2][0] / _op, M[2][1] / _op, M[2][2] / _op }; }
 
         template <class Y> Vec3Base<Util::comm_type<C,Y>> operator&(const Vec3Base<Y> &vec) const {
-            return { vec.x * (*M)[0] + vec.y * (*M)[1] + vec.z * (*M)[2],
-                     vec.x * (*M)[3] + vec.y * (*M)[4] + vec.z * (*M)[5],
-                     vec.x * (*M)[6] + vec.y * (*M)[7] + vec.z * (*M)[8] };
+            return { vec.x * M[0][0] + vec.y * M[0][1] + vec.z * M[0][2],
+                     vec.x * M[1][0] + vec.y * M[1][1] + vec.z * M[1][2],
+                     vec.x * M[2][0] + vec.y * M[2][1] + vec.z * M[2][2] };
         }
         template <class Y> Mat3Base<Util::comm_type<C,Y>> operator&(const Mat3Base<Y> &_m) const {
             Mat3Base<Util::comm_type<C,Y>> tmp;
@@ -1007,8 +1009,8 @@ namespace Simple {
         C  operator[](vec2i ind) const { return M[ind.x][ind.y]; }
         Vec3Base<C&> operator[](uint32_t ind)       { return { M[ind][0], M[ind][1], M[ind][2] }; }
         Vec3Base<C > operator[](uint32_t ind) const { return { M[ind][0], M[ind][1], M[ind][2] }; }
-        Mat3RefBase<C> operator[](Mat::Placeholder) { return {&(*(M)[0]), &(*(M)[1]), &(*(M)[2])}; }
-        const Mat3RefBase<const C> operator[](Mat::Placeholder) const { return {&(*(M)[0]), &(*(M)[1]), &(*(M)[2])}; }
+        Mat3RefBase<C> operator[](Mat::Placeholder) { return {  &M[0][0],  &M[0][1],  &M[0][2] }; }
+        const Mat3RefBase<const C> operator[](Mat::Placeholder) const { return { &M[0][0], &M[0][1], &M[0][2] }; }
     }; // Mat3Base END
 
     template <class C>
@@ -1038,12 +1040,14 @@ namespace Simple {
               { m8,  m9,  m10, m11 },
               { m12, m13, m14, m15 }} {}
         template <class Y> Mat4Base(const Mat4Base<Y> &_m) {
-            for (uint32_t i = 0u; i < 16u; ++i)
-                (*M)[i] = static_cast<C>((*_m.M)[i]);
+            for (uint32_t i = 0u; i < 4u; ++i)
+                for (uint32_t j = 0u; j < 4u; ++j)
+                    M[i][j] = static_cast<C>(_m.M[i][j]);
         }
         Mat4Base(C _val) {
-            for (uint32_t i = 0u; i < 16u; ++i)
-                (*M)[i] = _val;
+            for (uint32_t i = 0u; i < 4u; ++i)
+                for (uint32_t j = 0u; j < 4u; ++j)
+                    M[i][j] = _val;
         }
 
 
@@ -1052,10 +1056,10 @@ namespace Simple {
 
         void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[0][3], M[3][0]);
                            swap(M[1][2], M[2][1]); swap(M[1][3], M[3][1]); swap(M[2][3], M[3][2]); }
-        Mat4Base <C> T() const { return { (*M)[0], (*M)[4], (*M)[ 8], (*M)[12],
-                                          (*M)[1], (*M)[5], (*M)[ 9], (*M)[13],
-                                          (*M)[2], (*M)[6], (*M)[10], (*M)[14],
-                                          (*M)[3], (*M)[7], (*M)[11], (*M)[15] }; }
+        Mat4Base <C> T() const { return { M[0][0], M[1][0], M[2][0], M[3][0],
+                                          M[0][1], M[1][1], M[2][1], M[3][1],
+                                          M[0][2], M[1][2], M[2][2], M[3][2],
+                                          M[0][3], M[1][3], M[2][3], M[3][3] }; }
 
         template <typename Y = double>
         Y det() const {
@@ -1128,72 +1132,72 @@ namespace Simple {
         }
 
         Mat4Base<C> operator+() const
-            { return { abs((*M)[ 0]), abs((*M)[ 1]), abs((*M)[ 2]), abs((*M)[ 3]),
-                       abs((*M)[ 4]), abs((*M)[ 5]), abs((*M)[ 6]), abs((*M)[ 7]),
-                       abs((*M)[ 8]), abs((*M)[ 9]), abs((*M)[10]), abs((*M)[11]),
-                       abs((*M)[12]), abs((*M)[13]), abs((*M)[14]), abs((*M)[15]) }; }
+            { return { abs(M[0][0]), abs(M[0][1]), abs(M[0][2]), abs(M[0][3]),
+                       abs(M[1][0]), abs(M[1][1]), abs(M[1][2]), abs(M[1][3]),
+                       abs(M[2][0]), abs(M[2][1]), abs(M[2][2]), abs(M[2][3]),
+                       abs(M[3][0]), abs(M[3][1]), abs(M[3][2]), abs(M[3][3]) }; }
         Mat4Base<C> operator-() const
-            { return { -(*M)[ 0], -(*M)[ 1], -(*M)[ 2], -(*M)[ 3],
-                       -(*M)[ 4], -(*M)[ 5], -(*M)[ 6], -(*M)[ 7],
-                       -(*M)[ 8], -(*M)[ 9], -(*M)[10], -(*M)[11],
-                       -(*M)[12], -(*M)[13], -(*M)[14], -(*M)[15] }; }
+            { return { -M[0][0], -M[0][1], -M[0][2], -M[0][3],
+                       -M[1][0], -M[1][1], -M[1][2], -M[1][3],
+                       -M[2][0], -M[2][1], -M[2][2], -M[2][3],
+                       -M[3][0], -M[3][1], -M[3][2], -M[3][3] }; }
 
         template <class Y> Mat4Base<Util::comm_type<C,Y>> operator+(const Mat4Base<Y> &_m) const
-            { return { (*M)[ 0] + (*_m.M)[ 0], (*M)[ 1] + (*_m.M)[ 1], (*M)[ 2] + (*_m.M)[ 2], (*M)[ 3] + (*_m.M)[ 3],
-                       (*M)[ 4] + (*_m.M)[ 4], (*M)[ 5] + (*_m.M)[ 5], (*M)[ 6] + (*_m.M)[ 6], (*M)[ 7] + (*_m.M)[ 7],
-                       (*M)[ 8] + (*_m.M)[ 8], (*M)[ 9] + (*_m.M)[ 9], (*M)[10] + (*_m.M)[10], (*M)[11] + (*_m.M)[11],
-                       (*M)[12] + (*_m.M)[12], (*M)[13] + (*_m.M)[13], (*M)[14] + (*_m.M)[14], (*M)[15] + (*_m.M)[15] }; }
+            { return { M[0][0] + _m.M[0][0], M[0][1] + _m.M[0][1], M[0][2] + _m.M[0][2], M[0][3] + _m.M[0][3],
+                       M[1][0] + _m.M[1][0], M[1][1] + _m.M[1][1], M[1][2] + _m.M[1][2], M[1][3] + _m.M[1][3],
+                       M[2][0] + _m.M[2][0], M[2][1] + _m.M[2][1], M[2][2] + _m.M[2][2], M[2][3] + _m.M[2][3],
+                       M[3][0] + _m.M[3][0], M[3][1] + _m.M[3][1], M[3][2] + _m.M[3][2], M[3][3] + _m.M[3][3] }; }
         template <class Y> Mat4Base<Util::comm_vecsub_type<C,Y>> operator-(const Mat4Base<Y> &_m) const
-            { return { (*M)[ 0] - (*_m.M)[ 0], (*M)[ 1] - (*_m.M)[ 1], (*M)[ 2] - (*_m.M)[ 2], (*M)[ 3] - (*_m.M)[ 3],
-                       (*M)[ 4] - (*_m.M)[ 4], (*M)[ 5] - (*_m.M)[ 5], (*M)[ 6] - (*_m.M)[ 6], (*M)[ 7] - (*_m.M)[ 7],
-                       (*M)[ 8] - (*_m.M)[ 8], (*M)[ 9] - (*_m.M)[ 9], (*M)[10] - (*_m.M)[10], (*M)[11] - (*_m.M)[11],
-                       (*M)[12] - (*_m.M)[12], (*M)[13] - (*_m.M)[13], (*M)[14] - (*_m.M)[14], (*M)[15] - (*_m.M)[15] }; }
+            { return { M[0][0] - _m.M[0][0], M[0][1] - _m.M[0][1], M[0][2] - _m.M[0][2], M[0][3] - _m.M[0][3],
+                       M[1][0] - _m.M[1][0], M[1][1] - _m.M[1][1], M[1][2] - _m.M[1][2], M[1][3] - _m.M[1][3],
+                       M[2][0] - _m.M[2][0], M[2][1] - _m.M[2][1], M[2][2] - _m.M[2][2], M[2][3] - _m.M[2][3],
+                       M[3][0] - _m.M[3][0], M[3][1] - _m.M[3][1], M[3][2] - _m.M[3][2], M[3][3] - _m.M[3][3] }; }
         template <class Y> Mat4Base<Util::comm_type<C,Y>> operator*(const Mat4Base<Y> &_m) const
-            { return { (*M)[ 0] * (*_m.M)[ 0], (*M)[ 1] * (*_m.M)[ 1], (*M)[ 2] * (*_m.M)[ 2], (*M)[ 3] * (*_m.M)[ 3],
-                       (*M)[ 4] * (*_m.M)[ 4], (*M)[ 5] * (*_m.M)[ 5], (*M)[ 6] * (*_m.M)[ 6], (*M)[ 7] * (*_m.M)[ 7],
-                       (*M)[ 8] * (*_m.M)[ 8], (*M)[ 9] * (*_m.M)[ 9], (*M)[10] * (*_m.M)[10], (*M)[11] * (*_m.M)[11],
-                       (*M)[12] * (*_m.M)[12], (*M)[13] * (*_m.M)[13], (*M)[14] * (*_m.M)[14], (*M)[15] * (*_m.M)[15] }; }
+            { return { M[0][0] * _m.M[0][0], M[0][1] * _m.M[0][1], M[0][2] * _m.M[0][2], M[0][3] * _m.M[0][3],
+                       M[1][0] * _m.M[1][0], M[1][1] * _m.M[1][1], M[1][2] * _m.M[1][2], M[1][3] * _m.M[1][3],
+                       M[2][0] * _m.M[2][0], M[2][1] * _m.M[2][1], M[2][2] * _m.M[2][2], M[2][3] * _m.M[2][3],
+                       M[3][0] * _m.M[3][0], M[3][1] * _m.M[3][1], M[3][2] * _m.M[3][2], M[3][3] * _m.M[3][3] }; }
         template <class Y> Mat4Base<Util::comm_type<C,Y>> operator/(const Mat4Base<Y> &_m) const
-            { return { (*M)[ 0] / (*_m.M)[ 0], (*M)[ 1] / (*_m.M)[ 1], (*M)[ 2] / (*_m.M)[ 2], (*M)[ 3] / (*_m.M)[ 3],
-                       (*M)[ 4] / (*_m.M)[ 4], (*M)[ 5] / (*_m.M)[ 5], (*M)[ 6] / (*_m.M)[ 6], (*M)[ 7] / (*_m.M)[ 7],
-                       (*M)[ 8] / (*_m.M)[ 8], (*M)[ 9] / (*_m.M)[ 9], (*M)[10] / (*_m.M)[10], (*M)[11] / (*_m.M)[11],
-                       (*M)[12] / (*_m.M)[12], (*M)[13] / (*_m.M)[13], (*M)[14] / (*_m.M)[14], (*M)[15] / (*_m.M)[15] }; }
+            { return { M[0][0] / _m.M[0][0], M[0][1] / _m.M[0][1], M[0][2] / _m.M[0][2], M[0][3] / _m.M[0][3],
+                       M[1][0] / _m.M[1][0], M[1][1] / _m.M[1][1], M[1][2] / _m.M[1][2], M[1][3] / _m.M[1][3],
+                       M[2][0] / _m.M[2][0], M[2][1] / _m.M[2][1], M[2][2] / _m.M[2][2], M[2][3] / _m.M[2][3],
+                       M[3][0] / _m.M[3][0], M[3][1] / _m.M[3][1], M[3][2] / _m.M[3][2], M[3][3] / _m.M[3][3] }; }
 
-        template <class Y> void operator+=(const Mat4Base<Y> &_m) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] += (*_m.M)[i]; }
-        template <class Y> void operator-=(const Mat4Base<Y> &_m) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] -= (*_m.M)[i]; }
-        template <class Y> void operator*=(const Mat4Base<Y> &_m) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] *= (*_m.M)[i]; }
-        template <class Y> void operator/=(const Mat4Base<Y> &_m) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] /= (*_m.M)[i]; }
-        void operator+=(C _op) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] += _op; }
-        void operator-=(C _op) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] -= _op; }
-        void operator*=(C _op) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] *= _op; }
-        void operator/=(C _op) { for (uint32_t i = 0; i < 16u; ++i) (*M)[i] /= _op; }
+        template <class Y> void operator+=(const Mat4Base<Y> &_m) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] += _m.M[i][j]; }
+        template <class Y> void operator-=(const Mat4Base<Y> &_m) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] -= _m.M[i][j]; }
+        template <class Y> void operator*=(const Mat4Base<Y> &_m) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] *= _m.M[i][j]; }
+        template <class Y> void operator/=(const Mat4Base<Y> &_m) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] /= _m.M[i][j]; }
+        void operator+=(C _op) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] += _op; }
+        void operator-=(C _op) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] -= _op; }
+        void operator*=(C _op) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] *= _op; }
+        void operator/=(C _op) { for (uint32_t i=0; i<4u; ++i) for (uint32_t j=0; j<4u; ++j) M[i][j] /= _op; }
 
         Mat4Base<C> operator+(C _op) const
-            { return { (*M)[ 0] + _op, (*M)[ 1] + _op, (*M)[ 2] + _op, (*M)[ 3] + _op,
-                       (*M)[ 4] + _op, (*M)[ 5] + _op, (*M)[ 6] + _op, (*M)[ 7] + _op,
-                       (*M)[ 8] + _op, (*M)[ 9] + _op, (*M)[10] + _op, (*M)[11] + _op,
-                       (*M)[12] + _op, (*M)[13] + _op, (*M)[14] + _op, (*M)[15] + _op }; }
+            { return { M[0][0] + _op, M[0][1] + _op, M[0][2] + _op, M[0][3] + _op,
+                       M[1][0] + _op, M[1][1] + _op, M[1][2] + _op, M[1][3] + _op,
+                       M[2][0] + _op, M[2][1] + _op, M[2][2] + _op, M[2][3] + _op,
+                       M[3][0] + _op, M[3][1] + _op, M[3][2] + _op, M[3][3] + _op }; }
         Mat4Base<C> operator-(C _op) const
-            { return { (*M)[ 0] - _op, (*M)[ 1] - _op, (*M)[ 2] - _op, (*M)[ 3] - _op,
-                       (*M)[ 4] - _op, (*M)[ 5] - _op, (*M)[ 6] - _op, (*M)[ 7] - _op,
-                       (*M)[ 8] - _op, (*M)[ 9] - _op, (*M)[10] - _op, (*M)[11] - _op,
-                       (*M)[12] - _op, (*M)[13] - _op, (*M)[14] - _op, (*M)[15] - _op }; }
+            { return { M[0][0] - _op, M[0][1] - _op, M[0][2] - _op, M[0][3] - _op,
+                       M[1][0] - _op, M[1][1] - _op, M[1][2] - _op, M[1][3] - _op,
+                       M[2][0] - _op, M[2][1] - _op, M[2][2] - _op, M[2][3] - _op,
+                       M[3][0] - _op, M[3][1] - _op, M[3][2] - _op, M[3][3] - _op }; }
         Mat4Base<C> operator*(C _op) const
-            { return { (*M)[ 0] * _op, (*M)[ 1] * _op, (*M)[ 2] * _op, (*M)[ 3] * _op,
-                       (*M)[ 4] * _op, (*M)[ 5] * _op, (*M)[ 6] * _op, (*M)[ 7] * _op,
-                       (*M)[ 8] * _op, (*M)[ 9] * _op, (*M)[10] * _op, (*M)[11] * _op,
-                       (*M)[12] * _op, (*M)[13] * _op, (*M)[14] * _op, (*M)[15] * _op }; }
+            { return { M[0][0] * _op, M[0][1] * _op, M[0][2] * _op, M[0][3] * _op,
+                       M[1][0] * _op, M[1][1] * _op, M[1][2] * _op, M[1][3] * _op,
+                       M[2][0] * _op, M[2][1] * _op, M[2][2] * _op, M[2][3] * _op,
+                       M[3][0] * _op, M[3][1] * _op, M[3][2] * _op, M[3][3] * _op }; }
         Mat4Base<C> operator/(C _op) const
-            { return { (*M)[ 0] / _op, (*M)[ 1] / _op, (*M)[ 2] / _op, (*M)[ 3] / _op,
-                       (*M)[ 4] / _op, (*M)[ 5] / _op, (*M)[ 6] / _op, (*M)[ 7] / _op,
-                       (*M)[ 8] / _op, (*M)[ 9] / _op, (*M)[10] / _op, (*M)[11] / _op,
-                       (*M)[12] / _op, (*M)[13] / _op, (*M)[14] / _op, (*M)[15] / _op }; }
+            { return { M[0][0] / _op, M[0][1] / _op, M[0][2] / _op, M[0][3] / _op,
+                       M[1][0] / _op, M[1][1] / _op, M[1][2] / _op, M[1][3] / _op,
+                       M[2][0] / _op, M[2][1] / _op, M[2][2] / _op, M[2][3] / _op,
+                       M[3][0] / _op, M[3][1] / _op, M[3][2] / _op, M[3][3] / _op }; }
 
         template <class Y> Vec4Base<Util::comm_type<C,Y>> operator&(const Vec4Base<Y> &vec) const {
-            return { vec.x * (*M)[ 0] + vec.y * (*M)[ 1] + vec.z * (*M)[ 2] + vec.w * (*M)[ 3],
-                     vec.x * (*M)[ 4] + vec.y * (*M)[ 5] + vec.z * (*M)[ 6] + vec.w * (*M)[ 7],
-                     vec.x * (*M)[ 8] + vec.y * (*M)[ 9] + vec.z * (*M)[10] + vec.w * (*M)[11],
-                     vec.x * (*M)[12] + vec.y * (*M)[13] + vec.z * (*M)[14] + vec.w * (*M)[15] };
+            return { vec.x * M[0][0] + vec.y * M[0][1] + vec.z * M[0][2] + vec.w * M[0][3],
+                     vec.x * M[1][0] + vec.y * M[1][1] + vec.z * M[1][2] + vec.w * M[1][3],
+                     vec.x * M[2][0] + vec.y * M[2][1] + vec.z * M[2][2] + vec.w * M[2][3],
+                     vec.x * M[3][0] + vec.y * M[3][1] + vec.z * M[3][2] + vec.w * M[3][3] };
         }
         template <class Y> Mat4Base<Util::comm_type<C,Y>> operator&(const Mat4Base<Y> &_m) const {
             Mat4Base<Util::comm_type<C,Y>> tmp;
@@ -1214,8 +1218,8 @@ namespace Simple {
         C  operator[](vec2i ind) const { return M[ind.x][ind.y]; }
         Vec4Base<C&> operator[](uint32_t ind)       { return { M[ind][0], M[ind][1], M[ind][2], M[ind][3] }; }
         Vec4Base<C > operator[](uint32_t ind) const { return { M[ind][0], M[ind][1], M[ind][2], M[ind][3] }; }
-        Mat4RefBase<C> operator[](Mat::Placeholder) { return {&(*(M)[0]), &(*(M)[1]), &(*(M)[2]), &(*(M)[3])}; }
-        const Mat4RefBase<const C> operator[](Mat::Placeholder) const { return {&(*(M)[0]), &(*(M)[1]), &(*(M)[2]), &(*(M)[3])}; }
+        Mat4RefBase<C> operator[](Mat::Placeholder) { return {  &M[0][0],  &M[0][1],  &M[0][2],  &M[0][3] }; }
+        const Mat4RefBase<const C> operator[](Mat::Placeholder) const { return { &M[0][0], &M[0][1], &M[0][2], &M[0][3] }; }
     }; // Mat4Base
 
     template <class C>
