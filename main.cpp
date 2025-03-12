@@ -4,7 +4,7 @@
 #include "main/camera.h"
 #include "main/input_handler.h"
 
-#include "main/color.h"
+#include "main/rtaudio_wrap.h"
 
 #include <iostream>
 
@@ -13,9 +13,6 @@ int main() {
 // Config
     // return Simple::test_csound();
     const uint32_t FRAMES_IN_FLIGHT = 2u;
-
-    Simple::Vec2Base<Simple::Color1f> tmp;
-    tmp += Simple::vec2f{0.1f, 2.f};
 
 // Scene info
 

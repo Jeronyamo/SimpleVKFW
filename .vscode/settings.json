@@ -90,7 +90,11 @@
         "future": "cpp"
     },
     "cmake.sourceDirectory": "C:/Programming/SimpleVKFW",
-    "cmake.buildDirectory": "${workspaceFolder}/build/win/build",
+    "cmake.buildDirectory": "${workspaceFolder}/build_${buildType}/win/build",
     "C_Cpp.default.compilerPath": "C:\\Another\\MSYS2\\mingw64\\bin\\cpp.exe",
-    "cmake.configureOnOpen": true
+    "cmake.configureOnOpen": true,
+    "cmake.configureArgs": [
+        "-DSVKFW_OVERRIDE_RES_LOCATION=On"
+    ],
+    "cmake.setBuildTypeOnMultiConfig": false
 }

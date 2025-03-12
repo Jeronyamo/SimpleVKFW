@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 project(SimpleVKFW CXX)
 
-set(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -13,13 +12,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 option(SVKFW_OVERRIDE_RES_LOCATION On)
 
 if(SVKFW_OVERRIDE_RES_LOCATION)
-    set(SVKFW_BUILD_DIR ${PROJECT_SOURCE_DIR}/build_debug)
-    if (${CMAKE_BUILD_TYPE} STREQUAL Release)
-        set(SVKFW_BUILD_DIR ${PROJECT_SOURCE_DIR}/build_release)
-    endif()
+    set(SVKFW_BUILD_DIR ${PROJECT_SOURCE_DIR}/build_${CMAKE_BUILD_TYPE})
 
     if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS On)
         set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${SVKFW_BUILD_DIR}/win)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
         set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${PROJECT_SOURCE_DIR}/linux)
@@ -73,14 +69,17 @@ set(SVKFW_EXTERN_SRC_DIR ${PROJECT_SOURCE_DIR}/ext_sources)
 set(SVKFW_EXTERN_INC_DIR ${PROJECT_SOURCE_DIR}/ext_includes)
 
 ### Includes
-# set(EXTERN_INC_GLAD_DIR  ${SVKFW_EXTERN_INC_DIR}/glad)
-set(EXTERN_INC_GLFW_DIR  ${SVKFW_EXTERN_SRC_DIR}/glfw/include)
-set(EXTERN_INC_STBI_DIR  ${SVKFW_EXTERN_INC_DIR}/STBI)
+# set(EXTERN_INC_GLAD_DIR     ${SVKFW_EXTERN_INC_DIR}/glad)
+set(EXTERN_INC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw/include)
+set(EXTERN_INC_STBI_DIR     ${SVKFW_EXTERN_INC_DIR}/STBI)
+set(EXTERN_INC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
 
 ### Sources
-set(EXTERN_SRC_IMGUI_DIR ${SVKFW_EXTERN_SRC_DIR}/imgui)
-set(EXTERN_SRC_VOLK_DIR  ${SVKFW_EXTERN_SRC_DIR}/volk)
-set(EXTERN_SRC_GLFW_DIR  ${SVKFW_EXTERN_SRC_DIR}/glfw)
+set(EXTERN_SRC_IMGUI_DIR    ${SVKFW_EXTERN_SRC_DIR}/imgui)
+set(EXTERN_SRC_VOLK_DIR     ${SVKFW_EXTERN_SRC_DIR}/volk)
+set(EXTERN_SRC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw)
+set(EXTERN_SRC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
+
 ### Libraries
 # Note: includes from ext_libs should be declared here
 
@@ -128,6 +127,14 @@ PRIVATE
 )
 
 
+## RTAudio
+set(BUILD_TESTING Off)
+set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
+add_subdirectory(${EXTERN_SRC_RTAUDIO_DIR})
+set_target_properties(rtaudio PROPERTIES FOLDER "RtAudio")
+set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")
+
+
 ##  ============  SVKFW  ============  ##
 
 target_include_directories(svkfw_test
@@ -140,7 +147,7 @@ PRIVATE
     # ${EXTERN_INC_GLAD_DIR}
     ${EXTERN_INC_STBI_DIR}
     ${EXTERN_INC_GLFW_DIR}
-    ${EXTERN_INC_CSOUND_DIR}
+    ${EXTERN_INC_RTAUDIO_DIR}
 
     ${EXTERN_SRC_IMGUI_DIR}
     ${EXTERN_SRC_IMGUI_DIR}/backends
@@ -153,4 +160,4 @@ PRIVATE
     ${SVKFW_SOURCE_DIR}/main
 )
 
-target_link_libraries(svkfw_test volk_headers glfw imgui)
+target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio)
