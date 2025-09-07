@@ -74,11 +74,11 @@ namespace Simple {
 
                 Quaternion() {}
                 Quaternion(const Quaternion &_quat) : s{_quat.s}, i{_quat.i}, j{_quat.j}, k{_quat.k} {}
-                Quaternion(float _s, float _i, float _j, float _k) :   s{_s  }, i{_i  }, j{_j  }, k{_k  } {}
+                Quaternion(float _s, float _i, float _j, float _k)   : s{_s  }, i{_i  }, j{_j  }, k{_k  } {}
                 template <class Y> Quaternion(const Vec3Base<Y> &_v) : s{ 0.f}, i{_v.x}, j{_v.y}, k{_v.z} {}
                 template <class Y> Quaternion(const Vec4Base<Y> &_v) : s{_v.x}, i{_v.y}, j{_v.z}, k{_v.w} {}
-                template <class Y> Quaternion(float _scal, const Vec3Base<Y> &_vec) :
-                        s{_scal}, i{_vec.x}, j{_vec.y}, k{_vec.z} {}
+                template <class Y> Quaternion(float _scal, const Vec3Base<Y> &_vec)
+                                : s{_scal}, i{_vec.x}, j{_vec.y}, k{_vec.z} {}
                 template <class Y> Quaternion(const Vec3Base<Y> &_axis, float _a) {
                     vec3 __axis{_axis.normalize()};
                     _a *= 0.5f;
@@ -106,7 +106,7 @@ namespace Simple {
                     float __n = norm();
 
                     if (Math::closeToZero(__n)) {
-                        fprintf(outswarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: normalize", "cannot normalize"));
+                        fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: normalize", "cannot normalize"));
                         return {};
                     }
 
@@ -118,7 +118,7 @@ namespace Simple {
                     float __n = norm();
 
                     if (Math::closeToZero(__n)) {
-                        fprintf(outswarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toNormalized", "cannot normalize"));
+                        fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toNormalized", "cannot normalize"));
                         s = 1.f;
                         i = 0.f;
                         j = 0.f;
@@ -137,7 +137,7 @@ namespace Simple {
                     float __n2 = -norm2();
 
                     if (Math::closeToZero(__n2)) {
-                        fprintf(outswarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: inverse", "cannot invert"));
+                        fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: inverse", "cannot invert"));
                         return {};
                     }
 
@@ -149,7 +149,7 @@ namespace Simple {
                     float __n2 = -norm2();
 
                     if (Math::closeToZero(__n2)) {
-                        fprintf(outswarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toInverted", "cannot invert"));
+                        fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toInverted", "cannot invert"));
                         s = 1.f;
                         i = 0.f;
                         j = 0.f;
@@ -325,7 +325,7 @@ namespace Simple {
 
 
 //  ============  Rotation-related functions  ============  \\
-
+            // Returns { axis.x, axis.y, axis.z, angle }
             vec4 axisAngleBetweenVecs(const vec3 &_v1, const vec3 &_v2) {
                 vec3 __V1 = _v1.normalize(), __V2 = _v2.normalize();
                 float __angle = Math::acos(Math::dot(__V1, __V2));
@@ -374,7 +374,7 @@ namespace Simple {
                 float __n = _q.norm2();
 
                 if (Math::closeToZero(__n)) {
-                    fprintf(outswarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: quaternion2rotMat3D", "cannot calculate rotation matrix"));
+                    fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: quaternion2rotMat3D", "cannot calculate rotation matrix"));
                     return Mat::Eye3;
                 }
 
@@ -468,7 +468,7 @@ namespace Simple {
             mat3 rotMat2D_3(float _theta) {
                 return { Math::cos(_theta), Math::sin(_theta), 0.f,
                         -Math::sin(_theta), Math::cos(_theta), 0.f,
-                         0.f,                       0.f,                       1.f };
+                         0.f,               0.f,               1.f };
             }
 
     // rotation matrix around axis 'x', 'y' or 'z'

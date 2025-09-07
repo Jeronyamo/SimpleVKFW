@@ -413,7 +413,7 @@ namespace Simple {
                 else if (_pres_info.pResults != nullptr) {
                     for (uint32_t i = 0u; i < _pres_info.swapchainCount; ++i) {
                         if (_pres_info.pResults[i] != VK_SUCCESS)
-                            fprintf(outswarn, "%s %d\n", SVKFW_WRAPWARN("VKFW :: Func :: queuePresentKHR", "error with swapchain"), i);
+                            fprintf(svkfwwarn, "%s %d\n", SVKFW_WRAPWARN("VKFW :: Func :: queuePresentKHR", "error with swapchain"), i);
                     }
                 }
             }
@@ -531,7 +531,7 @@ namespace Simple {
 
                     _flags[i] = __layer_found;
                     if (!__layer_found)
-                        fprintf(outswarn, "%s %s\n", SVKFW_WRAPWARN("VKFW :: Util :: checkLayers","could not find layer"), _layers.list[i].c_str());
+                        fprintf(svkfwwarn, "%s %s\n", SVKFW_WRAPWARN("VKFW :: Util :: checkLayers","could not find layer"), _layers.list[i].c_str());
                 }
             }
 
@@ -548,7 +548,7 @@ namespace Simple {
 
                     _flags[i] = __ext_found;
                     if (!__ext_found)
-                        fprintf(outswarn, "%s %s\n", SVKFW_WRAPWARN("VKFW :: Util :: checkExtensions","could not find extension"), _extensions.list[i].c_str());
+                        fprintf(svkfwwarn, "%s %s\n", SVKFW_WRAPWARN("VKFW :: Util :: checkExtensions","could not find extension"), _extensions.list[i].c_str());
                 }
             }
 
@@ -627,7 +627,7 @@ namespace Simple {
                         return i;
                 }
 
-                fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: Util :: checkPhysicalDeviceMemoryProperties", "Could not find suitable memory type"));
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: Util :: checkPhysicalDeviceMemoryProperties", "Could not find suitable memory type"));
                 return UINT32_MAX;
             }
         }; // Util END
@@ -777,7 +777,7 @@ namespace Simple {
                     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
                         _severity = CSISEQ(SGR_COL_FG_CYAN)   "Info"    CSISEQ(SGR_COL_FG_DEFAULT); break;
                     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-                        __outs = outswarn;
+                        __outs = svkfwwarn;
                         _severity = CSISEQ(SGR_COL_FG_YELLOW) "Warning" CSISEQ(SGR_COL_FG_DEFAULT); break;
                     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
                         __outs = stderr;
@@ -907,14 +907,14 @@ namespace Simple {
                                     properties{_elem_view.properties} {}
 
 
-                vec4u apiVersion() {
+                vec4u apiVersion() const {
                     vec4u __ver;
 
                     __ver["xyz"] = VulkanAPIVersion::divide(properties.apiVersion, &__ver.w);
                     return __ver;
                 }
 
-                std::string infoString() {
+                std::string infoString() const {
                     std::string _out = "Physical Device Info:\n";
                     vec4u _ver = apiVersion();
                     _out = _out + "Device name: " + properties.deviceName + '\n'
@@ -949,6 +949,7 @@ namespace Simple {
                 // TODO: more useful defaults
 
                 bool defaultGraphicsTest(const InfoElement &_phys_device_info) {
+                    printf("%s\n", _phys_device_info.infoString().c_str());
                     return _phys_device_info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
                         _phys_device_info.features.geometryShader && _phys_device_info.allExtAvailable({ {VK_KHR_SWAPCHAIN_EXTENSION_NAME} });
                 }
@@ -1000,10 +1001,12 @@ namespace Simple {
 
                 // Returns the first physical device for which _testFunc({device, features, properties}) == true
                 VkPhysicalDevice testPickOne(const Suitability::TestFunc _testFunc) {
+                    VkPhysicalDevice __res = 0;
                     for (uint32_t i = 0u; i < phys_devices.size(); ++i) {
                         if (_testFunc({phys_devices[i], features[i], properties[i]}))
-                            return phys_devices[i];
+                            __res = phys_devices[i];
                     }
+                    return __res;
 
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW :: PhysicalDevice Manager :: testPickOne", "failed to find a suitable GPU"));
                     return VK_NULL_HANDLE;
@@ -1357,7 +1360,7 @@ namespace Simple {
                         if (_test_func(properties[i], surface_support[i]))
                             return i;
 
-                    fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: testPickOne", "could not find queue family"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: testPickOne", "could not find queue family"));
                     return UINT32_MAX;
                 }
 
@@ -1369,7 +1372,7 @@ namespace Simple {
                             __indices.push_back(i);
 
                     if (__indices.empty())
-                        fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: testPickAll", "could not find queue family"));
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: testPickAll", "could not find queue family"));
                     return __indices;
                 }
 
@@ -1386,7 +1389,7 @@ namespace Simple {
                     }
 
                     if (__maxI >= properties.size()) {
-                        fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: rankPickOne", "could not find queue family"));
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: rankPickOne", "could not find queue family"));
                         return UINT32_MAX;
                     }
                     return __maxI;
@@ -1433,7 +1436,7 @@ namespace Simple {
                     }
 
                     if (__indices.empty())
-                        fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: rankPickAll", "could not find queue family"));
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: QueueFamily Manager :: rankPickAll", "could not find queue family"));
                     return __indices;
                 }
             }; // Manager END
@@ -1819,7 +1822,7 @@ namespace Simple {
                     if (__res == _usage)
                         image_info.usage = _usage;
                     else
-                        fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: SwapchainKHR Builder :: checkAndSetImageUsage",
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: SwapchainKHR Builder :: checkAndSetImageUsage",
                                                         "some usage flags are not supported\n"));
                     return __res;
                 }
@@ -1831,7 +1834,7 @@ namespace Simple {
                                                  capabilities.maxImageCount : UINT32_MAX);
 
                     if (image_count != _count)
-                        fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: Swapchain Builder :: checkSetImageCount",
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: Swapchain Builder :: checkSetImageCount",
                                         "image count (%d) was clamped to %d to fit the interval [%d, %d]\n"),
                                             _count, image_count, capabilities.minImageCount, capabilities.maxImageCount);
                     // else printf(SVKFW_WRAPINFO("VKFW :: Swapchain Builder :: checkSetImageCount", "imageCount: %d, the interval: [%d, %d]\n"),
@@ -1923,7 +1926,7 @@ namespace Simple {
                             return true;
                         }
 
-                    fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: Swapchain Builder :: checkSetPresentationMode",
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: Swapchain Builder :: checkSetPresentationMode",
                                                         "presentation mode %d not supported\n"), uint32_t(_pres_mode));
                     return false;
                 }

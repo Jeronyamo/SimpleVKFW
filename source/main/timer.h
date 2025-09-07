@@ -104,7 +104,7 @@ public:
 
         void set(double _new_time) {
             if (_new_time <= 0.)
-                fprintf(outswarn, SVKFW_WRAPWARN("Timer :: set", "negative time, using absolute value"));
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("Timer :: set", "negative time, using absolute value"));
             time = Math::abs(_new_time);
             clock_tick.tick();
         }

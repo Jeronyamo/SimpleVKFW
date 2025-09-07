@@ -178,21 +178,21 @@ namespace Simple {
                 if (__input_handler != nullptr)
                     __input_handler->processEventKey(_window, _key, _scancode, _action, _mods, frame_time);
                 // else
-                //     fprintf(outswarn, "%s %s", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventKey", " no handler set for key:"), glfwGetKeyName(_key, _scancode));
+                //     fprintf(svkfwwarn, "%s %s", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventKey", " no handler set for key:"), glfwGetKeyName(_key, _scancode));
             }
 
             void eventCursor(GLFWwindow* _window, double _pos_x, double _pos_y) {
                 if (handler_bind_cursor != nullptr)
                     handler_bind_cursor->processEventCursor(_window, _pos_x, _pos_y, frame_time);
                 // else
-                //     fprintf(outswarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventCursor", " no handler set for cursor position"));
+                //     fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventCursor", " no handler set for cursor position"));
             }
 
             void eventScroll(GLFWwindow* _window, double _offset_x, double _offset_y) {
                 if (handler_bind_scroll != nullptr)
                     handler_bind_scroll->processEventScroll(_window, _offset_x, _offset_y, frame_time);
                 // else
-                //     fprintf(outswarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventScroll", " no handler set for mouse scroll"));
+                //     fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventScroll", " no handler set for mouse scroll"));
             }
 
             void eventMButton(GLFWwindow* _window, int _button, int _action, int _mods) {
@@ -203,7 +203,7 @@ namespace Simple {
                 if (__input_handler != nullptr)
                     __input_handler->processEventMButton(_window, _button, _action, _mods, frame_time);
                 // else
-                //     fprintf(outswarn, "%s %d", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventMButton", " no handler set for mouse button:"), _button);
+                //     fprintf(svkfwwarn, "%s %d", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventMButton", " no handler set for mouse button:"), _button);
             }
 
             void eventFBufferSize(GLFWwindow* _window, int _width, int _height) {

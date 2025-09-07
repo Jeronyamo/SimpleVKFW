@@ -4,34 +4,12 @@
 #include <map>
 #include <string>
 #include <vector>
-#include <mutex>
 
+#include "common/memory.h"
 #include "interface/glfwrap.h"
 
 
 namespace Simple {
-    // Safe memory deallocation.
-    template <typename T>
-    void safeDelete(T *&_ptr) {
-        if (_ptr != nullptr)
-            delete _ptr;
-        _ptr = nullptr;
-    }
-    // Safe memory array deallocation.
-    template <typename T>
-    void safeDeleteArr(T *&_ptr) {
-        if (_ptr != nullptr)
-            delete[] _ptr;
-        _ptr = nullptr;
-    }
-    // Safe memory array deallocation. Checks if array count is not zero (for vulkan structs' array members).
-    template <typename T>
-    void safeDeleteArr(T *&_ptr, size_t _size) {
-        if (_size && _ptr != nullptr)
-            delete[] _ptr;
-        _ptr = nullptr;
-    }
-
 // Used to simplify work with all the "const char **" struct members in Vulkan
     struct StringVec {
         std::vector<std::string> list;
@@ -254,69 +232,6 @@ namespace Simple {
                 }
             }; // Handler END
         }; // StructurePtrChain END
-
-
-// OLD, TODO: delete everything below
-
-    // Vulkan object handle base type
-#if (VK_USE_64_BIT_PTR_DEFINES==1)
-        typedef void* ObjectCommonType;
-#else
-        typedef uint64_t ObjectCommonType;
-#endif
-
-        struct ObjectInfoType {
-            ObjectCommonType obj_handle;
-            VkObjectType obj_type;
-        }; // ObjectInfoType END
-
-
-    // Vulkan HandlerBase
-
-        struct ObjectHandlerBase {
-            ObjectHandlerBase() {}
-            virtual ~ObjectHandlerBase() {}
-
-            virtual       ObjectCommonType* ptr(uint32_t _index = 0u)       { return (ObjectCommonType*)-1; }
-            virtual const ObjectCommonType* ptr(uint32_t _index = 0u) const { return (ObjectCommonType*)-1; }
-            virtual const ObjectCommonType  get(uint32_t _index = 0u) const { return (ObjectCommonType )-1; }
-            virtual       uint32_t count() const { return -1; }
-
-            virtual       void clear() {}
-            virtual       VkObjectType getType() const { return VK_OBJECT_TYPE_UNKNOWN; }
-            virtual       void set(const ObjectInfoType &_obj_info) {}
-            virtual       uint32_t destroy(VkInstance _instance, VkDevice _device,
-                                           const VkAllocationCallbacks* _destroy_callback = nullptr) { return -1; }
-        }; // ObjectHandlerBase END
-
-        struct ObjectHandlerExBase {
-            ObjectHandlerExBase() {}
-            virtual ~ObjectHandlerExBase() {}
-
-            virtual void clear() {}
-            virtual VkObjectType getType() const { return VK_OBJECT_TYPE_UNKNOWN; }
-            virtual ObjectCommonType create(void *_p_next = nullptr, VkFlags _flags = 0u,
-                                            const VkAllocationCallbacks *_create_cb = nullptr) { return (ObjectCommonType)-1; }
-            virtual ObjectCommonType recreate(uint32_t _info = 0u) { return (ObjectCommonType)-1; } // might be unused
-            inline virtual uint32_t destroy(ObjectInfoType _handler, VkInstance _instance, VkDevice _device,
-                                            const VkAllocationCallbacks* _destroy_callback = nullptr) { return -1; }
-        }; // ObjectHandlerExBase END
-
-
-        // Not used
-        struct StructHandlerBase {
-            StructHandlerBase() {}
-            virtual ~StructHandlerBase() {}
-
-            virtual       void*      ptr(uint32_t _index = 0u)       { return nullptr; }
-            virtual const void*      ptr(uint32_t _index = 0u) const { return nullptr; }
-            virtual       uint32_t count() const { return -1; }
-
-            virtual void clear() {}
-            virtual bool hasType() const { return false; }
-            virtual VkStructureType getType() const { return VkStructureType(-1); }
-            virtual uint32_t destroyPtrMembers() { return -1; }
-        }; // StructHandlerBase END
     }; // VKFW END
 }; // Simple END
 

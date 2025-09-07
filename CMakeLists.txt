@@ -29,40 +29,42 @@ if(SVKFW_OVERRIDE_RES_LOCATION)
 endif()
 
 
-## SVKFW Executable
+## SVKFW Executables
 
-add_executable(svkfw_test ${PROJECT_SOURCE_DIR}/main.cpp)
+add_executable(svkfw ${PROJECT_SOURCE_DIR}/main.cpp)
+add_executable(svkfw_test ${PROJECT_SOURCE_DIR}/tests/tests.cpp)
 
 
-## SVKFW CMake Variables
+## SVKFW Target CMake Definitions
 
-if (CMAKE_BUILD_TYPE STREQUAL Debug)
-    target_compile_definitions(svkfw_test PRIVATE SVKFW_DEBUG)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    target_compile_definitions(svkfw_test PRIVATE SVKFW_CM_WIN)
-
-    ## Get Windows build
-    string(FIND ${CMAKE_SYSTEM_VERSION} "." WIN_VERSION_LEN REVERSE)
-    math(EXPR WIN_VERSION_LEN "${WIN_VERSION_LEN} + 1")
-    string(SUBSTRING ${CMAKE_SYSTEM_VERSION} ${WIN_VERSION_LEN} -1 WIN_BUILD_VER)
-    math(EXPR WIN_BUILD_VER ${WIN_BUILD_VER})
-
-    ## Anniversary update, ANSI supported since 10586 (November update), but this one expands functionality
-    if(${WIN_BUILD_VER} GREATER_EQUAL 14393)
-        target_compile_definitions(svkfw_test PRIVATE SVKFW_CM_ANSI_ESC)
+function(svkfw_set_definitions SVKFW_TARGET)
+    if (CMAKE_BUILD_TYPE STREQUAL Debug)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_DEBUG)
     endif()
-    # add_definitions(-DSVKFW_CM_WIN_BUILD=${WIN_BUILD_VER})
-elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    target_compile_definitions(svkfw_test PRIVATE SVKFW_CM_LINUX PRIVATE SVKFW_CM_ANSI_ESC)
-elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-    target_compile_definitions(svkfw_test PRIVATE SVKFW_CM_MAC PRIVATE SVKFW_CM_ANSI_ESC)
-endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_WIN)
+
+        ## Get Windows build
+        string(FIND ${CMAKE_SYSTEM_VERSION} "." WIN_VERSION_LEN REVERSE)
+        math(EXPR WIN_VERSION_LEN "${WIN_VERSION_LEN} + 1")
+        string(SUBSTRING ${CMAKE_SYSTEM_VERSION} ${WIN_VERSION_LEN} -1 WIN_BUILD_VER)
+        math(EXPR WIN_BUILD_VER ${WIN_BUILD_VER})
+
+        ## Anniversary update, ANSI supported since 10586 (November update), but this one expands functionality
+        if(${WIN_BUILD_VER} GREATER_EQUAL 14393)
+            target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_ANSI_ESC)
+        endif()
+        # add_definitions(-DSVKFW_CM_WIN_BUILD=${WIN_BUILD_VER})
+    elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_LINUX PRIVATE SVKFW_CM_ANSI_ESC)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_MAC PRIVATE SVKFW_CM_ANSI_ESC)
+    endif()
+endfunction()
 
 
 ## Directory Variables
-
 set(SVKFW_SOURCE_DIR     ${PROJECT_SOURCE_DIR}/source)
 set(SVKFW_EXTERN_LIB_DIR ${PROJECT_SOURCE_DIR}/ext_libs)
 set(SVKFW_EXTERN_SRC_DIR ${PROJECT_SOURCE_DIR}/ext_sources)
@@ -84,7 +86,31 @@ set(EXTERN_SRC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
 # Note: includes from ext_libs should be declared here
 
 
-##  ============  External  ============  ##
+set(SVKFW_ALL_INCULDES
+    ${Vulkan_INCLUDE_DIR}
+
+    ## External
+    ${SVKFW_EXTERN_INC_DIR}
+    # Note: GLAD not needed for vulkan/volk (SOGLFW legacy):
+    # ${EXTERN_INC_GLAD_DIR}
+    ${EXTERN_INC_STBI_DIR}
+    ${EXTERN_INC_GLFW_DIR}
+    ${EXTERN_INC_RTAUDIO_DIR}
+
+    ${EXTERN_SRC_IMGUI_DIR}
+    ${EXTERN_SRC_IMGUI_DIR}/backends
+
+    ## SVKFW
+    ${SVKFW_SOURCE_DIR}
+    ${SVKFW_SOURCE_DIR}/common
+    ${SVKFW_SOURCE_DIR}/data
+    ${SVKFW_SOURCE_DIR}/math
+    ${SVKFW_SOURCE_DIR}/interface
+    ${SVKFW_SOURCE_DIR}/main
+)
+
+
+##  ============  External Targets  ============  ##
 
 ## GLFW
 set(GLFW_LIBRARY_TYPE STATIC)
@@ -135,29 +161,12 @@ set_target_properties(rtaudio PROPERTIES FOLDER "RtAudio")
 set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")
 
 
-##  ============  SVKFW  ============  ##
+##  ============  SVKFW Targets  ============  ##
 
-target_include_directories(svkfw_test
-PUBLIC
-    ${Vulkan_INCLUDE_DIR}
-
-PRIVATE
-    ## External
-    # Note: GLAD not needed for vulkan/volk (SOGLFW legacy):
-    # ${EXTERN_INC_GLAD_DIR}
-    ${EXTERN_INC_STBI_DIR}
-    ${EXTERN_INC_GLFW_DIR}
-    ${EXTERN_INC_RTAUDIO_DIR}
-
-    ${EXTERN_SRC_IMGUI_DIR}
-    ${EXTERN_SRC_IMGUI_DIR}/backends
-
-    ## SVKFW
-    ${SVKFW_SOURCE_DIR}
-    ${SVKFW_SOURCE_DIR}/common
-    ${SVKFW_SOURCE_DIR}/math
-    ${SVKFW_SOURCE_DIR}/interface
-    ${SVKFW_SOURCE_DIR}/main
-)
-
+svkfw_set_definitions(svkfw_test)
+target_include_directories(svkfw_test PUBLIC ${SVKFW_ALL_INCULDES})
 target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio)
+
+svkfw_set_definitions(svkfw)
+target_include_directories(svkfw PRIVATE ${SVKFW_ALL_INCULDES})
+target_link_libraries(svkfw volk_headers glfw imgui rtaudio)

@@ -896,7 +896,7 @@ namespace Simple {
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: DeviceMemoryContextFactory :: bMemoryFillBase", "'size' must be greater than 0"));
 
                 if (_offset + _size > __info.size)
-                    fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: DeviceMemoryContextFactory :: bMemoryFillBase", "data size + offset are out of bounds for current object's memory. \
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: DeviceMemoryContextFactory :: bMemoryFillBase", "data size + offset are out of bounds for current object's memory. \
                                                                                                                It will overwrite other object's memory or result in memory mapping error."));
 
                 VkDeviceMemory __memory_handle = device_memory_context->memory[__info.getMemoryCI()];

@@ -3,6 +3,7 @@
 
 #include <climits>
 #include <cstdint>
+#include <stdexcept>
 #include <type_traits>
 
 
@@ -14,8 +15,8 @@ namespace Simple {
         struct PackS {
             T bits;
             uint8_t offset;
-        };
-    };
+        }; // PackS END
+    }; // Util END
 
 
 //  ============  Bits  ============  \\
@@ -37,12 +38,12 @@ namespace Simple {
             }
             template <uint8_t _BITS>
             static inline T FirstBits() {
-                static_assert(sizeof(T) * CHAR_BIT >= _BITS, "SVKFW Error: Bits :: Mask :: FirstBits - bit number exceeds max for this type");
+                static_assert(sizeof(T) * CHAR_BIT > _BITS, "SVKFW Error: Bits :: Mask :: FirstBits - bit number exceeds max for this type");
                 return _BITS ? (1u << _BITS) - 1u : 0u;
             }
             template <uint8_t _BITS>
             static inline T LastBits() {
-                static_assert(sizeof(T) * CHAR_BIT >= _BITS, "SVKFW Error: Bits :: Mask :: LastBits - bit number exceeds max for this type");
+                static_assert(sizeof(T) * CHAR_BIT > _BITS, "SVKFW Error: Bits :: Mask :: LastBits - bit number exceeds max for this type");
                 return _BITS ? T(-1) ^ ((1u << (sizeof(T) * CHAR_BIT - _BITS)) - 1u) : 0u;
             }
 
@@ -50,28 +51,28 @@ namespace Simple {
             static inline T FromBits(const std::initializer_list<uint8_t> &_BITS) {
                 T __res = 0u;
                 for (uint8_t i : _BITS) {
-                    if (sizeof(T) * CHAR_BIT > i)
+                    if (sizeof(T) * CHAR_BIT <= i)
                         throw std::invalid_argument("SVKFW Error: Bits :: Mask :: FromBits - bit index exceeds max for this type");
                     __res |= (1u << i);
                 }
                 return __res;
             }
             static inline T FirstBits(uint8_t _BITS) {
-                if (sizeof(T) * CHAR_BIT >= _BITS)
+                if (sizeof(T) * CHAR_BIT <= _BITS)
                     throw std::invalid_argument("SVKFW Error: Bits :: Mask :: FirstBits - bit number exceeds max for this type");
                 return _BITS ? (1u << _BITS) - 1u : 0u;
             }
             static inline T LastBits(uint8_t _BITS) {
-                if (sizeof(T) * CHAR_BIT >= _BITS)
+                if (sizeof(T) * CHAR_BIT <= _BITS)
                     throw std::invalid_argument("SVKFW Error: Bits :: Mask :: LastBits - bit number exceeds max for this type");
                 return _BITS ? T(-1) ^ ((1u << (sizeof(T) * CHAR_BIT - _BITS)) - 1u) : 0u;
             }
             static inline T Bit(uint8_t _bit) {
-                if (sizeof(T) * CHAR_BIT > _bit)
+                if (sizeof(T) * CHAR_BIT <= _bit)
                     throw std::invalid_argument("SVKFW Error: Bits :: Mask :: Bit - bit index exceeds max for this type");
                 return 1u << _bit;
             }
-        };
+        }; // Mask END
 
         typedef Mask<uint8_t > Mask8;
         typedef Mask<uint16_t> Mask16;
@@ -99,7 +100,7 @@ namespace Simple {
         T nullify(T _val, uint8_t _offset, uint8_t _numbits) {
             return _val & (~Mask<T>::FirstBits(_numbits) << _offset);
         }
-    };
-};
+    }; // Bits END
+}; // Simple END
 
 #endif

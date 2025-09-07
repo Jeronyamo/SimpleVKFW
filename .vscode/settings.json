@@ -96,5 +96,8 @@
     "cmake.configureArgs": [
         "-DSVKFW_OVERRIDE_RES_LOCATION=On"
     ],
-    "cmake.setBuildTypeOnMultiConfig": false
+    "cmake.setBuildTypeOnMultiConfig": false,
+    "[cpp]": {
+        "editor.suggest.insertMode": "insert"
+    }
 }

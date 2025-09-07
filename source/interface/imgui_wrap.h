@@ -10,12 +10,8 @@
 #include <atomic>
 
 
-// IMGUIGUI.H - This file contains various pieces of ImGUI interface. ImGUI-backend-independent.
-// OGLGUI.H - Everything that binds ImGUI and GLFW/OpenGL together
-// ^ changed to vulkan, then moved from vkgui.h back here
-
 namespace Simple {
-    //TODO: Rethink about ImGUI context and initialisation
+    //TODO: Think more about ImGUI context and initialization
     struct ImGUIContext {
         ImGuiContext *context;
 

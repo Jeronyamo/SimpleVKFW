@@ -32,7 +32,7 @@ struct Handler : ObjectHandlerBase {{
 {ind}{ind}if (_obj_info.obj_type == {obj_type_enum} || _obj_info.obj_type == VK_OBJECT_TYPE_UNKNOWN)
 {ind}{ind}{ind}handler = ({obj_type}) _obj_info.obj_handle;
 {ind}{ind}else
-{ind}{ind}{ind}fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: {obj_type_no_prefix} :: Handler", "attempting to set a handler of different type\\n"));
+{ind}{ind}{ind}fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: {obj_type_no_prefix} :: Handler", "attempting to set a handler of different type\\n"));
 {ind}}}
 {ind}void set({obj_type} _handler) {{
 {ind}{ind}handler = _handler;
@@ -96,7 +96,7 @@ struct VecHandler : ObjectHandlerBase {{
 {ind}{ind}if (_obj_info.obj_type == {obj_type_enum} || _obj_info.obj_type == VK_OBJECT_TYPE_UNKNOWN)
 {ind}{ind}{ind}handlers = {{({obj_type}) _obj_info.obj_handle}};
 {ind}{ind}else
-{ind}{ind}{ind}fprintf(outswarn, SVKFW_WRAPWARN("VKFW :: {obj_type_no_prefix} :: VecHandler", "attempting to set a handler of different type\\n"));
+{ind}{ind}{ind}fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: {obj_type_no_prefix} :: VecHandler", "attempting to set a handler of different type\\n"));
 {ind}}}
 {ind}void set(std::vector<{obj_type}> _handlers) {{
 {ind}{ind}handlers = _handlers;

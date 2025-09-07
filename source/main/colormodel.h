@@ -2,7 +2,6 @@
 #define SVKFW_COLORMODEL_H
 
 #include "math/vectors.h"
-#include "main/color.h"
 
 
 namespace Simple {
@@ -32,10 +31,11 @@ namespace Simple {
             template <ColorM _From, ColorM _To>
             static inline const mat3 &convMat() {
                 if (_From != _To)
-                    fprintf(stderr, "Warning: white D50 - conversion not implemented\n");
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: D50 :: convMat", "White conversion not implemented\n"));
                 return Mat::Eye3;
             }
         };
+
         const mat3 D50::RGB2XYZ { 0.4868870f, 0.3062984f, 0.1710347f,
                                   0.1746583f, 0.8247541f, 0.0005877f,
                                  -0.0012563f, 0.0169832f, 0.8094831f };
@@ -81,7 +81,7 @@ namespace Simple {
             template <ColorM _From, ColorM _To>
             static inline const mat3 &convMat() {
                 if (_From != _To)
-                    fprintf(stderr, "Warning: white D65 - conversion not implemented\n");
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: D65 :: convMat", "White conversion not implemented\n"));
                 return Mat::Eye3;
             }
         };
@@ -106,7 +106,7 @@ namespace Simple {
             template <ColorM _From, ColorM _To>
             static inline const mat3 &convMat() {
                 if (_From != _To)
-                    fprintf(stderr, "Warning: white E - conversion not implemented\n");
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: E :: convMat", "White conversion not implemented\n"));
                 return Mat::Eye3;
             }
         };
@@ -128,42 +128,42 @@ namespace Simple {
         template <class _From, class _To>
         struct White {
             template <class T>
-            static Color3Base<T> Convert(const Color3Base<T> &_c) {
+            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
                 if (!std::is_same<_From, _To>::value)
-                    fprintf(stderr, "Warning: color white conversion - not implemented\n");
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: ConvertWhite", "Color3 white conversion - not implemented"));
                 return _c;
             }
             template <class T>
-            static Color4Base<T> Convert(const Color4Base<T> &_c) {
+            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
                 if (!std::is_same<_From, _To>::value)
-                    fprintf(stderr, "Warning: color4 white conversion - not implemented\n");
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: ConvertWhite", "Color4 white conversion - not implemented"));
                 return _c;
             }
-        };
+        }; // White END
 
 // Implementations
 // D50
         template <>
         struct White<D50, D65> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 0.9857398f * _c.r, _c.g, 1.3194581f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 0.9857398f * _c.x, _c.y, 1.3194581f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 0.9857398f * _c.r, _c.g, 1.3194581f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 0.9857398f * _c.x, _c.y, 1.3194581f * _c.z, _c.w };
             }
         };
 
         template <>
         struct White<D50, E> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 1.0371077f * _c.r, _c.g, 1.2118128f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 1.0371077f * _c.x, _c.y, 1.2118128f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 1.0371077f * _c.r, _c.g, 1.2118128f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 1.0371077f * _c.x, _c.y, 1.2118128f * _c.z, _c.w };
             }
         };
 
@@ -171,24 +171,24 @@ namespace Simple {
         template <>
         struct White<D65, D50> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 1.0144665f * _c.r, _c.g, 0.7578869f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 1.0144665f * _c.x, _c.y, 0.7578869f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 1.0144665f * _c.r, _c.g, 0.7578869f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 1.0144665f * _c.x, _c.y, 0.7578869f * _c.z, _c.w };
             }
         };
 
         template <>
         struct White<D65, E> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 1.0521111f * _c.r, _c.g, 0.918417f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 1.0521111f * _c.x, _c.y, 0.918417f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 1.0521111f * _c.r, _c.g, 0.918417f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 1.0521111f * _c.x, _c.y, 0.918417f * _c.z, _c.w };
             }
         };
 
@@ -196,41 +196,40 @@ namespace Simple {
         template <>
         struct White<E, D50> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 0.96422f * _c.r, _c.g, 0.82521f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 0.96422f * _c.x, _c.y, 0.82521f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 0.96422f * _c.r, _c.g, 0.82521f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 0.96422f * _c.x, _c.y, 0.82521f * _c.z, _c.w };
             }
         };
 
         template <>
         struct White<E, D65> {
             template <class T>
-            static Color3Base<T> inline Convert(const Color3Base<T> &_c) {
-                return { 0.82521f * _c.r, _c.g, 1.08883f * _c.b };
+            static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
+                return { 0.82521f * _c.x, _c.y, 1.08883f * _c.z };
             }
             template <class T>
-            static Color4Base<T> inline Convert(const Color4Base<T> &_c) {
-                return { 0.82521f * _c.r, _c.g, 1.08883f * _c.b, _c.a };
+            static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
+                return { 0.82521f * _c.x, _c.y, 1.08883f * _c.z, _c.w };
             }
         };
 
 
 //  ============  Color model transforms  ============  \\
 
-// TODO: change this idea so less conversion definitions required
-        template <ColorM _From, ColorM _To, class Cfrom = D50, class Cto = D50>
+        template <ColorM _From, ColorM _To>
         struct Model {
             template <class T>
-            static Color3Base<T> Convert(const Color3Base<T> &_c) {
+            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
                 if (_From != _To || !std::is_same<Cfrom, Cto>::value)
                     fprintf(stderr, "Warning: color model conversion - not implemented\n");
                 return _c;
             }
             template <class T>
-            static Color4Base<T> Convert(const Color4Base<T> &_c) {
+            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
                 if (_From != _To || !std::is_same<Cfrom, Cto>::value)
                     fprintf(stderr, "Warning: color4 model conversion - not implemented\n");
                 return _c;
@@ -240,53 +239,53 @@ namespace Simple {
         template <>
         struct Model<Color::RGB, Color::HSV> {
             template <class T>
-            static Color3Base<T> Convert(const Color3Base<T> &_c) {
-                Color3Base<T> __res{};
+            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
+                Vec3Base<T> __res{};
 
-                unsigned __ind = (_c.r < _c.g) ? 0u : 1u;
-                __res.s = _c.b < _c[     __ind] ? _c.b : _c[__ind]; // C Min
-                __ind   = _c.b < _c[1u - __ind] ? 1u - __ind : 2u;
-                __res.v = _c[__ind];                           // V == C Max
-                float __del = __res.v - __res.s;
-                if (__res.v > SVKFW_EPS4)
-                    __res.s = UtilCol::Max<T>::val * (1.f - float(__res.s) / __res.v); // S
+                unsigned __ind = (_c.x < _c.y) ? 0u : 1u;
+                __res.y = _c.z < _c[     __ind] ? _c.z : _c[__ind]; // C Min
+                __ind   = _c.z < _c[1u - __ind] ? 1u - __ind : 2u;
+                __res.z = _c[__ind];                           // V == C Max
+                float __del = __res.z - __res.y;
+                if (__res.z > SVKFW_EPS4)
+                    __res.y = UtilCol::Max<T>::val * (1.f - float(__res.y) / __res.z); // S
                 if (  __del > SVKFW_EPS4) {
                     unsigned __i1 = (__ind + 1u) % 3u, __i2 = (__ind + 2u) % 3u;
-                    __ind = __ind || _c.g >= _c.b ? __ind : 4u;
-                    __res.h = UtilCol::Max<T>::val * 0.1666666f *
+                    __ind = __ind || _c.y >= _c.z ? __ind : 4u;
+                    __res.x = UtilCol::Max<T>::val * 0.1666666f *
                                 ((_c[__i1] - _c[__i2]) / __del + (__ind << 1u)); // H
                 }
                 return __res;
             }
             template <class T>
-            static Color4Base<T> Convert(const Color4Base<T> &_c) {
-                return { Convert(_c.col()), _c.a };
+            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
+                return { Convert(_c.col()), _c.w };
             }
         };
 
         template <>
         struct Model<Color::HSV, Color::RGB> {
             template <class T>
-            static Color3Base<T> Convert(const Color3Base<T> &_c) {
-                Color3Base<T> __res{};
+            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
+                Vec3Base<T> __res{};
 
-                float Vmin = (UtilCol::Max<T>::val - _c.s) *
-                              UtilCol::ValConv<T, float>::coef * _c.v;
+                float Vmin = (UtilCol::Max<T>::val - _c.y) *
+                              UtilCol::ValConv<T, float>::coef * _c.z;
                 float H_i = 0.f;
-                float a = (_c.v - Vmin) * std::modf(_c.h *
+                float a = (_c.z - Vmin) * std::modf(_c.x *
                               UtilCol::ValConv<T, float>::coef * 6.f, &H_i);
                 unsigned Hi = unsigned(H_i);
                 Hi = Hi <= 5u ? Hi : 5u;
 
                 __res[(2u + (Hi >> 1)) % 3u] = Vmin;
-                if (Hi & 1u) __res[Hi >> 1] = _c.v - a; // Vdec
+                if (Hi & 1u) __res[Hi >> 1] = _c.z - a; // Vdec
                 else __res[(1u + (Hi >> 1)) % 3u] = Vmin + a; // Vinc
 
                 return __res;
             }
             template <class T>
-            static Color4Base<T> Convert(const Color4Base<T> &_c) {
-                return { Convert(_c.col()), _c.a };
+            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
+                return { Convert(_c.col()), _c.w };
             }
         };
     };

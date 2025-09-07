@@ -41,7 +41,7 @@
 
 #define SGR_STYLE_GOTHIC              "20" /* not working */
 #define SGR_ULINE_DOUBLE              "21"
-#define SGR_EMPH_DEFAULT              "22"
+#define SGR_EMPH_OFF                  "22"
 #define SGR_STYLE_OFF                 "23"
 #define SGR_ULINE_OFF                 "24"
 #define SGR_BLINK_OFF                 "25" /* not working */
@@ -106,93 +106,39 @@
                 ANSI escape codes END
 //  =============================================  \\
 
-
-//  Assuming ANSI codes are supported -
-//  Linux, Mac or newer Windows
-#ifdef SVKFW_CM_ANSI_ESC  
-
-// examples:
-//  printf(CSISEQ(SGR_COL_BG_BLACK ";" SGR_COL_FG_WHITE) "White text on black background\n");
-//  printf(CSISEQ(SGR_DEFAULT)); printf(CSISEQ("")); // explicit|implicit default terminal style
-//  printf(CSISEQ(SGR_COL_FG_SET("255", "0", "0")) "Red text on default background (RGB24)");
-#define CSISEQ(_ANSI_CODES) "\033[" _ANSI_CODES "m"
-
-
-// ANSI is supported since November update (build 10586)
-// ANSI + Windows -> Anniversary update (build 14393) or newer
-// (November update had limited functionality)
-#ifdef SVKFW_CM_WIN
-
-#include <windows.h>
-
-// I only need windows API for ANSI codes on Windows 10/11
-// Although i might consider cleaning my code up...
-#undef TRUE
-#undef FALSE
-
-
-// And probably create another namespace for inner logic such as this:
-
-namespace Simple {
-    // Adds ANSI escape code support for the terminal on Windows 10|11
-    struct Win_ANSI_Support {
-        Win_ANSI_Support() {
-            // Set output mode to handle virtual terminal sequences
-            HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-            if (hOut == INVALID_HANDLE_VALUE)
-                printf("SVKFW Error: Win_ANSI_Support - GetStdHandle, code %d\n", GetLastError());
-
-            DWORD dwMode = 0;
-            if (!GetConsoleMode(hOut, &dwMode))
-                printf("SVKFW Error: Win_ANSI_Support - GetConsoleMode, code %d\n", GetLastError());
-
-            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            if (!SetConsoleMode(hOut, dwMode))
-                printf("SVKFW Error: Win_ANSI_Support - SetConsoleMode, code %d\n", GetLastError());
-        }
-    } _support_init; // Win_ANSI_Support END
-}; // Simple END
-#endif // END: SVKFW_CM_WIN - new versions of Windows support ANSI escape codes
-// END: SVKFW_CM_ANSI_ESC - Linux, Mac or newer Windows;
-#else // if not SVKFW_CM_ANSI_ESC - older Windows|other platforms. TODO?
-
-#define CSISEQ(_ANSI_CODES) ""
-
-
-// for Windows API version: SetConsoleScreenBufferInfoEx, CONSOLE_FONT_INFOEX etc.:
-// https://learn.microsoft.com/en-us/windows/console/console-functions
-
-#endif
+#include "platform_dependent/pd_terminal.h"
 
 // Note: for the love of God, don't add space before '(' to align SVKFW_WRAPERR - macros won't work correctly
 
 #define SVKFW_ENCLOSE(_SVKFW_SEQ, _SVKFW_WHAT) CSISEQ(_SVKFW_SEQ) _SVKFW_WHAT CSISEQ("")
 
-#define SVKFW_WRAPINFO(_SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_CYAN,   "Info"   ) "]: "  SVKFW_ENCLOSE(SGR_COL_FG_CYAN,   _SVKFW_WHERE) " - " _SVKFW_MESSG
-#define SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, "Warning") "]: "  SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, _SVKFW_WHERE) " - " _SVKFW_MESSG
-#define SVKFW_WRAPERR( _SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_RED,    "Error"  ) "]: "  SVKFW_ENCLOSE(SGR_COL_FG_RED,    _SVKFW_WHERE) " - " _SVKFW_MESSG
+#define SVKFW_WRAPINFO(_SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_CYAN,   "Info"   ) "]>["  SVKFW_ENCLOSE(SGR_COL_FG_CYAN,   _SVKFW_WHERE) "]> " _SVKFW_MESSG
+#define SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, "Warning") "]>["  SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, _SVKFW_WHERE) "]> " _SVKFW_MESSG
+#define SVKFW_WRAPERR( _SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_RED,    "Error"  ) "]>["  SVKFW_ENCLOSE(SGR_COL_FG_RED,    _SVKFW_WHERE) "]> " _SVKFW_MESSG
+
+#define SVKFW_ASSERT(_SVKFW_EXPR, _SVKFW_ERR_TYPE, _SVKFW_WHERE, _SVKFW_MESSG) if (!(_SVKFW_EXPR)) throw _SVKFW_ERR_TYPE(SVKFW_WRAPERR(_SVKFW_WHERE, _SVKFW_MESSG))
 
 
 namespace Simple {
-    FILE *outswarn = stderr;
+    FILE *svkfwwarn = stderr;
 
     namespace TermCtrl {
         enum class TFlag : uint8_t {
-            BOLD, FAINT, COLORS_INV, FG_RGB24, BG_RGB24, HIDDEN, HAS_STRIKEOUT, HAS_OVERLINE,
-            SINGLE_UNDERLINE, DOUBLE_UNDERLINE, SLOW_BLINK, FAST_BLINK, ITALIC, GOTHIC,
-            HAS_UNDERLINE, BLINK
+            BOLD, FAINT, COLORS_INV, FG_RGB8, FG_RGB24, BG_RGB8, BG_RGB24, HIDDEN, STRIKEOUT,
+            OVERLINE, SINGLE_UNDERLINE, DOUBLE_UNDERLINE, SLOW_BLINK, FAST_BLINK, ITALIC, GOTHIC,
+            HAS_UNDERLINE, HAS_FONTSTYLE, HAS_FG_COLOR, HAS_BG_COLOR, HAS_BLINK, BOLDFAINT
         }; // TFlag END
 
-        enum class Emphasis   : uint8_t {  Default, Bold, Faint, BoldFaint  };
-        enum class FontStyle  : uint8_t {  Default, Italic, Gothic  };
-        enum class ColorMode  : uint8_t {  Default, Inverted  };
-        enum class RGBModeFG  : uint8_t {  Default, RGB24  };
-        enum class RGBModeBG  : uint8_t {  Default, RGB24  };
-        enum class Blinking   : uint8_t {  Off, Slow, Fast  };
-        enum class Underline  : uint8_t {  Off, On, Double  };
-        enum class Overline   : uint8_t {  Off, On  };
-        enum class Strikeout  : uint8_t {  Off, On  };
-        enum class HideMode   : uint8_t {  Show, Hide  };
+        enum class FontStyle : uint8_t {  Default, Italic, Gothic  };
+        enum class ColorMode : uint8_t {  Default, Inverted  };
+        enum class RGBModeFG : uint8_t {  Default, RGB8, RGB24  };
+        enum class RGBModeBG : uint8_t {  Default, RGB8, RGB24  };
+        enum class Emphasis  : uint8_t {  Off, Bold, Faint, BoldFaint  };
+        enum class Blinking  : uint8_t {  Off, Slow, Fast  };
+        enum class Underline : uint8_t {  Off, On, Double  };
+        enum class Overline  : uint8_t {  Off, On  };
+        enum class Strikeout : uint8_t {  Off, On  };
+        enum class HideMode  : uint8_t {  Show, Hide  };
 
         enum class TColor : uint8_t {
             Black,
@@ -210,7 +156,8 @@ namespace Simple {
             BrightBlue,
             BrightMagenta,
             BrightCyan,
-            BrightWhite
+            BrightWhite,
+            Default
         }; // TColor END
 
 
@@ -221,41 +168,50 @@ namespace Simple {
 
 
         struct TextStyle {
-            uint16_t flags;
-            TColor fgcolor, bgcolor;
+            uint16_t flags = 0;
+            TColor fgcolor = TColor::Default, bgcolor = TColor::Default;
 
-            struct _Col24 {
+            struct Col24 {
                 uint8_t r, g, b;
-            } rgbFG, rgbBG/*, rgbUL*/;
+            } rgbFG{}, rgbBG{}; // underline color doesn't work on Windows/Ubuntu
 
-            TextStyle() {}
+            TextStyle(const std::vector<TFlag> &_properties = {},
+                      TColor _fg_col8 = TColor::Default, TColor _bg_col8 = TColor::Default,
+                      Col24 _fg_col24 = {}, Col24 _bg_col24 = {}) {
+                for (TFlag prop : _properties) {
+                    if (prop == TFlag::BG_RGB8 || prop == TFlag::BG_RGB24)
+                        set(prop, _bg_col8, _bg_col24);
+                    else
+                        set(prop, _fg_col8, _fg_col24);
+                }
+            }
 
 
-            // 0 - bold, 1 - faint, 2 - color mode, 3 - fg rgb24, 4 - bg rgb24,
-            // 5 - hide, 6 - strikeout, 7 - overline, 8-9 - underline, 10-11 - blinking,
-            // 12 - Italic, 13 - Gothic
+            // 0 - bold, 1 - faint, 2 - color mode, 3-4 - fg rgb8/24, 5-6 - bg rgb8/24,
+            // 7 - hide, 8 - strikeout, 9 - overline, 10-11 - underline, 12-13 - blinking,
+            // 14 - Italic, 15 - Gothic
             template <class T>
             static uint8_t FlagOffset() {
                 if (std::is_same<T, Emphasis >::value)
-                    return 0;
+                    return  0;
                 if (std::is_same<T, ColorMode>::value)
-                    return 2;
+                    return  2;
                 if (std::is_same<T, RGBModeFG>::value)
-                    return 3;
+                    return  3;
                 if (std::is_same<T, RGBModeBG>::value)
-                    return 4;
+                    return  5;
                 if (std::is_same<T, HideMode >::value)
-                    return 5;
+                    return  7;
                 if (std::is_same<T, Strikeout>::value)
-                    return 6;
+                    return  8;
                 if (std::is_same<T, Overline >::value)
-                    return 7;
+                    return  9;
                 if (std::is_same<T, Underline>::value)
-                    return 8;
-                if (std::is_same<T, Blinking >::value)
                     return 10;
+                if (std::is_same<T, Blinking >::value)
+                    return 12;
                 if (std::is_same<T, FontStyle>::value)
-                    return 11;
+                    return 14;
                 throw std::invalid_argument(SVKFW_WRAPERR("TermCtrl :: TextStyle :: FlagOffset", "template argument isn't a property type"));
             }
 
@@ -267,30 +223,77 @@ namespace Simple {
                 std::is_same<T, RGBModeBG>::value || std::is_same<T, RGBModeFG>::value ||
                 std::is_same<T, HideMode >::value || std::is_same<T, Overline >::value,
             uint8_t>::type FlagSizeBits() {
-                if (std::is_same<T, Emphasis>::value || std::is_same<T, Underline>::value ||
-                    std::is_same<T, Blinking>::value || std::is_same<T, FontStyle>::value)
+                if (std::is_same<T,  Emphasis>::value || std::is_same<T, Underline>::value ||
+                    std::is_same<T,  Blinking>::value || std::is_same<T, FontStyle>::value ||
+                    std::is_same<T, RGBModeBG>::value || std::is_same<T, RGBModeFG>::value)
                     return 2;
                 return 1;
             }
 
             template <class T>
             void set(T _property) {
-                flags = Bits::nullify(flags, FlagOffset<T>(), FlagSizeBits<T>()) | uint16_t(_property);
+                flags = Bits::nullify(flags, FlagOffset<T>(), FlagSizeBits<T>()) | (uint16_t(_property) << FlagOffset<T>());
             }
             template <class T>
-            T get() {
+            T get() const {
                 return (T) Bits::unpack(flags, FlagOffset<T>(), FlagSizeBits<T>());
             }
 
+            void set(TFlag _property, TColor _col8 = TColor::Default, Col24 _col24 = {}) {
+                switch (_property) {
+                    case TFlag::BOLD:             set(Emphasis::Bold); break;
+                    case TFlag::FAINT:            set(Emphasis::Faint); break;
+                    case TFlag::COLORS_INV:       set(ColorMode::Inverted); break;
+                    case TFlag::FG_RGB8:          if (_col8 != TColor::Default) setColorFG(_col8); break;
+                    case TFlag::FG_RGB24:         setColorFG(_col24.r, _col24.g, _col24.b); break;
+                    case TFlag::BG_RGB8:          if (_col8 != TColor::Default) setColorBG(_col8); break;
+                    case TFlag::BG_RGB24:         setColorBG(_col24.r, _col24.g, _col24.b); break;
+                    case TFlag::HIDDEN:           set(HideMode::Hide); break;
+                    case TFlag::STRIKEOUT:        set(Strikeout::On); break;
+                    case TFlag::OVERLINE:         set(Overline::On); break;
+                    case TFlag::SINGLE_UNDERLINE: set(Underline::On); break;
+                    case TFlag::DOUBLE_UNDERLINE: set(Underline::Double); break;
+                    case TFlag::SLOW_BLINK:       set(Blinking::Slow); break;
+                    case TFlag::FAST_BLINK:       set(Blinking::Fast); break;
+                    case TFlag::ITALIC:           set(FontStyle::Italic); break;
+                    case TFlag::GOTHIC:           set(FontStyle::Gothic); break;
+                    case TFlag::BOLDFAINT:        set(Emphasis::BoldFaint); break;
+                }
+            }
             template <TFlag TERM_PROPERTY>
-            bool get() {
-                if (TERM_PROPERTY < TFlag::HAS_UNDERLINE)
+            bool getActive() const {
+                if (TERM_PROPERTY <  TFlag::HAS_UNDERLINE)
                     return flags & (1u << uint8_t(TERM_PROPERTY));
                 if (TERM_PROPERTY == TFlag::HAS_UNDERLINE)
                     return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<Underline>());
-                if (TERM_PROPERTY == TFlag::BLINK)
-                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<Blinking>());
-                throw std::invalid_argument(SVKFW_WRAPERR("TermCtrl :: TextStyle :: get flag property", "TFlag template argument is out of bounds"));
+                if (TERM_PROPERTY == TFlag::HAS_FONTSTYLE)
+                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<FontStyle>());
+                if (TERM_PROPERTY == TFlag::BOLDFAINT)
+                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<Emphasis >());
+                if (TERM_PROPERTY == TFlag::HAS_FG_COLOR)
+                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<RGBModeFG>());
+                if (TERM_PROPERTY == TFlag::HAS_BG_COLOR)
+                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<RGBModeBG>());
+                if (TERM_PROPERTY == TFlag::HAS_BLINK)
+                    return flags & (Bits::Mask16::FirstBits<2u>() << FlagOffset<Blinking >());
+                throw std::invalid_argument(SVKFW_WRAPERR("TermCtrl :: TextStyle :: getActive flag property", "TFlag template argument is out of bounds"));
+            }
+
+            void setColorFG(TermCtrl::TColor _fg_color) {
+                fgcolor = _fg_color;
+                set(TermCtrl::RGBModeFG::RGB8);
+            }
+            void setColorFG(uint8_t _r, uint8_t _g, uint8_t _b) {
+                rgbFG = {_r, _g, _b};
+                set(TermCtrl::RGBModeFG::RGB24);
+            }
+            void setColorBG(TermCtrl::TColor _bg_color) {
+                bgcolor = _bg_color;
+                set(TermCtrl::RGBModeBG::RGB8);
+            }
+            void setColorBG(uint8_t _r, uint8_t _g, uint8_t _b) {
+                rgbBG = {_r, _g, _b};
+                set(TermCtrl::RGBModeBG::RGB24);
             }
         }; // TextStyle END
     }; // TermCtrl END

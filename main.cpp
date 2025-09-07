@@ -4,12 +4,12 @@
 #include "main/camera.h"
 #include "main/input_handler.h"
 
-#include "main/rtaudio_wrap.h"
+#include "main/image.h"
 
 #include <iostream>
 
 
-int main() {
+int main(int argc, char **argv) {
 // Config
     // return Simple::test_csound();
     const uint32_t FRAMES_IN_FLIGHT = 2u;

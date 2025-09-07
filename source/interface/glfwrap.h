@@ -10,7 +10,6 @@
 #include "main/event_handler.h"
 #include "math/vectors.h"
 
-#include <memory>
 #include <unordered_set>
 
 
