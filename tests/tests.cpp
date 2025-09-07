@@ -315,38 +315,5 @@ int main(int argc, char **argv) {
     // Example: svkfw_test 1, 3, 2, 4: 2 1 4,
 
     Simple::Tests::TestSystem::run({4, 5}, {Simple::Tests::SUBTEST_ALL});
-
-
-    // Simple::ParserLATE::Parser parser;
-    // Simple::ParserLATE::Nonterminal INT_NUM = 1;
-    // Simple::ParserLATE::Nonterminal DIGIT = 2;
-    // parser.prod_rules = { { Simple::ParserLATE::NONTERM_START, {
-    //                                                              { Simple::ParserLATE::NONTERM_START, {"", ""}, {INT_NUM,} }
-    //                                                            }
-    //                       },
-    //                       {
-    //                         INT_NUM, {
-    //                                    { INT_NUM, {"","",""}, {DIGIT, INT_NUM} },
-    //                                    { INT_NUM }
-    //                                  }
-    //                       },
-    //                       {
-    //                         DIGIT, {
-    //                              { DIGIT, { "0" } },
-    //                              { DIGIT, { "1" } },
-    //                              { DIGIT, { "2" } },
-    //                              { DIGIT, { "3" } },
-    //                              { DIGIT, { "4" } },
-    //                              { DIGIT, { "5" } },
-    //                              { DIGIT, { "6" } },
-    //                              { DIGIT, { "7" } },
-    //                              { DIGIT, { "8" } },
-    //                              { DIGIT, { "9" } },
-    //                            }
-    //                       }
-    //                     };
-    // bool res = parser.parse("356432768");
-    // printf("Parsing success: %d\n", res);
-
     return 0;
 }
