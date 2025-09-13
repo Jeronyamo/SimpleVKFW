@@ -10,6 +10,8 @@
 
 
 int main(int argc, char **argv) {
+    using Simple::VKFW::ContextIndex;
+
 // Config
     // return Simple::test_csound();
     const uint32_t FRAMES_IN_FLIGHT = 2u;
@@ -75,7 +77,6 @@ int main(int argc, char **argv) {
     Simple::VKFW::initContext();
 
     // Instance
-    Simple::VKFW::Vulkan_global_context_factory.newBuilderInstance();
     Simple::VKFW::Vulkan_global_context_factory.getBuilderInstance()->setApplicationInfo("Testapp", { 0u, 0u, 1u }, "SVKFW", { 0u, 0u, 1u });
     Simple::VKFW::Vulkan_global_context_factory.getBuilderInstance()->addGLFWExtensions();
     Simple::VKFW::Vulkan_global_context_factory.getBuilderInstance()->addDebugUtilsExtension();
@@ -83,7 +84,6 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.createInstance();
 
     // Debug messenger
-    Simple::VKFW::Vulkan_global_context_factory.newBuilderMessenger();
     Simple::VKFW::Vulkan_global_context_factory.createMessenger(); // CreateInfo struct is too big to be set via single call
 
     // Surface
@@ -94,15 +94,14 @@ int main(int argc, char **argv) {
 
     // Queue family
     // 'ci' - context index
-    uint32_t ci_qfamily = Simple::VKFW::Vulkan_global_context_factory.pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::testSurfAndGraphics);
-    uint32_t ci_qfamily_transfer = Simple::VKFW::Vulkan_global_context_factory.pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::rankTransfer);
+    ContextIndex ci_qfamily = Simple::VKFW::Vulkan_global_context_factory.pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::testSurfAndGraphics);
+    ContextIndex ci_qfamily_transfer = Simple::VKFW::Vulkan_global_context_factory.pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::rankTransfer);
     if (ci_qfamily == ci_qfamily_transfer)
         throw std::runtime_error(SVKFW_WRAPERR("main", "could not find a better suited transfer qfamily than graphics"));
 
     // Logical device
     const uint32_t QUEUES_COUNT = 2u;
     const uint32_t QUEUES_COUNT_TRANSFER = 1u;
-    Simple::VKFW::Vulkan_global_context_factory.newBuilderDevice();
     Simple::VKFW::Vulkan_global_context_factory.bDeviceAddQueueInfo(ci_qfamily, QUEUES_COUNT);
     Simple::VKFW::Vulkan_global_context_factory.bDeviceAddQueueInfo(ci_qfamily_transfer, QUEUES_COUNT_TRANSFER);
     {
@@ -115,12 +114,11 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.createDevice();
 
     // Queue
-    uint32_t ci_queue_graphics = Simple::VKFW::Vulkan_global_context_factory.addFamilyQueues(ci_qfamily, QUEUES_COUNT);
-    uint32_t ci_queue_pres = ci_queue_graphics + 1;
-    uint32_t ci_queue_transfer = Simple::VKFW::Vulkan_global_context_factory.addFamilyQueues(ci_qfamily_transfer, 1);
+    ContextIndex ci_queue_graphics = Simple::VKFW::Vulkan_global_context_factory.addFamilyQueues(ci_qfamily, QUEUES_COUNT);
+    ContextIndex ci_queue_pres = ci_queue_graphics + 1;
+    ContextIndex ci_queue_transfer = Simple::VKFW::Vulkan_global_context_factory.addFamilyQueues(ci_qfamily_transfer, 1);
 
     // Swapchain
-    Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->newBuilderSwapchain();
     Simple::VKFW::Vulkan_global_context_factory.cSwapchainSetCapabilities();
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderSwapchainKHR()->checkSetImageCount(2);
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderSwapchainKHR()->checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
@@ -131,7 +129,6 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.createSwapchain();
 
     // Swapchain images
-    Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->newBuilderImageView();
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->setImageViewSwapchainFormat();
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderImageView()->setViewType(VK_IMAGE_VIEW_TYPE_2D);
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderImageView()->setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
@@ -143,8 +140,7 @@ int main(int argc, char **argv) {
         // Attachment description
         Simple::VKFW::AttachmentDescription::StructWrap attachment;
         attachment.setFormatAndSize(
-            // TODO: something about this
-            Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderSwapchainKHR()->image_info.format,
+            Simple::VKFW::Vulkan_global_context_factory.cSwapchainGetImageInfo().format,
             VK_SAMPLE_COUNT_1_BIT);
         attachment.setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE);
         attachment.setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
@@ -153,7 +149,7 @@ int main(int argc, char **argv) {
         // Subpass description
         Simple::VKFW::SubpassDescription::StructBuilder subpass_builder;
         subpass_builder.setBindingPoint(VK_PIPELINE_BIND_POINT_GRAPHICS);
-        // Note: pColorBlendState->attachmentCount must be == pSubpasses[0].colorAttachmentCount
+        // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
         subpass_builder.setColorAttachments({ { 0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } });
 
         // Subpass dependency
@@ -163,7 +159,6 @@ int main(int argc, char **argv) {
         sp_dependency.setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
         // Render pass
-        Simple::VKFW::Vulkan_global_context_factory.newBuilderRenderPass();
         Simple::VKFW::Vulkan_global_context_factory.getBuilderRenderPass()->setAttachments({ attachment.description }); // Note: this vector defines a number and order of VkClearValue-s in BeginRenderPass
         Simple::VKFW::Vulkan_global_context_factory.getBuilderRenderPass()->setSubpasses({ subpass_builder.getVkStructDCopy() });
         Simple::VKFW::Vulkan_global_context_factory.getBuilderRenderPass()->setDependencies({ sp_dependency.subpass_dependency });
@@ -171,13 +166,12 @@ int main(int argc, char **argv) {
     }
 
     // Swapchain framebuffers
-    Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->newBuilderFramebuffer();
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->getBuilderFramebuffer()->setLayers(1u);
     Simple::VKFW::Vulkan_global_context_factory.getContextSwapchain()->setFramebufferSwapchainBufferSize();
     Simple::VKFW::Vulkan_global_context_factory.createSwapchainFramebuffers();
 
     // Buffers (uniform)
-    uint32_t ci_buffer_uniform[FRAMES_IN_FLIGHT];
+    ContextIndex ci_buffer_uniform[FRAMES_IN_FLIGHT];
     void* ubo_mappings[FRAMES_IN_FLIGHT];
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
         ci_buffer_uniform[i] = Simple::VKFW::Vulkan_global_context_factory.createBuffer({}, VK_SHARING_MODE_EXCLUSIVE, sizeof(UniformBufferObjectCamera), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
@@ -188,24 +182,24 @@ int main(int argc, char **argv) {
 // Descriptors
     // Descriptor Layout
     // Note: only layout needs to be passed to pipeline, rest of Descriptors stuff can be created later
-    Simple::VKFW::Vulkan_global_context_factory.getContextDescriptor()->newBuilderLayout();
     Simple::VKFW::Vulkan_global_context_factory.getContextDescriptor()->getBuilderLayout()->setBindingsSize(1);
     Simple::VKFW::Vulkan_global_context_factory.getContextDescriptor()->getBuilderLayout()->setBinding(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
-    uint32_t ci_ubo_desc_layout = Simple::VKFW::Vulkan_global_context_factory.createDescriptorSetLayout();
+    ContextIndex ci_ubo_desc_layout = Simple::VKFW::Vulkan_global_context_factory.createDescriptorSetLayout();
 
     // Descriptor Pool
-    uint32_t ci_ubo_desc_pool = Simple::VKFW::Vulkan_global_context_factory.createDescriptorPool(FRAMES_IN_FLIGHT,
+    ContextIndex ci_ubo_desc_pool = Simple::VKFW::Vulkan_global_context_factory.createDescriptorPool(FRAMES_IN_FLIGHT,
                                         { VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = FRAMES_IN_FLIGHT }});
 
     // Descriptor Sets
-    uint32_t ci_ubo_desc_set[FRAMES_IN_FLIGHT]{};
+    ContextIndex ci_ubo_desc_set[FRAMES_IN_FLIGHT]{};
+
     ci_ubo_desc_set[0] = Simple::VKFW::Vulkan_global_context_factory.createDescriptorSets(ci_ubo_desc_pool, { ci_ubo_desc_layout, ci_ubo_desc_layout });
     for (uint32_t i = 1u; i < FRAMES_IN_FLIGHT; ++i)
         ci_ubo_desc_set[i] = ci_ubo_desc_set[0] + i;
 
     // Update descriptor info
-    uint32_t ci_ubo_sct_write_set[FRAMES_IN_FLIGHT]{};
-    Simple::VKFW::Vulkan_global_context_func.newBuilderUpdateDescriptorSets();
+    ContextIndex ci_ubo_sct_write_set[FRAMES_IN_FLIGHT]{};
+
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
         ci_ubo_sct_write_set[i] = Simple::VKFW::Vulkan_global_context_func.getBuilderUpdateDescriptorSets()->addSetWrite();
         // std::cout << ci_ubo_sct_write_set[i] << ", " << Simple::VKFW::Vulkan_global_context_func.getBuilderUpdateDescriptorSets()->write_sets.size() << std::endl;
@@ -221,37 +215,30 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.createPipelineGraphicsLayout({}, {ci_ubo_desc_layout});
 
     // Shaders
-    Simple::VKFW::Vulkan_global_context_factory.newBuilderShaderModule();
-    uint32_t ci_vert_shader = Simple::VKFW::Vulkan_global_context_factory.createShaderModuleFromFile("./shaders/simple_shader_vert.spv");
-    uint32_t ci_frag_shader = Simple::VKFW::Vulkan_global_context_factory.createShaderModuleFromFile("./shaders/simple_shader_frag.spv");
+    ContextIndex ci_vert_shader = Simple::VKFW::Vulkan_global_context_factory.createShaderModuleFromFile("./shaders/simple_shader_vert.spv");
+    ContextIndex ci_frag_shader = Simple::VKFW::Vulkan_global_context_factory.createShaderModuleFromFile("./shaders/simple_shader_frag.spv");
 
     // Shader stage
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineShaderStage();
     Simple::VKFW::Vulkan_global_context_factory.cPipelineGraphicsAddShaderStage(ci_vert_shader, VK_SHADER_STAGE_VERTEX_BIT,   "main");
     Simple::VKFW::Vulkan_global_context_factory.cPipelineGraphicsAddShaderStage(ci_frag_shader, VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
     // Dynamic state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineDynamicState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineDynamicState()->setDynamicStates({ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR });
 
     // Vertex input state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineVertexInputState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineVertexInputState()->setBindings({{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }});
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineVertexInputState()->setAttributes({ { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
                                                                                                                                     { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) } });
 
     // Input assembly state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineInputAssemblyState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineInputAssemblyState()->setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
     // Viewport state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineViewportState();
     // viewport_state_info.setFromSwapchainExtent(swapchain_extent); // set dynamically
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineViewportState()->setScissorsDynamic(1u);
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineViewportState()->setViewportsDynamic(1u);
 
     // Rasterization state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineRasterizationState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineRasterizationState()->defStruct();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineRasterizationState()->setPolygonMode(VK_POLYGON_MODE_FILL);
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineRasterizationState()->setCullMode(VK_CULL_MODE_NONE);
@@ -259,11 +246,9 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineRasterizationState()->setLineWidth(1.f);
 
     // Multisample state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineMultisampleState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineMultisampleState()->defStruct();
 
     // Color blend state
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipelineColorBlendState();
     Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->getBuilderPipelineColorBlendState()->setLogicOp(VK_LOGIC_OP_COPY);
     { // TODO:
         Simple::VKFW::Pipeline::ColorBlendAttachmentState::StructWrap attachment_state{};
@@ -272,38 +257,37 @@ int main(int argc, char **argv) {
     }
 
     // Graphics pipeline
-    Simple::VKFW::Vulkan_global_context_factory.getContextPipelineGraphics()->newBuilderPipeline();
     Simple::VKFW::Vulkan_global_context_factory.createPipelineGraphics(0u, false);
 
     // Command pool
-    uint32_t ci_pool_drawing = Simple::VKFW::Vulkan_global_context_factory.createCommandPool(ci_qfamily, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    uint32_t ci_pool_staging = Simple::VKFW::Vulkan_global_context_factory.createCommandPool(ci_qfamily_transfer, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);// | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+    ContextIndex ci_pool_drawing = Simple::VKFW::Vulkan_global_context_factory.createCommandPool(ci_qfamily, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    ContextIndex ci_pool_staging = Simple::VKFW::Vulkan_global_context_factory.createCommandPool(ci_qfamily_transfer, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);// | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
     // Buffers
     // Note: when binding memory to buffer, (memory - offset) >= required memory for buffer (.size from vkGetBufferMemoryRequirements)
     //       Basically, you bind *buffer* to device memory
     VkDeviceSize staging_buffer_size = std::max(vertices.size() * sizeof(Vertex), indices.size() * sizeof(uint32_t));
-    uint32_t ci_buffer_staging = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily_transfer}, VK_SHARING_MODE_EXCLUSIVE, staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-    uint32_t ci_buffer_vertex  = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily, ci_qfamily_transfer}, VK_SHARING_MODE_CONCURRENT, vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    uint32_t ci_buffer_index   = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily, ci_qfamily_transfer}, VK_SHARING_MODE_CONCURRENT, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    ContextIndex ci_buffer_staging = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily_transfer}, VK_SHARING_MODE_EXCLUSIVE, staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    ContextIndex ci_buffer_vertex  = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily, ci_qfamily_transfer}, VK_SHARING_MODE_CONCURRENT, vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    ContextIndex ci_buffer_index   = Simple::VKFW::Vulkan_global_context_factory.createBuffer({ci_qfamily, ci_qfamily_transfer}, VK_SHARING_MODE_CONCURRENT, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     // This function returns ci_device_memory, but it isn't actually needed, memory management does all the work
     Simple::VKFW::Vulkan_global_context_factory.createDeviceMemory(ci_buffer_staging, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     Simple::VKFW::Vulkan_global_context_factory.createDeviceMemory(ci_buffer_vertex, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     Simple::VKFW::Vulkan_global_context_factory.createDeviceMemory(ci_buffer_index, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     // Command buffer
-    uint32_t ci_cmd_buffer_drawing[FRAMES_IN_FLIGHT]{};
+    ContextIndex ci_cmd_buffer_drawing[FRAMES_IN_FLIGHT]{};
 
     ci_cmd_buffer_drawing[0] = Simple::VKFW::Vulkan_global_context_factory.createCommandBuffers(ci_pool_drawing, VK_COMMAND_BUFFER_LEVEL_PRIMARY, FRAMES_IN_FLIGHT);
     for (uint32_t i = 1u; i < FRAMES_IN_FLIGHT; ++i)
         ci_cmd_buffer_drawing[i] = ci_cmd_buffer_drawing[0] + i;
 
-    uint32_t ci_cmd_buffer_staging = Simple::VKFW::Vulkan_global_context_factory.createCommandBuffers(ci_pool_staging, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+    ContextIndex ci_cmd_buffer_staging = Simple::VKFW::Vulkan_global_context_factory.createCommandBuffers(ci_pool_staging, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
 
 
     // Sync objects
-    uint32_t ci_sem_image_available[FRAMES_IN_FLIGHT]{},
-             ci_sem_render_finished[FRAMES_IN_FLIGHT]{};
+    ContextIndex ci_sem_image_available[FRAMES_IN_FLIGHT]{},
+                 ci_sem_render_finished[FRAMES_IN_FLIGHT]{};
 
     // Two cycles, so that the arrays are contigious (or just make a function that creates an array of semaphores)
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
@@ -311,8 +295,8 @@ int main(int argc, char **argv) {
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_sem_render_finished[i] = Simple::VKFW::Vulkan_global_context_factory.createSemaphore();
 
-    uint32_t ci_fen_staging = 0u;
-    uint32_t ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
+    ContextIndex ci_fen_staging = 0u;
+    ContextIndex ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_fen_in_flight[i] = Simple::VKFW::Vulkan_global_context_factory.createFence(nullptr, VK_FENCE_CREATE_SIGNALED_BIT);
     ci_fen_staging = Simple::VKFW::Vulkan_global_context_factory.createFence();
@@ -332,6 +316,7 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_factory.cBufferMemoryFill(ci_buffer_staging, indices.data(), indices.size() * sizeof(uint32_t));
     Simple::VKFW::Vulkan_global_context_func.beginCommandBuffer(ci_cmd_buffer_staging, 0, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     Simple::VKFW::Vulkan_global_context_func.cmdCopyBuffer(ci_cmd_buffer_staging, ci_buffer_staging, ci_buffer_index);
+    // TODO: index buffer of size 24 bytes requires 32 bytes on GPU. (cmdCopyBuffer) uses 32 as copy size, but the CPU buffer is still 24 bytes, hence validation error.
     Simple::VKFW::Vulkan_global_context_func.endCommandBuffer(ci_cmd_buffer_staging);
     Simple::VKFW::Vulkan_global_context_func.queueSubmit(ci_queue_transfer, {}, {ci_cmd_buffer_staging}, {}, {}, ci_fen_staging);
 
@@ -343,7 +328,6 @@ int main(int argc, char **argv) {
     uint32_t current_frame = 0u;
 
     // Begin render pass create
-    Simple::VKFW::Vulkan_global_context_func.newBuilderCmdBeginRenderPass();
     Simple::VKFW::Vulkan_global_context_func.getBuilderCmdBeginRenderPass()->setClearColors({ Simple::VKFW::ClearValue::build(0.f, 0.f, 0.f, 1.f) });
 
     while (!main_window.shouldClose()) {

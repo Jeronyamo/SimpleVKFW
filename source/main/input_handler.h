@@ -27,12 +27,12 @@ namespace Simple {
         }; // InputTypeGLFW END
 
 
-    // InputHandlerInterface
+    // InputHandlerItf
 
-        struct InputHandlerInterface {
+        struct InputHandlerItf {
             std::vector<uint16_t> handled_keys; // can be used by setKeysHandler() when no keys are specified as argument, tells what keys are handled by InputHandler
 
-            virtual ~InputHandlerInterface() {}
+            virtual ~InputHandlerItf() {}
 
             virtual void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time) {}
             virtual void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time) {}
@@ -55,17 +55,17 @@ namespace Simple {
 
         // Frame by frame GLFW event handler, in particular inputs
         struct FrameInputHandlerGLFW {
-            InputHandlerInterface* handler_bind_keys;
-            std::unordered_map<int, InputHandlerInterface*> handler_bind_key;
+            InputHandlerItf* handler_bind_keys;
+            std::unordered_map<int, InputHandlerItf*> handler_bind_key;
             bool use_specific_key_handlers = true;
 
-            InputHandlerInterface* handler_bind_mbuttons;
-            std::unordered_map<int, InputHandlerInterface*> handler_bind_mbutton;
+            InputHandlerItf* handler_bind_mbuttons;
+            std::unordered_map<int, InputHandlerItf*> handler_bind_mbutton;
             bool use_specific_mbutton_handlers = true;
 
-            InputHandlerInterface* handler_bind_cursor;
-            InputHandlerInterface* handler_bind_scroll;
-            InputHandlerInterface* handler_fbuffer_size;
+            InputHandlerItf* handler_bind_cursor;
+            InputHandlerItf* handler_bind_scroll;
+            InputHandlerItf* handler_fbuffer_size;
 
             ClockTick<std::chrono::high_resolution_clock, double> frame_clock;
             double frame_time = 0.; // updated every frame
@@ -112,46 +112,46 @@ namespace Simple {
             }
 
             // 'use_for_all' - ignore any key-specific handlers
-            InputHandlerInterface* setAllKeysHandler(InputHandlerInterface *_handler, bool _use_for_all) {
+            InputHandlerItf* setAllKeysHandler(InputHandlerItf *_handler, bool _use_for_all) {
                 use_specific_key_handlers = !_use_for_all;
                 return setAllKeysHandler(_handler);
             }
-            InputHandlerInterface* setAllKeysHandler(InputHandlerInterface *_handler) {
-                InputHandlerInterface* __prev_handler = handler_bind_keys;
+            InputHandlerItf* setAllKeysHandler(InputHandlerItf *_handler) {
+                InputHandlerItf* __prev_handler = handler_bind_keys;
                 handler_bind_keys = _handler;
                 return __prev_handler;
             }
             // If 'keys' vector is empty, uses 'handled_keys' member
-            void setKeysHandler(InputHandlerInterface *_handler, const std::vector<uint16_t> &_keys = {}) {
+            void setKeysHandler(InputHandlerItf *_handler, const std::vector<uint16_t> &_keys = {}) {
                 for (uint16_t key : (_keys.empty() ? _handler->handled_keys : _keys))
                     handler_bind_key[glfwGetKeyScancode(key)] = _handler;
             }
 
-            void setCursorHandler(InputHandlerInterface *_handler) {
+            void setCursorHandler(InputHandlerItf *_handler) {
                 handler_bind_cursor = _handler;
             }
 
-            void setScrollHandler(InputHandlerInterface *_handler) {
+            void setScrollHandler(InputHandlerItf *_handler) {
                 handler_bind_scroll = _handler;
             }
 
             // 'use_for_all' - ignore any button-specific handlers
-            InputHandlerInterface* setAllMButtonsHandler(InputHandlerInterface *_handler, bool _use_for_all) {
+            InputHandlerItf* setAllMButtonsHandler(InputHandlerItf *_handler, bool _use_for_all) {
                 use_specific_mbutton_handlers = !_use_for_all;
                 return setAllMButtonsHandler(_handler);
             }
-            InputHandlerInterface* setAllMButtonsHandler(InputHandlerInterface *_handler) {
-                InputHandlerInterface* __prev_handler = handler_bind_mbuttons;
+            InputHandlerItf* setAllMButtonsHandler(InputHandlerItf *_handler) {
+                InputHandlerItf* __prev_handler = handler_bind_mbuttons;
                 handler_bind_mbuttons = _handler;
                 return __prev_handler;
             }
-            void setMButtonsHandler(InputHandlerInterface *_handler, const std::vector<int> &_buttons) {
+            void setMButtonsHandler(InputHandlerItf *_handler, const std::vector<int> &_buttons) {
                 for (uint16_t button : _buttons)
                     handler_bind_mbutton[button] = _handler;
             }
 
-            InputHandlerInterface* setFBufferSizeHandler(InputHandlerInterface *_handler) {
-                InputHandlerInterface* __prev_handler = handler_fbuffer_size;
+            InputHandlerItf* setFBufferSizeHandler(InputHandlerItf *_handler) {
+                InputHandlerItf* __prev_handler = handler_fbuffer_size;
                 handler_fbuffer_size = _handler;
                 return __prev_handler;
             }
@@ -160,18 +160,18 @@ namespace Simple {
             // Getters
 
             // Returns key-specific handler if exists, else handler_bind_keys
-            InputHandlerInterface* getKeyHandler(uint16_t _key) {
+            InputHandlerItf* getKeyHandler(uint16_t _key) {
                 return getKeyScancodeHandler(glfwGetKeyScancode(_key));
             }
             // Returns key-specific handler if exists, else handler_bind_keys
-            InputHandlerInterface* getKeyScancodeHandler(int _scancode) {
+            InputHandlerItf* getKeyScancodeHandler(int _scancode) {
                 return hasKeyScancodeSpecificHandler(_scancode) ? handler_bind_key[_scancode] : handler_bind_keys;
             }
 
         // Called in GLFW callbacks
 
             void eventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods) {
-                InputHandlerInterface *__input_handler = handler_bind_keys;
+                InputHandlerItf *__input_handler = handler_bind_keys;
                 if (use_specific_key_handlers && hasKeyScancodeSpecificHandler(_scancode))
                     __input_handler = handler_bind_key[_scancode];
 
@@ -196,7 +196,7 @@ namespace Simple {
             }
 
             void eventMButton(GLFWwindow* _window, int _button, int _action, int _mods) {
-                InputHandlerInterface *__input_handler = handler_bind_mbuttons;
+                InputHandlerItf *__input_handler = handler_bind_mbuttons;
                 if (use_specific_mbutton_handlers && hasMButtonSpecificHandler(_button))
                     __input_handler = handler_bind_mbutton[_button];
 
@@ -258,7 +258,7 @@ namespace Simple {
 
     // Predefined input handlers
 
-        struct DefaultHandler : InputHandlerInterface {
+        struct DefaultHandler : InputHandlerItf {
             Window managed_window;
             vec4i windowed_pos_size;
             bool fullscreen_mode = false;
@@ -295,7 +295,7 @@ namespace Simple {
     // Camera-related input handlers
 
         template <class P, class V>
-        struct CameraControls : InputHandlerInterface {
+        struct CameraControls : InputHandlerItf {
             Camera<P, V> camera;
 
             CameraControls(const P &_proj, const V &_view) : camera{_proj, _view} {
@@ -314,7 +314,7 @@ namespace Simple {
         }; // CameraControls END
 
         template<>
-        struct CameraControls<ProjPerspective, ViewGeneral> : InputHandlerInterface {
+        struct CameraControls<ProjPerspective, ViewGeneral> : InputHandlerItf {
             Camera<ProjPerspective, ViewGeneral> camera;
 
             CameraControls(const ProjPerspective &_proj, const ViewGeneral &_view) : camera{_proj, _view} {}
@@ -356,7 +356,7 @@ namespace Simple {
         }; // CameraControls<ProjPerspective, ViewGeneral> END
 
         template<>
-        struct CameraControls<ProjPerspective, ViewCentered> : InputHandlerInterface {
+        struct CameraControls<ProjPerspective, ViewCentered> : InputHandlerItf {
             Camera<ProjPerspective, ViewCentered> camera;
 
             CameraControls(const ProjPerspective &_proj, const ViewCentered &_view) : camera{_proj, _view} {
@@ -416,7 +416,7 @@ namespace Simple {
         }; // CameraControls<ProjPerspective, ViewCentered> END
 
         template<>
-        struct CameraControls<ProjPerspective, ViewPOV> : InputHandlerInterface {
+        struct CameraControls<ProjPerspective, ViewPOV> : InputHandlerItf {
             Camera<ProjPerspective, ViewPOV> camera;
 
             CameraControls(const ProjPerspective &_proj, const ViewPOV &_view) : camera{_proj, _view} {

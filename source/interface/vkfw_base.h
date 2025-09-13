@@ -130,14 +130,16 @@ namespace Simple {
                 std::vector<VkStructureType> __res;
 
                 for (const VkBaseOutStructure *p = _chain_begin; p != nullptr; p = p->pNext) {
-                    if (p == _chain_begin && __res.size())
-                        throw std::runtime_error(SVKFW_WRAPERR("VKFW :: StructurePtrChain :: GetAllTypes", "structure chain is looped"));
+                    // TODO: check if having multiple structures of same type is never allowed
+                    for (VkStructureType res_t : __res)
+                        if (p->sType == res_t)
+                            throw std::runtime_error(SVKFW_WRAPERR("VKFW :: StructurePtrChain :: GetAllTypes", "structure chain has multiple structures of type " + std::to_string(res_t)));
 
                     __res.push_back(p->sType);
                 }
                 return __res;
             }
-            // '_return_last' - if '_index' >= length of the chain: if true, returns last element. If false, returns nullptr.
+            // 'return_last' - if 'index' >= length of the chain: if true, returns last element. If false, returns nullptr.
             VkBaseOutStructure* GetChainElem(VkBaseOutStructure *_chain_begin, uint32_t _index, bool _return_last = false) {
                 VkBaseOutStructure *__res = _chain_begin;
 
@@ -169,7 +171,7 @@ namespace Simple {
                 }
                 return __res;
             }
-            // '_offset' is equal to "insert before this index". If offset is greater than length of the chain, inserts to the back.
+            // 'offset' is equal to "insert before this index". If offset is greater than length of the chain, inserts as last element.
             void InsertStructs(VkBaseOutStructure *_chain_begin, VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX) {
                 if (_subchain_begin == nullptr || _chain_begin == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: StructurePtrChain :: InsertStructs", "null pointer(s) passed"));

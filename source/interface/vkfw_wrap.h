@@ -577,7 +577,7 @@ namespace Simple {
             void checkInstanceLayers(const StringVec &_layers, bool *_flags) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: Util :: checkInstanceLayers",
-                                    "'_flags' must be a pointer to an array of '_layers.size()' boolean values"));
+                                    "'flags' must be a pointer to an array of 'layers.size()' boolean values"));
 
                 std::vector<VkLayerProperties> __layer_list{Func::enumerateInstanceLayerProperties()};
 
@@ -587,7 +587,7 @@ namespace Simple {
             void checkInstanceExtensions(const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: Util :: checkInstanceExtensions",
-                                    "'_flags' must be a pointer to an array of '_extensions.size()' boolean values"));
+                                    "'flags' must be a pointer to an array of 'extensions.size()' boolean values"));
 
                 std::vector<VkExtensionProperties> __ext_list{Func::enumerateInstanceExtensionProperties(_layer)};
 
@@ -597,7 +597,7 @@ namespace Simple {
             void checkDeviceLayers(VkPhysicalDevice _phys_device, const StringVec &_layers, bool *_flags) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: Util :: checkDeviceLayers",
-                                    "'_flags' must be a pointer to an array of '_layers.size()' boolean values"));
+                                    "'flags' must be a pointer to an array of 'layers.size()' boolean values"));
 
                 std::vector<VkLayerProperties> __layer_list{Func::enumerateDeviceLayerProperties(_phys_device)};
 
@@ -607,7 +607,7 @@ namespace Simple {
             void checkDeviceExtensions(VkPhysicalDevice _phys_device, const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: Util :: checkDeviceExtensions",
-                                    "'_flags' must be a pointer to an array of '_extensions.size()' boolean values"));
+                                    "'flags' must be a pointer to an array of 'extensions.size()' boolean values"));
 
                 std::vector<VkExtensionProperties> __ext_list{Func::enumerateDeviceExtensionProperties(_phys_device, _layer)};
 
@@ -4226,7 +4226,7 @@ namespace Simple {
                                           uint32_t _buffer_count, const void *_p_next = nullptr, VkFlags _flags = 0u,
                                           const VkAllocationCallbacks * _create_cb = nullptr) {
                 if (_buffer_count == 0u)
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: CommandBuffer :: CreateObjects", "'_buffer_count' must be positive"));
+                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: CommandBuffer :: CreateObjects", "'buffer_count' must be positive"));
 
                 VkCommandBufferAllocateInfo __info = GetVkStruct(_command_pool, _level, _buffer_count, _p_next);
 
