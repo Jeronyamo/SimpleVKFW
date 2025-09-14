@@ -53,7 +53,7 @@ namespace Simple {
 
     // FrameInputHandlerGLFW
 
-        // Frame by frame GLFW event handler, in particular inputs
+        // Frame GLFW event handler
         struct FrameInputHandlerGLFW {
             InputHandlerItf* handler_bind_keys;
             std::unordered_map<int, InputHandlerItf*> handler_bind_key;
@@ -95,7 +95,7 @@ namespace Simple {
             }
 
             // Setters
-            // Sets this class as user pointer for the window and sets callbacks
+            // Sets this object as user pointer for the window and sets callbacks
             void setGLFWCallbacks(GLFWwindow* _window, uint32_t _cback_types = UINT32_MAX) {
                 if (_cback_types & InputTypeGLFW::INPUT_TYPE_GLFW_KEY)
                     glfwSetKeyCallback(_window, callbackKey);
@@ -307,15 +307,16 @@ namespace Simple {
             P& getClassView() { return camera.proj_class; }
             V& getClassProj() { return camera.view_class; }
 
-            void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time) {}
-            void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time) {}
-            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) {}
-            void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time) {}
+            void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {}
+            void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time) override {}
+            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {}
+            void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time) override {}
         }; // CameraControls END
 
         template<>
         struct CameraControls<ProjPerspective, ViewGeneral> : InputHandlerItf {
             Camera<ProjPerspective, ViewGeneral> camera;
+            vec4i8 cam_move_state;
 
             CameraControls(const ProjPerspective &_proj, const ViewGeneral &_view) : camera{_proj, _view} {}
 
@@ -325,25 +326,52 @@ namespace Simple {
             ViewGeneral& getClassProj() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.x = bool(cam_move_state.y) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.x = 0;
+                        if (cam_move_state.y > 1) cam_move_state.y = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.y = bool(cam_move_state.x) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.y = 0;
+                        if (cam_move_state.x > 1) cam_move_state.x = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.z = bool(cam_move_state.w) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.z = 0;
+                        if (cam_move_state.w > 1) cam_move_state.w = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.w = bool(cam_move_state.z) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.w = 0;
+                        if (cam_move_state.z > 1) cam_move_state.z = 1;
+                    }
+                }
+            }
+
+            void manualFrameUpdate(double _frame_time) {
                 vec3 __front_vec = (camera.view_class.look_at - camera.view_class.cam_pos).normalize();
                 vec3 __right_vec = Math::cross(__front_vec, camera.view_class.up_vect);
 
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W) && _action != GLFW_RELEASE) {
-                    camera.view_class.cam_pos += __front_vec * _frame_time;
-                    camera.view_class.look_at += __front_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S) && _action != GLFW_RELEASE) {
-                    camera.view_class.cam_pos -= __front_vec * _frame_time;
-                    camera.view_class.look_at -= __front_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D) && _action != GLFW_RELEASE) {
-                    camera.view_class.cam_pos += __right_vec * _frame_time;
-                    camera.view_class.look_at += __right_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A) && _action != GLFW_RELEASE) {
-                    camera.view_class.cam_pos -= __right_vec * _frame_time;
-                    camera.view_class.look_at -= __right_vec * _frame_time;
-                }
+                camera.view_class.cam_pos += (cam_move_state.y - cam_move_state.x) * __front_vec * _frame_time;
+                camera.view_class.look_at += (cam_move_state.y - cam_move_state.x) * __front_vec * _frame_time;
+                camera.view_class.cam_pos += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
+                camera.view_class.look_at += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
@@ -358,6 +386,7 @@ namespace Simple {
         template<>
         struct CameraControls<ProjPerspective, ViewCentered> : InputHandlerItf {
             Camera<ProjPerspective, ViewCentered> camera;
+            vec4i8 cam_move_state;
 
             CameraControls(const ProjPerspective &_proj, const ViewCentered &_view) : camera{_proj, _view} {
                 handled_keys = { GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D };
@@ -366,24 +395,53 @@ namespace Simple {
             mat4 getView() const { return camera.getView(); }
             mat4 getProj() const { return camera.getProj(); }
             ProjPerspective& getClassView() { return camera.proj_class; }
-            ViewCentered& getClassProj() { return camera.view_class; }
+            ViewCentered&    getClassProj() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
-                vec3 __front_vec = (camera.view_class.look_at - camera.view_class.calcCamPos()).normalize();
-                vec3 __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.x = bool(cam_move_state.y) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.x = 0;
+                        if (cam_move_state.y > 1) cam_move_state.y = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.y = bool(cam_move_state.x) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.y = 0;
+                        if (cam_move_state.x > 1) cam_move_state.x = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.z = bool(cam_move_state.w) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.z = 0;
+                        if (cam_move_state.w > 1) cam_move_state.w = 1;
+                    }
+                }
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.w = bool(cam_move_state.z) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.w = 0;
+                        if (cam_move_state.z > 1) cam_move_state.z = 1;
+                    }
+                }
+            }
 
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W) && _action != GLFW_RELEASE) {
-                    camera.view_class.look_at += __front_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S) && _action != GLFW_RELEASE) {
-                    camera.view_class.look_at -= __front_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D) && _action != GLFW_RELEASE) {
-                    camera.view_class.look_at += __right_vec * _frame_time;
-                }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A) && _action != GLFW_RELEASE) {
-                    camera.view_class.look_at -= __right_vec * _frame_time;
-                }
+            void manualFrameUpdate(double _frame_time) {
+                vec3f __front_vec = (camera.view_class.look_at - camera.view_class.calcCamPos()).normalize();
+                vec3f __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
+
+                camera.view_class.look_at += (cam_move_state.y - cam_move_state.x) * __front_vec * _frame_time;
+                camera.view_class.look_at += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
@@ -418,6 +476,7 @@ namespace Simple {
         template<>
         struct CameraControls<ProjPerspective, ViewPOV> : InputHandlerItf {
             Camera<ProjPerspective, ViewPOV> camera;
+            vec4i8 cam_move_state;
 
             CameraControls(const ProjPerspective &_proj, const ViewPOV &_view) : camera{_proj, _view} {
                 handled_keys = { GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D };
@@ -429,20 +488,41 @@ namespace Simple {
             ViewPOV& getClassProj() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
-                vec3 __front_vec = (camera.view_class.calcLookAt() - camera.view_class.cam_pos).normalize();
-                vec3 __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
-
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W) && _action != GLFW_RELEASE) {
-                    camera.view_class.calcLookAt() += __front_vec * _frame_time;
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.x = bool(cam_move_state.y) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.x = 0;
+                        if (cam_move_state.y > 1) cam_move_state.y = 1;
+                    }
                 }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_S) && _action != GLFW_RELEASE) {
-                    camera.view_class.calcLookAt() -= __front_vec * _frame_time;
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_W)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.y = bool(cam_move_state.x) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.y = 0;
+                        if (cam_move_state.x > 1) cam_move_state.x = 1;
+                    }
                 }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D) && _action != GLFW_RELEASE) {
-                    camera.view_class.calcLookAt() += __right_vec * _frame_time;
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.z = bool(cam_move_state.w) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.z = 0;
+                        if (cam_move_state.w > 1) cam_move_state.w = 1;
+                    }
                 }
-                if (_scancode == glfwGetKeyScancode(GLFW_KEY_A) && _action != GLFW_RELEASE) {
-                    camera.view_class.calcLookAt() -= __right_vec * _frame_time;
+                if (_scancode == glfwGetKeyScancode(GLFW_KEY_D)) {
+                    if (_action == GLFW_PRESS) {
+                        cam_move_state.w = bool(cam_move_state.z) + 1;
+                    }
+                    if (_action == GLFW_RELEASE) {
+                        cam_move_state.w = 0;
+                        if (cam_move_state.z > 1) cam_move_state.z = 1;
+                    }
                 }
             }
 
@@ -472,6 +552,14 @@ namespace Simple {
 
             void processEventFBufferSize(GLFWwindow *_window, int _width, int _height, double _frame_time) override {
                 camera.proj_class.updateReso({ (float) _width, (float) _height });
+            }
+
+            void manualFrameUpdate(double _frame_time) {
+                vec3 __front_vec = (camera.view_class.calcLookAt() - camera.view_class.cam_pos).normalize();
+                vec3 __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
+
+                camera.view_class.cam_pos += (cam_move_state.y - cam_move_state.x) * __front_vec * _frame_time;
+                camera.view_class.cam_pos += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
         }; // CameraControls<ProjPerspective, ViewPOV> END
 

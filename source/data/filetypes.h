@@ -144,7 +144,7 @@ namespace Simple {
                 else {
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("ReaderWriterVMD :: read", "Unknown bone: "));
                     for (char ch : std::string(file_content.keyframes_bone[i].bone_name))
-                        std::cout << std::oct << '\\' << uint32_t(uint8_t(ch));
+                        printf("\\%o", uint8_t(ch));
                     printf("\n");
                 }
             }
@@ -172,7 +172,7 @@ namespace Simple {
                 else {
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("ReaderWriterVMD :: read", "Unknown morph: "));
                     for (char ch : std::string(file_content.keyframes_morph[i].morph_name))
-                        std::cout << std::oct << '\\' << uint32_t(uint8_t(ch));
+                        printf("\\%o", uint8_t(ch));
                     printf("\n");
                 }
             }

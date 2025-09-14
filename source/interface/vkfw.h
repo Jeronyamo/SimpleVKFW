@@ -60,14 +60,12 @@ namespace Simple {
 
     // Factory
 
-        class SwapchainContextFactory {
+        struct SwapchainContextFactory {
             SwapchainContext *swapchain_context = nullptr;
 
-            SwapchainKHR::Builder swapchain;
-            ImageView::Builder image_view;
-            Framebuffer::Builder framebuffer;
-
-        public:
+            SwapchainKHR::Builder  b_swapchain;
+            ImageView::Builder    b_image_view;
+            Framebuffer::Builder b_framebuffer;
 
             SwapchainContextFactory(SwapchainContext *_swapchain_context = nullptr) : swapchain_context{_swapchain_context} {}
             ~SwapchainContextFactory() {
@@ -89,17 +87,11 @@ namespace Simple {
                 }
             }
 
-        // Get builders
-
-            SwapchainKHR::Builder* getBuilderSwapchainKHR() { return &swapchain; }
-            ImageView::Builder* getBuilderImageView() { return &image_view; }
-            Framebuffer::Builder* getBuilderFramebuffer() { return &framebuffer; }
-
         // Create objects
 
             void createSwapchain(VkDevice _device, VkSurfaceKHR _surface, void *_p_next = nullptr,
                                  VkSwapchainCreateFlagsKHR _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                swapchain_context->swapchain = swapchain.createObject(_device, _surface, _p_next, _flags, _create_cb);
+                swapchain_context->swapchain = b_swapchain.createObject(_device, _surface, _p_next, _flags, _create_cb);
             }
 
             void createImageViews(VkDevice _device) {
@@ -107,15 +99,15 @@ namespace Simple {
 
                 swapchain_context->image_views.resize(__swapchain_images.size());
                 for (uint32_t i = 0u; i < __swapchain_images.size(); ++i)
-                    swapchain_context->image_views[i] = image_view.createObject(_device, __swapchain_images[i]);
+                    swapchain_context->image_views[i] = b_image_view.createObject(_device, __swapchain_images[i]);
             }
 
             void createFramebuffers(VkDevice _device, VkRenderPass _render_pass) {
                 swapchain_context->framebuffers.resize(swapchain_context->image_views.size());
 
                 for (uint32_t i = 0u; i < swapchain_context->image_views.size(); ++i) {
-                    framebuffer.setAttachments({swapchain_context->image_views[i]});
-                    swapchain_context->framebuffers[i] = framebuffer.createObject(_device, _render_pass);
+                    b_framebuffer.setAttachments({swapchain_context->image_views[i]});
+                    swapchain_context->framebuffers[i] = b_framebuffer.createObject(_device, _render_pass);
                 }
             }
 
@@ -124,27 +116,27 @@ namespace Simple {
             void setWindowCurrentExtent(const Window &_window = nullptr) {
                 if (_window.window != nullptr)
                     swapchain_context->window = _window.window;
-                swapchain.chooseCurrentExtent(swapchain_context->window);
+                b_swapchain.chooseCurrentExtent(swapchain_context->window);
 
                 setFramebufferSwapchainBufferSize();
             }
 
             void setImageViewSwapchainFormat() {
-                image_view.setFormat(swapchain.image_info.format);
+                b_image_view.setFormat(b_swapchain.image_info.format);
             }
 
             void setFramebufferSwapchainBufferSize() {
-                framebuffer.setBufferSize(swapchain.image_info.extent);
+                b_framebuffer.setBufferSize(b_swapchain.image_info.extent);
             }
 
-            const SwapchainKHR::Builder::ImageInfo& getImageInfo() const { return swapchain.image_info; }
+            const SwapchainKHR::Builder::ImageInfo& getImageInfo() const { return b_swapchain.image_info; }
 
             // All neccessary Builder fields are assumed to be updated before calling this function
             void recreate(VkDevice _device, VkRenderPass _render_pass, VkSurfaceKHR _surface, const VkAllocationCallbacks *_destroy_callback = nullptr) {
                 destroyObjects(_device, _destroy_callback);
 
                 setWindowCurrentExtent();
-                swapchain_context->swapchain = swapchain.createObject(_device, _surface);
+                swapchain_context->swapchain = b_swapchain.createObject(_device, _surface);
 
                 createImageViews(_device);
                 createFramebuffers(_device, _render_pass);
@@ -173,12 +165,10 @@ namespace Simple {
 
     // Factory
 
-        class DescriptorContextFactory {
+        struct DescriptorContextFactory {
             DescriptorContext *descriptor_context = nullptr;
 
             DescriptorSetLayout::Builder b_layout;
-
-        public:
 
             DescriptorContextFactory(DescriptorContext *_descriptor_context = nullptr) : descriptor_context{_descriptor_context} {}
             ~DescriptorContextFactory() {
@@ -199,10 +189,6 @@ namespace Simple {
                     *descriptor_context = DescriptorContext{};
                 }
             }
-
-        // Get builders
-
-            DescriptorSetLayout::Builder* getBuilderLayout() { return &b_layout; }
 
         // Create objects
 
@@ -264,25 +250,24 @@ namespace Simple {
 
     // Factory (Graphics)
 
-        class PipelineGraphicsContextFactory {
+        struct PipelineGraphicsContextFactory {
             PipelineContext *pipeline_context = nullptr;
 
-            Pipeline::Graphics::Builder pipeline;
-            Pipeline::Cache::Builder cache;
-            Pipeline::VertexInputState::StructBuilder     vertex_input_state;
-            Pipeline::InputAssemblyState::StructBuilder input_assembly_state;
-            Pipeline::TessellationState::StructBuilder    tessellation_state;
-            Pipeline::ViewportState::StructBuilder            viewport_state;
-            Pipeline::RasterizationState::StructBuilder  rasterization_state;
-            Pipeline::MultisampleState::StructBuilder      multisample_state;
-            Pipeline::DepthStencilState::StructBuilder   depth_stencil_state;
-            Pipeline::ColorBlendState::StructBuilder       color_blend_state;
-            Pipeline::DynamicState::StructBuilder              dynamic_state;
-            Pipeline::ShaderStage::StructBuilder                shader_stage;
+            Pipeline::Graphics::Builder b_pipeline;
+            Pipeline::Cache::Builder b_cache;
+            Pipeline::VertexInputState::StructBuilder     b_vertex_input_state;
+            Pipeline::InputAssemblyState::StructBuilder b_input_assembly_state;
+            Pipeline::TessellationState::StructBuilder    b_tessellation_state;
+            Pipeline::ViewportState::StructBuilder            b_viewport_state;
+            Pipeline::RasterizationState::StructBuilder  b_rasterization_state;
+            Pipeline::MultisampleState::StructBuilder      b_multisample_state;
+            Pipeline::DepthStencilState::StructBuilder   b_depth_stencil_state;
+            Pipeline::ColorBlendState::StructBuilder       b_color_blend_state;
+            Pipeline::DynamicState::StructBuilder              b_dynamic_state;
+            Pipeline::ShaderStage::StructBuilder                b_shader_stage;
 
             std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
 
-        public:
             PipelineGraphicsContextFactory(PipelineContext *_pipeline_context = nullptr) : pipeline_context{_pipeline_context} {}
             ~PipelineGraphicsContextFactory() {
                 deleteAndClearShaderStages();
@@ -304,41 +289,6 @@ namespace Simple {
                 }
             }
 
-        // Get builders
-
-            Pipeline::Graphics::Builder *getBuilderPipeline() { return &pipeline; }
-            Pipeline::Cache::Builder *getBuilderCache() { return &cache; }
-            Pipeline::VertexInputState::StructBuilder *getBuilderPipelineVertexInputState() {
-                return &vertex_input_state;
-            }
-            Pipeline::InputAssemblyState::StructBuilder *getBuilderPipelineInputAssemblyState() {
-                return &input_assembly_state;
-            }
-            Pipeline::TessellationState::StructBuilder *getBuilderPipelineTessellationState() {
-                return &tessellation_state;
-            }
-            Pipeline::ViewportState::StructBuilder *getBuilderPipelineViewportState() {
-                return &viewport_state;
-            }
-            Pipeline::RasterizationState::StructBuilder *getBuilderPipelineRasterizationState() {
-                return &rasterization_state;
-            }
-            Pipeline::MultisampleState::StructBuilder *getBuilderPipelineMultisampleState() {
-                return &multisample_state;
-            }
-            Pipeline::DepthStencilState::StructBuilder *getBuilderPipelineDepthStencilState() {
-                return &depth_stencil_state;
-            }
-            Pipeline::ColorBlendState::StructBuilder *getBuilderPipelineColorBlendState() {
-                return &color_blend_state;
-            }
-            Pipeline::DynamicState::StructBuilder *getBuilderPipelineDynamicState() {
-                return &dynamic_state;
-            }
-            Pipeline::ShaderStage::StructBuilder *getBuilderPipelineShaderStage() {
-                return &shader_stage;
-            }
-
         // Create objects
 
             void createPipeline(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass, bool _use_pipeline_cache,
@@ -355,48 +305,48 @@ namespace Simple {
                 VkPipelineDynamicStateCreateInfo __dynamic_state;
 
                 if ((_state_flags | VKFW_PIPELINE_VERTEX_INPUT_STATE_BIT)) {
-                    __vertex_input_state = vertex_input_state.getVkStructView();
-                    pipeline.setVertexInputState(&__vertex_input_state);
+                    __vertex_input_state = b_vertex_input_state.getVkStructView();
+                    b_pipeline.setVertexInputState(&__vertex_input_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_INPUT_ASSEMBLY_STATE_BIT)) {
-                    __input_assembly_state = input_assembly_state.getVkStruct();
-                    pipeline.setInputAssemblyState(&__input_assembly_state);
+                    __input_assembly_state = b_input_assembly_state.getVkStruct();
+                    b_pipeline.setInputAssemblyState(&__input_assembly_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_TESSELLATION_STATE_BIT)) {
-                    __tessellation_state = tessellation_state.getVkStruct();
-                    pipeline.setTessellationState(&__tessellation_state);
+                    __tessellation_state = b_tessellation_state.getVkStruct();
+                    b_pipeline.setTessellationState(&__tessellation_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_VIEWPORT_STATE_BIT)) {
-                    __viewport_state = viewport_state.getVkStructView();
-                    pipeline.setViewportState(&__viewport_state);
+                    __viewport_state = b_viewport_state.getVkStructView();
+                    b_pipeline.setViewportState(&__viewport_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_RASTERIZATION_STATE_BIT)) {
-                    __rasterization_state = rasterization_state.getVkStruct();
-                    pipeline.setRasterizationState(&__rasterization_state);
+                    __rasterization_state = b_rasterization_state.getVkStruct();
+                    b_pipeline.setRasterizationState(&__rasterization_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_MULTISAMPLE_STATE_BIT)) {
-                    __multisample_state = multisample_state.getVkStructView();
-                    pipeline.setMultisampleState(&__multisample_state);
+                    __multisample_state = b_multisample_state.getVkStructView();
+                    b_pipeline.setMultisampleState(&__multisample_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_DEPTH_STENCIL_STATE_BIT)) {
-                    __depth_stencil_state = depth_stencil_state.getVkStruct();
-                    pipeline.setDepthStencilState(&__depth_stencil_state);
+                    __depth_stencil_state = b_depth_stencil_state.getVkStruct();
+                    b_pipeline.setDepthStencilState(&__depth_stencil_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_COLOR_BLEND_STATE_BIT)) {
-                    __color_blend_state = color_blend_state.getVkStructView();
-                    pipeline.setColorBlendState(&__color_blend_state);
+                    __color_blend_state = b_color_blend_state.getVkStructView();
+                    b_pipeline.setColorBlendState(&__color_blend_state);
                 }
                 if ((_state_flags | VKFW_PIPELINE_DYNAMIC_STATE_BIT)) {
-                    __dynamic_state = dynamic_state.getVkStructView();
-                    pipeline.setDynamicState(&__dynamic_state);
+                    __dynamic_state = b_dynamic_state.getVkStructView();
+                    b_pipeline.setDynamicState(&__dynamic_state);
                 }
 
                 if (_use_pipeline_cache && pipeline_context == nullptr)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW :: PipelineGraphicsContextFactory :: createPipeline", "cannot use pipeline cache: is not set"));
 
-                pipeline.setPipelineLayout(pipeline_context->layout);
-                pipeline.setShaderStages(shader_stages);
-                pipeline_context->pipeline = pipeline.createObject(_device, _render_pass, _subpass, _use_pipeline_cache ? pipeline_context->cache : VK_NULL_HANDLE, _p_next, _flags, _create_cb);
+                b_pipeline.setPipelineLayout(pipeline_context->layout);
+                b_pipeline.setShaderStages(shader_stages);
+                pipeline_context->pipeline = b_pipeline.createObject(_device, _render_pass, _subpass, _use_pipeline_cache ? pipeline_context->cache : VK_NULL_HANDLE, _p_next, _flags, _create_cb);
                 pipeline_context->pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS;
             }
             void createLayout(VkDevice _device, const std::vector<VkPushConstantRange> &_constants = {},
@@ -406,19 +356,19 @@ namespace Simple {
             }
             void createCache(VkDevice _device, void *_p_next = nullptr, VkPipelineCacheCreateFlags _flags = 0u,
                              const VkAllocationCallbacks * _create_cb = nullptr) {
-                pipeline_context->cache = cache.createObject(_device, _p_next, _flags, _create_cb);
+                pipeline_context->cache = b_cache.createObject(_device, _p_next, _flags, _create_cb);
             }
 
         // Scenarios
 
             ContextIndex addShaderStage(void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
-                shader_stages.push_back(shader_stage.getVkStructDCopy(_p_next, _flags));
+                shader_stages.push_back(b_shader_stage.getVkStructDCopy(_p_next, _flags));
                 return shader_stages.size() - 1;
             }
 
             bool updateShaderStage(ContextIndex _ci_shader_stage, void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
                 if (deleteShaderStage(_ci_shader_stage)) {
-                    shader_stages[_ci_shader_stage] = shader_stage.getVkStructDCopy(_p_next, _flags);
+                    shader_stages[_ci_shader_stage] = b_shader_stage.getVkStructDCopy(_p_next, _flags);
                     return true;
                 }
                 return false;
@@ -442,14 +392,13 @@ namespace Simple {
 
     // Factory (Compute)
 
-        class PipelineComputeContextFactory {
+        struct PipelineComputeContextFactory {
             PipelineContext *pipeline_context = nullptr;
 
             Pipeline::Compute::Builder pipeline;
             Pipeline::Cache::Builder cache;
             Pipeline::ShaderStage::StructBuilder b_shader_stage;
 
-        public:
             PipelineComputeContextFactory(PipelineContext *_pipeline_context = nullptr) : pipeline_context{_pipeline_context} {}
             ~PipelineComputeContextFactory() {
                 pipeline_context = nullptr;
@@ -469,12 +418,6 @@ namespace Simple {
                     *pipeline_context = PipelineContext{};
                 }
             }
-
-        // Get builders
-
-            Pipeline::Compute::Builder *getBuilderPipeline() { return &pipeline; }
-            Pipeline::Cache::Builder *getBuilderCache() { return &cache; }
-            Pipeline::ShaderStage::StructBuilder *getBuilderPipelineShaderStage() { return &b_shader_stage; }
 
         // Create objects
 
@@ -539,10 +482,9 @@ namespace Simple {
 
     // Factory
 
-        class CommandContextFactory {
+        struct CommandContextFactory {
             CommandContext *command_context = nullptr;
 
-        public:
             CommandContextFactory(CommandContext *_command_context = nullptr) : command_context{_command_context} {}
             ~CommandContextFactory() {
                 command_context = nullptr;
@@ -625,10 +567,9 @@ namespace Simple {
 
     // Factory
 
-        class DeviceMemoryContextFactory {
+        struct DeviceMemoryContextFactory {
             DeviceMemoryContext *device_memory_context = nullptr;
 
-        public:
             DeviceMemoryContextFactory(DeviceMemoryContext *_device_memory_context = nullptr) : device_memory_context{_device_memory_context} {}
             ~DeviceMemoryContextFactory() {
                 device_memory_context = nullptr;
@@ -929,7 +870,7 @@ namespace Simple {
 
     // Factory
 
-        class VulkanContextFactory {
+        struct VulkanContextFactory {
             VulkanContext *vk_context = nullptr;
 
             Instance::Builder                b_instance;
@@ -1009,25 +950,6 @@ namespace Simple {
             void deleteContextDescriptor() {
                 c_descriptor.~DescriptorContextFactory();
             }
-
-
-        // Get builders
-
-            Instance::Builder*               getBuilderInstance()         { return &b_instance; }
-            Device::Builder*                 getBuilderDevice()           { return &b_device; }
-            PhysicalDevice::Manager*         getBuilderPhysicalDevice()   { return &m_phys_device; }
-            QueueFamily::Manager*            getBuilderQueueFamilies()    { return &m_queue_family; }
-            Queue::Builder*                  getBuilderQueue()            { return &b_queue; }
-            ImageView::Builder*              getBuilderImageView()        { return &b_image_view; }
-            DebugUtilsMessengerEXT::Builder* getBuilderMessenger()        { return &b_messenger; }
-            SwapchainContextFactory*         getContextSwapchain()        { return &c_swapchain; }
-            RenderPass::Builder*             getBuilderRenderPass()       { return &b_render_pass; }
-            ShaderModule::Builder*           getBuilderShaderModule()     { return &b_shader_module; }
-            PipelineGraphicsContextFactory*  getContextPipelineGraphics() { return &c_graphics_pipeline; }
-            PipelineComputeContextFactory*   getContextPipelineCompute()  { return &c_compute_pipeline; }
-            CommandContextFactory*           getContextCommand()          { return &c_command; }
-            DeviceMemoryContextFactory*      getContextDeviceMemory()     { return &c_device_memory; }
-            DescriptorContextFactory*        getContextDescriptor()       { return &c_descriptor; }
 
         // Create objects
 
@@ -1181,16 +1103,16 @@ namespace Simple {
             }
 
             void cSwapchainSetCapabilities() {
-                c_swapchain.getBuilderSwapchainKHR()->setSurfaceCapabilities(vk_context->phys_device, vk_context->surface);
+                c_swapchain.b_swapchain.setSurfaceCapabilities(vk_context->phys_device, vk_context->surface);
             }
             void cSwapchainSetPresentationMode(VkPresentModeKHR _pres_mode) {
-                c_swapchain.getBuilderSwapchainKHR()->checkSetPresentationMode(vk_context->phys_device, vk_context->surface, _pres_mode);
+                c_swapchain.b_swapchain.checkSetPresentationMode(vk_context->phys_device, vk_context->surface, _pres_mode);
             }
             void cSwapchainPickFormat(const Simple::VKFW::SwapchainKHR::Suitability::FormatTestFunc _test_func) {
-                c_swapchain.getBuilderSwapchainKHR()->pickFormat(vk_context->phys_device, vk_context->surface, _test_func);
+                c_swapchain.b_swapchain.pickFormat(vk_context->phys_device, vk_context->surface, _test_func);
             }
             void cSwapchainPickFormat(const Simple::VKFW::SwapchainKHR::Suitability::FormatRankFunc _rank_func) {
-                c_swapchain.getBuilderSwapchainKHR()->pickFormat(vk_context->phys_device, vk_context->surface, _rank_func);
+                c_swapchain.b_swapchain.pickFormat(vk_context->phys_device, vk_context->surface, _rank_func);
             }
             const SwapchainKHR::Builder::ImageInfo& cSwapchainGetImageInfo() const { return c_swapchain.getImageInfo(); }
 
@@ -1210,15 +1132,15 @@ namespace Simple {
 
             // Returns graphics_pipeline shader_stage context index
             ContextIndex cPipelineGraphicsAddShaderStage(ContextIndex _ci_shader_module, VkShaderStageFlagBits _stage, const char *_name, const VkSpecializationInfo &_spec_info = {}) {
-                c_graphics_pipeline.getBuilderPipelineShaderStage()->setShaderInfo(vk_context->shader_modules[_ci_shader_module], _stage, _name);
-                c_graphics_pipeline.getBuilderPipelineShaderStage()->setSpecializationInfo(_spec_info);
-                return c_graphics_pipeline.addShaderStage();
+                c_graphics_pipeline.b_shader_stage.setShaderInfo(vk_context->shader_modules[_ci_shader_module], _stage, _name);
+                c_graphics_pipeline.b_shader_stage.setSpecializationInfo(_spec_info);
+                return c_graphics_pipeline.addShaderStage(); 
             }
 
             // TODO: Returns compute_pipeline shader_stage context index
             ContextIndex cPipelineComputeAddShaderStage(ContextIndex _ci_shader_module, const char *_name, const VkSpecializationInfo &_spec_info = {}) {
                 c_compute_pipeline.setShaderStage(vk_context->shader_modules[_ci_shader_module], _name);
-                c_compute_pipeline.getBuilderPipelineShaderStage()->setSpecializationInfo(_spec_info);
+                c_compute_pipeline.b_shader_stage.setSpecializationInfo(_spec_info);
                 return 0u;
             }
 
@@ -1236,14 +1158,13 @@ namespace Simple {
 
 // Context-based wrapper for function calls
 
-        class VulkanContextFunc {
+        struct VulkanContextFunc {
             VulkanContext *vk_context = nullptr;
             VulkanContextFactory *vk_factory = nullptr;
 
             Cmd::BeginRenderPass::Builder       b_begin_render_pass;
             Func::UpdateDescriptorSets::Builder b_update_descriptor_sets;
 
-        public:
             VulkanContextFunc(VulkanContext *_vk_context = nullptr,
                               VulkanContextFactory *_vk_factory = nullptr) : vk_context{_vk_context}, vk_factory{_vk_factory} {}
 
@@ -1259,11 +1180,6 @@ namespace Simple {
                 vk_context = _vk_context;
                 vk_factory = _vk_factory;
             }
-
-        // Get command/func info builders
-
-            Cmd::BeginRenderPass::Builder *getBuilderCmdBeginRenderPass() { return &b_begin_render_pass; }
-            Func::UpdateDescriptorSets::Builder *getBuilderUpdateDescriptorSets() { return &b_update_descriptor_sets; }
 
         // Functions
 
@@ -1326,8 +1242,8 @@ namespace Simple {
                 return __image_index;
             }
 
-            ContextIndex queuePresentKHR(ContextIndex _ci_queue, const std::vector<ContextIndex> &_ci_wait_sem,
-                                         const std::vector<uint32_t> &_image_indices, ContextIndex _ci_fence = UINT32_MAX, void *_p_next = nullptr) {
+            uint32_t queuePresentKHR(ContextIndex _ci_queue, const std::vector<ContextIndex> &_ci_wait_sem,
+                                         const std::vector<uint32_t> &_image_indices, void *_p_next = nullptr) {
                 std::vector<VkSemaphore> __wait_sem = vk_context->getObjectVecSemaphore(_ci_wait_sem);
                 VkSwapchainKHR __swapchain = vk_context->swapchain_context.swapchain;
                 VkQueue __queue = vk_context->getObjectQueue(_ci_queue);
@@ -1347,13 +1263,30 @@ namespace Simple {
                     if ((__func_res == VK_ERROR_OUT_OF_DATE_KHR || __func_res == VK_SUBOPTIMAL_KHR) && vk_factory != nullptr) {
                         return UINT32_MAX;
                     }
-                    else throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: queuePresentKHR","unhandled function error"));
+                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: queuePresentKHR","unhandled function error"));
+                }
+                return 0u;
+            }
+            uint32_t queuePresentKHR(ContextIndex _ci_queue, VkPresentInfoKHR &_pres_info, ContextIndex _ci_wait_sem) {
+                VkSemaphore __wait_sem = vk_context->getObjectSemaphore(_ci_wait_sem);
+                VkSwapchainKHR __swapchain = vk_context->swapchain_context.swapchain;
+                VkQueue __queue = vk_context->getObjectQueue(_ci_queue);
+
+                _pres_info.pWaitSemaphores = &__wait_sem;
+                _pres_info.pSwapchains = &__swapchain;
+
+                uint32_t __func_res = vkQueuePresentKHR(__queue, &_pres_info);
+                if (__func_res != VK_SUCCESS) {
+                    if ((__func_res == VK_ERROR_OUT_OF_DATE_KHR || __func_res == VK_SUBOPTIMAL_KHR) && vk_factory != nullptr) {
+                        return UINT32_MAX;
+                    }
+                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: queuePresentKHR (2)","unhandled function error"));
                 }
                 return 0u;
             }
             // Buffers are automatically bound after DeviceMemory allocation, so no need to call this function
             void bindBufferMemory(ContextIndex _ci_buffer) {
-                auto __buffer_bind_info = vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer);
+                auto __buffer_bind_info = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer);
                 vkBindBufferMemory(vk_context->device, vk_context->getObjectBuffer(_ci_buffer),
                                    vk_context->getObjectDeviceMemory(__buffer_bind_info.ci_memory), __buffer_bind_info.offset);
             }
@@ -1361,7 +1294,7 @@ namespace Simple {
             void* mapMemory(ContextIndex _ci_buffer_or_image, bool _is_image, VkDeviceSize _offset = 0ul, VkDeviceSize _size = 0ul, VkMemoryMapFlags _flags = 0u) {
                 if (_is_image)
                     _ci_buffer_or_image |= Simple::VKFW::DeviceMemoryContext::BindInfo::LASTBIT_FLAG; // Flag used in BindInfo
-                auto __buffer_bind_info = vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_or_image);
+                auto __buffer_bind_info = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_or_image);
                 if (_offset + _size > __buffer_bind_info.size)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: mapBufferMemory", "'offset' + 'size' exceed buffer size"));
                 if (_size == 0ul)
@@ -1373,7 +1306,7 @@ namespace Simple {
             }
             void unmapMemory(ContextIndex _ci_buffer_or_image, bool _is_image) {
                 _ci_buffer_or_image |= uint32_t(_is_image) * Simple::VKFW::DeviceMemoryContext::BindInfo::LASTBIT_FLAG; // Flag used in BindInfo
-                ContextIndex __ci_memory = vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_or_image).ci_memory;
+                ContextIndex __ci_memory = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_or_image).ci_memory;
                 vkUnmapMemory(vk_context->device, vk_context->getObjectDeviceMemory(__ci_memory));
             }
 
@@ -1413,14 +1346,14 @@ namespace Simple {
 
                 __offsets.resize(_ci_buffers.size());
                 for (uint32_t i = 0; i < _ci_buffers.size(); ++i)
-                    __offsets[i] = vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffers[i]).offset;
+                    __offsets[i] = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffers[i]).offset;
 
                 vkCmdBindVertexBuffers(vk_context->getObjectCommandBuffer(_ci_command_buffer), _binding_first, (uint32_t)__buffers.size(), __buffers.data(), __offsets.data());
             }
 
             void cmdBindIndexBuffer(ContextIndex _ci_command_buffer, ContextIndex _ci_buffer, VkIndexType _index_type) {
                 vkCmdBindIndexBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer), vk_context->getObjectBuffer(_ci_buffer),
-                                     vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer).offset, _index_type);
+                                     vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer).offset, _index_type);
             }
 
             void cmdBindDescriptorSets(ContextIndex _ci_command_buffer, VkPipelineBindPoint _pip_bind_point, uint32_t _first_set, const std::vector<ContextIndex> &_ci_descr_set, const std::vector<ContextIndex> &_ci_descr = {}) {
@@ -1436,7 +1369,7 @@ namespace Simple {
             }
             // This overload sets viewport from swapchain_extent
             void cmdSetViewport(ContextIndex _ci_command_buffer) {
-                Viewport::StructWrap __viewport{vk_factory->getContextSwapchain()->getBuilderSwapchainKHR()->image_info.extent};
+                Viewport::StructWrap __viewport{vk_factory->c_swapchain.b_swapchain.image_info.extent};
                 vkCmdSetViewport(vk_context->getObjectCommandBuffer(_ci_command_buffer), 0u, 1u, &__viewport.viewport);
             }
 
@@ -1448,7 +1381,7 @@ namespace Simple {
             }
             // This overload sets scissor from swapchain_extent
             void cmdSetScissor(ContextIndex _ci_command_buffer) {
-                Rect2D::StructWrap __scissor{vk_factory->getContextSwapchain()->getBuilderSwapchainKHR()->image_info.extent};
+                Rect2D::StructWrap __scissor{vk_factory->c_swapchain.b_swapchain.image_info.extent};
                 vkCmdSetScissor(vk_context->getObjectCommandBuffer(_ci_command_buffer), 0u, 1u, &__scissor.rectangle);
             }
 
@@ -1474,10 +1407,10 @@ namespace Simple {
             // is copied to the beginning of dst buffer. It can be done by passing size=0.
             void cmdCopyBuffer(ContextIndex _ci_command_buffer, ContextIndex _ci_buffer_src, ContextIndex _ci_buffer_dst, VkDeviceSize _size = 0ul, uint32_t _offset_src = 0u, uint32_t _offset_dst = 0u) {
                 if (_size == 0u) {
-                    _size = std::min(vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_src).size,
-                                     vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_dst).size);
-                    printf("Scr buffer size: %d, Dst buffer size: %d\n", vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_src).size,
-                                                                         vk_factory->getContextDeviceMemory()->bBufferGetBindInfo(_ci_buffer_dst).size);
+                    _size = std::min(vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
+                                     vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
+                    printf("Scr buffer size: %d, Dst buffer size: %d\n", vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
+                                                                         vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
                 }
                 VkBufferCopy __region_info{ _offset_src, _offset_dst, _size };
                 printf("Region info: offset src: %d, offset dst: %d, size: %d\n", __region_info.srcOffset, __region_info.dstOffset, __region_info.size);
@@ -1492,7 +1425,7 @@ namespace Simple {
 
             // Sets current swapchain extent (and zero offset) as render area (so that it matches the framebuffer)
             void bCmdBeginRenderPassSetRenderAreaFull() {
-                b_begin_render_pass.setRenderArea(vk_factory->getContextSwapchain()->getBuilderSwapchainKHR()->image_info.extent);
+                b_begin_render_pass.setRenderArea(vk_factory->c_swapchain.b_swapchain.image_info.extent);
             }
         } Vulkan_global_context_func; // VulkanContextFunc END
 

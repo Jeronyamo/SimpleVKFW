@@ -22,26 +22,47 @@ namespace Simple {
     template <class C> struct Vec3Base;
     template <class C> struct Vec4Base;
 
+    typedef Vec2Base<int8_t>   vec2i8;
+    typedef Vec2Base<int16_t>  vec2i16;
+    typedef Vec2Base<int32_t>  vec2i32;
+    typedef Vec2Base<uint8_t>  vec2u8;
+    typedef Vec2Base<uint16_t> vec2u16;
+    typedef Vec2Base<uint32_t> vec2u32;
+
     typedef Vec2Base<int>      vec2i;
     typedef Vec2Base<bool>     vec2b;
     typedef Vec2Base<long>     vec2l;
-    typedef Vec2Base<uint32_t> vec2u;
+    typedef Vec2Base<unsigned> vec2u;
     typedef Vec2Base<float>    vec2f;
     typedef Vec2Base<double>   vec2d;
     typedef Vec2Base<flt_t>    vec2 ;
 
+    typedef Vec3Base<int8_t>   vec3i8;
+    typedef Vec3Base<int16_t>  vec3i16;
+    typedef Vec3Base<int32_t>  vec3i32;
+    typedef Vec3Base<uint8_t>  vec3u8;
+    typedef Vec3Base<uint16_t> vec3u16;
+    typedef Vec3Base<uint32_t> vec3u32;
+
     typedef Vec3Base<int>      vec3i;
     typedef Vec3Base<bool>     vec3b;
     typedef Vec3Base<long>     vec3l;
-    typedef Vec3Base<uint32_t> vec3u;
+    typedef Vec3Base<unsigned> vec3u;
     typedef Vec3Base<float>    vec3f;
     typedef Vec3Base<double>   vec3d;
     typedef Vec3Base<flt_t>    vec3 ;
 
+    typedef Vec4Base<int8_t>   vec4i8;
+    typedef Vec4Base<int16_t>  vec4i16;
+    typedef Vec4Base<int32_t>  vec4i32;
+    typedef Vec4Base<uint8_t>  vec4u8;
+    typedef Vec4Base<uint16_t> vec4u16;
+    typedef Vec4Base<uint32_t> vec4u32;
+
     typedef Vec4Base<int>      vec4i;
     typedef Vec4Base<bool>     vec4b;
     typedef Vec4Base<long>     vec4l;
-    typedef Vec4Base<uint32_t> vec4u;
+    typedef Vec4Base<unsigned> vec4u;
     typedef Vec4Base<float>    vec4f;
     typedef Vec4Base<double>   vec4d;
     typedef Vec4Base<flt_t>    vec4 ;
@@ -58,21 +79,21 @@ namespace Simple {
 
     typedef Mat2Base<int>      mat2i;
     typedef Mat2Base<bool>     mat2b;
-    typedef Mat2Base<uint32_t> mat2u;
+    typedef Mat2Base<unsigned> mat2u;
     typedef Mat2Base<float>    mat2f;
     typedef Mat2Base<double>   mat2d;
     typedef Mat2Base<flt_t>    mat2 ;
 
     typedef Mat3Base<int>      mat3i;
     typedef Mat3Base<bool>     mat3b;
-    typedef Mat3Base<uint32_t> mat3u;
+    typedef Mat3Base<unsigned> mat3u;
     typedef Mat3Base<float>    mat3f;
     typedef Mat3Base<double>   mat3d;
     typedef Mat3Base<flt_t>    mat3 ;
 
     typedef Mat4Base<int>      mat4i;
     typedef Mat4Base<bool>     mat4b;
-    typedef Mat4Base<uint32_t> mat4u;
+    typedef Mat4Base<unsigned> mat4u;
     typedef Mat4Base<float>    mat4f;
     typedef Mat4Base<double>   mat4d;
     typedef Mat4Base<flt_t>    mat4 ;
