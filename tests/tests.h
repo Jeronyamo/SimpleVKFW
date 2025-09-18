@@ -178,7 +178,7 @@ namespace Simple {
 
             void print_test_header() {
                 terminal_h.print_w();
-                terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_INFO, "   Test " + std::to_string(TestSystem::test_id)), {": " + tests[TestSystem::test_id-1]->name()}});
+                terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_INFO, "   TEST " + std::to_string(TestSystem::test_id)), {": " + tests[TestSystem::test_id-1]->name()}});
 
                 std::vector<std::string> __split_str;
                 splitString(tests[TestSystem::test_id-1]->description(), terminal_h.line.width - 3, __split_str);
@@ -201,7 +201,7 @@ namespace Simple {
 
             void print_subtest_header() {
                 terminal_h.print_w();
-                terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_INFO, "      Subtest " + std::to_string(TestSystem::subtest_id+1)), {": " + tests[TestSystem::test_id-1]->subtests[TestSystem::subtest_id].second}});
+                terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_INFO, "      SUBTEST " + std::to_string(TestSystem::subtest_id+1)), {": " + tests[TestSystem::test_id-1]->subtests[TestSystem::subtest_id].second}});
             }
 
             void print_subtest_result(bool _subtest_crashed) {
@@ -344,8 +344,11 @@ namespace Simple {
 
             if (_assert_res)
                 TestSystem::assert_success += 1;
-            else
+            else {
                 TestSystem::assert_error   += 1;
+                TestSystem::terminal_h.print_w({TestSystem::terminal_h.encloseWithStyle(TestSystem::TSTYLE_ERROR, "Error"), {" in assertion:"}});
+                TestSystem::terminal_h.print_w("   " + _assert_descr);
+            }
             TestSystem::subtest_asserts.push_back(__res);
         }
     }; // Tests END

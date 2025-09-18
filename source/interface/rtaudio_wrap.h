@@ -6,7 +6,7 @@
 
 namespace Simple {
     namespace RTA {
-        // Device types (based on channels) available
+    // Device types available, based on number of channels
         enum DeviceType {
             DT_BIT_ONLY_IN  = 1 << 0,
             DT_BIT_ONLY_OUT = 1 << 1,
@@ -15,114 +15,57 @@ namespace Simple {
         }; // DeviceType END
 
         enum DeviceMode {
-            DEVICE_MODE_UNSPECIFIED , // Initial mode, replaced with DEFAULT in/out mode if this device is used to open a stream, ignored otherwise
-            DEVICE_MODE_DEFAULT     , // Checks for default input/output device
-            DEVICE_MODE_SELECTED    , // Uses selected input/output device while it's available, else selects default in/out devices
-            DEVICE_MODE_DUPLEX      , // Uses device with duplex channels while it's available, else falls back to DEFAULT in/out modes
+            DEVICE_MODE_UNSPEC  , // Initial mode, replaced with DEFAULT in/out mode if this device is used to open a stream, ignored otherwise
+            DEVICE_MODE_DEFAULT , // Checks for default input/output device
+            DEVICE_MODE_SELECTED, // Uses selected input/output device while it's available, else selects default in/out devices
+            DEVICE_MODE_DUPLEX  , // Uses device with duplex channels while it's available, else falls back to DEFAULT in/out modes
         }; // DeviceMode END
 
         enum StreamMode {
-            STREAM_MODE_UNSPECIFIED, // Not setting stream mode is an error
-            STREAM_MODE_OUT        , // Output stream
-            STREAM_MODE_IN         , // Input stream
-            STREAM_MODE_DUPLEX     , // Input+output stream, no checks if it uses actual duplex channels of the same device. TODO: what checks to add?
+            STREAM_MODE_UNSPEC, // Not setting stream mode is an error
+            STREAM_MODE_OUT   , // Output stream
+            STREAM_MODE_IN    , // Input stream
+            STREAM_MODE_DUPLEX, // Input+output stream, no checks if it uses actual duplex channels of the same device. TODO: what checks to add?
         }; // StreamMode END
 
+        struct RTAStreamConfig {
+            StreamMode stream_mode = STREAM_MODE_UNSPEC;
+            uint32_t sample_rate;
+            uint32_t buffer_frames; // automatically set on stream opening
+            RtAudioFormat audio_format;
 
-        // Callbacks
-
-        int rtacb_sin(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
-                      double streamTime, RtAudioStreamStatus status, void *userData) {
-            uint32_t i, j;
-            float *buffer     = (float*) outputBuffer;
-            static float lastValues = 0.f;
-            static uint32_t time_to_print = 5;
-
-            if (status == RTAUDIO_INPUT_OVERFLOW)
-                std::cout << "Stream overflow detected" << std::endl;
-            else if (status == RTAUDIO_OUTPUT_UNDERFLOW)
-                std::cout << "Stream underflow detected" << std::endl;
-            else if (status)
-                std::cout << "Stream underflow AND overflow detected" << std::endl;
-
-            // Write interleaved audio data.
-            #pragma omp parallel for collapse(2)
-            for (uint32_t i = 0; i < nBufferFrames; ++i) {
-                for (uint32_t j = 0; j < 2; ++j) {
-                    *buffer++ = std::sin(lastValues);
+            uint32_t getBufferElemBytes() const {
+                switch (audio_format) {
+                    case RTAUDIO_SINT8:   return 1;
+                    case RTAUDIO_SINT16:  return 2;
+                    case RTAUDIO_SINT24:  return 3;
+                    case RTAUDIO_SINT32:  return 4;
+                    case RTAUDIO_FLOAT32: return 4;
+                    case RTAUDIO_FLOAT64: return 8;
                 }
+                return 0;
             }
-            lastValues += 0.05f;
+        }; // RTAStreamConfig END
 
-            if (streamTime > time_to_print) {
-                time_to_print += 5;
-                buffer     = (float*) outputBuffer;
-                for (uint32_t i = 0u; i < nBufferFrames; ++i)
-                    std::cout << buffer[i] << ", ";
-                std::cout << "\n";
-                for (uint32_t i = nBufferFrames; i < 2*nBufferFrames; ++i)
-                    std::cout << buffer[i] << ", ";
-                std::cout << "\n" << std::endl;
-            }
+        struct AudioConfig {
+            static const uint32_t MAX_VOLUME = 32u;
+            uint8_t volume = 10; // final volume aquired from (getVolume)
 
-            return 0;
-        }
-
-        int rtacb_saw(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
-                      double streamTime, RtAudioStreamStatus status, void *userData) {
-            uint32_t i, j;
-            float *buffer     = (float*) outputBuffer;
-            static float lastValues[2] = { 0.f, 0.f };
-
-            if (status == RTAUDIO_INPUT_OVERFLOW)
-                std::cout << "Stream overflow detected" << std::endl;
-            else if (status == RTAUDIO_OUTPUT_UNDERFLOW)
-                std::cout << "Stream underflow detected" << std::endl;
-            else if (status)
-                std::cout << "Stream underflow AND overflow detected" << std::endl;
-
-            // Write interleaved audio data.
-            for (uint32_t i = 0; i < nBufferFrames; ++i) {
-                for (uint32_t j = 0; j < 2; ++j) {
-                    *buffer++ = lastValues[j];
-
-                    lastValues[j] += 0.005f * (j + 1.f + j * 0.1f);
-                    if (lastValues[j] >= 1.f) lastValues[j] -= 2.f;
-                }
-            }
-
-            return 0;
-        }
-
-        int rtacb_inout(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
-                        double streamTime, RtAudioStreamStatus status, void *data) {
-            if (status == RTAUDIO_INPUT_OVERFLOW)
-                std::cout << "Stream overflow detected" << std::endl;
-            else if (status == RTAUDIO_OUTPUT_UNDERFLOW)
-                std::cout << "Stream underflow detected" << std::endl;
-            else if (status)
-                std::cout << "Stream underflow AND overflow detected" << std::endl;
-
-            // Since the number of input and output channels is equal, we can do
-            // a simple buffer copy operation here.
-            uint32_t *bytes = (uint32_t*) data;
-            memcpy(outputBuffer, inputBuffer, *bytes);
-            return 0;
-        }
+            float getVolume() const { return volume/255.f*MAX_VOLUME; }
+        }; // AudioConfig END
 
 
         struct AudioHandler {
             RtAudio rta_handler;
             RtAudioCallback rta_cback = nullptr;
-            StreamMode stream_mode = STREAM_MODE_UNSPECIFIED;
+            RTAStreamConfig stream_config;
+            AudioConfig audio_config;
 
             RtAudio::StreamOptions stream_options;
             struct DeviceHandler {
-                RtAudio::StreamParameters stream_parameters; // Note: device id is only stored as stream_parameters.deviceId
-                DeviceMode device_mode = DEVICE_MODE_UNSPECIFIED;
-            } device_i, device_o; // devices: in, out; duplex mode: device_i+device_o parameters are used
-
-            void* cback_data = nullptr;
+                RtAudio::StreamParameters stream_parameters; // Note: device id is only stored as 'stream_parameters.deviceId'
+                DeviceMode device_mode = DEVICE_MODE_UNSPEC;
+            } device_i, device_o; // devices: in, out; duplex mode: 'device_i'+'device_o' parameters are used
 
 
             AudioHandler() { sizeof(AudioHandler); }
@@ -134,20 +77,16 @@ namespace Simple {
             }
 
 
-            void callbackSet(RtAudioCallback _rta_cback, void *_cback_data = nullptr) {
-                rta_cback  =  _rta_cback;
-                cback_data = _cback_data;
-            }
-
+            void callbackSet(RtAudioCallback _rta_cback) { rta_cback = _rta_cback; }
 
         // Stream methods
 
-            void streamSetMode(StreamMode _stream_mode, DeviceMode _o_device_mode = DEVICE_MODE_UNSPECIFIED, DeviceMode _i_device_mode = DEVICE_MODE_UNSPECIFIED) {
-                stream_mode = _stream_mode;
+            void streamSetMode(StreamMode _stream_mode, DeviceMode _o_device_mode = DEVICE_MODE_UNSPEC, DeviceMode _i_device_mode = DEVICE_MODE_UNSPEC) {
+                stream_config.stream_mode = _stream_mode;
 
-                if ((uint32_t(stream_mode) & 1) && _o_device_mode == DEVICE_MODE_UNSPECIFIED)
+                if ((uint32_t(stream_config.stream_mode) & 1) && _o_device_mode == DEVICE_MODE_UNSPEC)
                     _o_device_mode = DEVICE_MODE_DEFAULT;
-                if ((uint32_t(stream_mode) & 2) && _i_device_mode == DEVICE_MODE_UNSPECIFIED)
+                if ((uint32_t(stream_config.stream_mode) & 2) && _i_device_mode == DEVICE_MODE_UNSPEC)
                     _i_device_mode = DEVICE_MODE_DEFAULT;
 
                 device_i.device_mode = _i_device_mode;
@@ -161,13 +100,17 @@ namespace Simple {
                 stream_options.priority        = _s_priority;
             }
 
-            void streamOpen(uint32_t _sample_rate, uint32_t _buf_frames, RtAudioFormat _audio_format, bool _use_options = true, void* _cback_data = nullptr) {
-                RtAudio::StreamParameters* __o_params = (uint32_t(stream_mode) & 1) ? &device_o.stream_parameters : nullptr;
-                RtAudio::StreamParameters* __i_params = (uint32_t(stream_mode) & 2) ? &device_i.stream_parameters : nullptr;
+            void streamOpen(uint32_t _sample_rate, uint32_t _buf_frames, RtAudioFormat _audio_format, bool _use_options = true) {
+                RtAudio::StreamParameters* __o_params = (uint32_t(stream_config.stream_mode) & 1) ? &device_o.stream_parameters : nullptr;
+                RtAudio::StreamParameters* __i_params = (uint32_t(stream_config.stream_mode) & 2) ? &device_i.stream_parameters : nullptr;
 
+                stream_config.sample_rate = _sample_rate;
+                stream_config.buffer_frames = _buf_frames;
+                stream_config.audio_format = _audio_format;
                 RtAudioErrorType  __res = rta_handler.openStream(__o_params, __i_params, _audio_format, _sample_rate, 
-                                                                 &_buf_frames, rta_cback, _cback_data ? _cback_data : cback_data, &stream_options);
+                                                                 &stream_config.buffer_frames, rta_cback, this, _use_options ? &stream_options : nullptr);
 
+                printf("Stream open with parameters:\nBuffer frames: %d\n", stream_config.buffer_frames);
                 if (__res != RTAUDIO_NO_ERROR) {
                     throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: streamOpen", "Error code " + std::to_string(__res) + ";\n" + rta_handler.getErrorText()));
                 }
@@ -219,7 +162,7 @@ namespace Simple {
                 return rta_handler.getDeviceInfo(device_o.stream_parameters.deviceId).nativeFormats & _audio_format;
             }
 
-            void device_Update(bool _is_input_device) {
+            void deviceUpdate_(bool _is_input_device) {
                 DeviceHandler &__device_io = _is_input_device ? device_i : device_o;
                 const uint32_t __old_device_id = __device_io.stream_parameters.deviceId;
 
@@ -259,21 +202,21 @@ namespace Simple {
                         }
                         break;
                     }
-                    case DEVICE_MODE_UNSPECIFIED: {
+                    case DEVICE_MODE_UNSPEC: {
                         break;
                     }
                     default: {
-                        throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: device_Update", "unsupported device mode: " + std::to_string(__device_io.device_mode)));
+                        throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate_", "unsupported device mode: " + std::to_string(__device_io.device_mode)));
                     }
                 }
 
                 if (__old_device_id != __device_io.stream_parameters.deviceId) {
-                    std::string __info_string = device_GetInfoStr(__device_io.stream_parameters.deviceId);
+                    std::string __info_string = deviceGetInfoStr_(__device_io.stream_parameters.deviceId);
                     printf("%s %s\n", _is_input_device ? "New Input" : "New Output", __info_string.c_str());
                 }
             }
-            inline void deviceInputUpdate()  { device_Update(true); }
-            inline void deviceOutputUpdate() { device_Update(false); }
+            inline void deviceInputUpdate()  { deviceUpdate_( true); }
+            inline void deviceOutputUpdate() { deviceUpdate_(false); }
             void deviceDuplexUpdate() {
                 if (device_i.device_mode == DEVICE_MODE_DUPLEX &&
                     device_o.device_mode == DEVICE_MODE_DUPLEX) {
@@ -318,7 +261,7 @@ namespace Simple {
                         }
                     }
                     else if (!__same_i_o) { // two different duplex devices
-                        // TODO: sync by setting same duplex device. Might do additional work here choosing between device_i/device_o duplex device.
+                        // TODO: sync by setting same duplex device. Might do additional work here choosing between device_i/device_o as duplex device.
                         device_i.stream_parameters.deviceId = device_o.stream_parameters.deviceId;
                     }
                     // else {} - same duplex device, no work needed
@@ -337,7 +280,7 @@ namespace Simple {
 
 
             // Used by getInputDeviceInfoStr/getOutputDeviceInfoStr
-            std::string device_GetInfoStr(uint32_t _device_id) {
+            std::string deviceGetInfoStr_(uint32_t _device_id) {
                 std::string __res = "";
 
                 if (_device_id > 0) {
@@ -374,9 +317,103 @@ namespace Simple {
                 }
                 return __res;
             }
-            inline std::string  deviceInputGetInfoStr() { return device_GetInfoStr(device_i.stream_parameters.deviceId); }
-            inline std::string deviceOutputGetInfoStr() { return device_GetInfoStr(device_o.stream_parameters.deviceId); }
+            inline std::string  deviceInputGetInfoStr() { return deviceGetInfoStr_(device_i.stream_parameters.deviceId); }
+            inline std::string deviceOutputGetInfoStr() { return deviceGetInfoStr_(device_o.stream_parameters.deviceId); }
         }; // AudioHandler END
+
+
+    // Callbacks. Last argument is expected to be a pointer to AudioHandler.
+
+        int rtacb_sin(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+                      double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            float *__buffer = (float*) _o_buffer;
+            static float __last_val = 0.f;
+            // static uint32_t __time_to_print = 5;
+
+            if (_status == RTAUDIO_INPUT_OVERFLOW)
+                std::cout << "Stream overflow detected" << std::endl;
+            else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
+                std::cout << "Stream underflow detected" << std::endl;
+            else if (_status)
+                std::cout << "Stream underflow AND overflow detected" << std::endl;
+
+            // Write interleaved audio data.
+            #pragma omp parallel for collapse(2)
+            for (uint32_t i = 0; i < _n_buf_frames; ++i) {
+                for (uint32_t j = 0; j < 2; ++j) {
+                    *__buffer++ = ((AudioHandler*)_config)->audio_config.getVolume() * std::sin(__last_val);
+                }
+            }
+            __last_val += 0.05f;
+
+            // if (_stream_t > time_to_print) {
+            //     __time_to_print += 5;
+            //     __buffer   = (float*) _o_buffer;
+            //     for (uint32_t i = 0u; i < _n_buf_frames; ++i)
+            //         std::cout << __buffer[i] << ", ";
+            //     std::cout << "\n";
+            //     for (uint32_t i = _n_buf_frames; i < 2*_n_buf_frames; ++i)
+            //         std::cout << __last_val << ", ";
+            //     std::cout << "\n" << std::endl;
+            // }
+
+            return 0;
+        }
+
+        int rtacb_saw(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
+                      double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            float *buffer = (float*) _o_buffer;
+            static float __last_val[2] = { 0.f, 0.f };
+
+            if (_status == RTAUDIO_INPUT_OVERFLOW)
+                std::cout << "Stream overflow detected" << std::endl;
+            else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
+                std::cout << "Stream underflow detected" << std::endl;
+            else if (_status)
+                std::cout << "Stream underflow AND overflow detected" << std::endl;
+
+            // Write interleaved audio data.
+            for (uint32_t i = 0; i < _n_buf_frames; ++i) {
+                for (uint32_t j = 0; j < 2; ++j) {
+                    *buffer++ = __last_val[j];
+
+                    __last_val[j] += 0.005f * (j + 1.f + j * 0.1f);
+                    if (__last_val[j] >= 1.f) __last_val[j] -= 2.f;
+                }
+            }
+
+            return 0;
+        }
+
+        int rtacb_inout(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+                        double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            if (_status == RTAUDIO_INPUT_OVERFLOW)
+                printf("Stream overflow detected\n");
+            // else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
+            //     std::cout << "Stream underflow detected" << std::endl;
+            // else if (_status)
+            //     std::cout << "Stream underflow AND overflow detected" << std::endl;
+
+            // AudioHandler *__config = (AudioHandler*)_config;
+
+            // If the number of input and output channels is equal, we simply copy buffer here.
+            // if (__config->device_i.stream_parameters.nChannels == __config->device_o.stream_parameters.nChannels) {
+            //     uint32_t bytes = __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames *
+            //                     //  __config->stream_config.getBufferElemBytes();
+            //                     1;
+            //     // memcpy(_o_buffer, _i_buffer, bytes);
+
+            //     if (__config->stream_config.audio_format == RTAUDIO_FLOAT32) {
+            //         float *__i_buffer = (float*) _i_buffer;
+            //         float *__o_buffer = (float*) _o_buffer;
+
+            //         // #pragma omp parallel for
+            //         for (uint32_t i = 0u; i < __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames; ++i)
+            //             __o_buffer[i] = __i_buffer[i] * __config->audio_config.getVolume();
+            //     }
+            // }
+            return 0;
+        }
     }; // RTA END
 }; // Simple END
 

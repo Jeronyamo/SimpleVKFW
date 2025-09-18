@@ -12,29 +12,29 @@
 
 
 namespace Simple {
-    enum NextSymbolType { NEXT_START, NEXT_ERR, NEXT_END, NEXT_NONTERMINAL, NEXT_TERMINAL };
-    const std::map<NextSymbolType, std::string> Next_sym_to_str{ {NEXT_START, "NEXT_START"}, {NEXT_ERR, "NEXT_ERR"},
-                                                                 {NEXT_END, "NEXT_END"}, {NEXT_NONTERMINAL, "NEXT_NONTERMINAL"},
-                                                                 {NEXT_TERMINAL, "NEXT_TERMINAL"} };
+    namespace Parser {
+        enum NextSymbolType { NEXT_START, NEXT_ERR, NEXT_END, NEXT_NONTERMINAL, NEXT_TERMINAL };
+        const std::map<NextSymbolType, std::string> Next_sym_to_str{ {NEXT_START, "NEXT_START"}, {NEXT_ERR, "NEXT_ERR"},
+                                                                     {NEXT_END, "NEXT_END"}, {NEXT_NONTERMINAL, "NEXT_NONTERMINAL"},
+                                                                     {NEXT_TERMINAL, "NEXT_TERMINAL"} };
 
-    typedef uint32_t Nonterminal;
-    constexpr Nonterminal NONTERM_START = 0u;         // the first nonterminal
-    constexpr Nonterminal NONTERM_ERR   = UINT32_MAX; // error nonterminal
+        typedef uint32_t Nonterminal;
+        constexpr Nonterminal NONTERM_START = 0u;         // the first nonterminal
+        constexpr Nonterminal NONTERM_ERR   = UINT32_MAX; // error nonterminal
 
-    struct TermOrNonterm {
-        std::string    term;
-        Nonterminal nonterm;
+        struct TermOrNonterm {
+            std::string    term;
+            Nonterminal nonterm;
 
-        TermOrNonterm(Nonterminal     _nonterm) : term{}     , nonterm{  _nonterm} {}
-        TermOrNonterm(const        char *_term) : term{_term}, nonterm{UINT32_MAX} {}
-        TermOrNonterm(const std::string &_term) : term{_term}, nonterm{UINT32_MAX} {}
-        TermOrNonterm(const TermOrNonterm &_term_nonterm)
-                        : term{_term_nonterm.term}, nonterm{_term_nonterm.nonterm} {}
+            TermOrNonterm(Nonterminal     _nonterm) : term{}     , nonterm{  _nonterm} {}
+            TermOrNonterm(const        char *_term) : term{_term}, nonterm{UINT32_MAX} {}
+            TermOrNonterm(const std::string &_term) : term{_term}, nonterm{UINT32_MAX} {}
+            TermOrNonterm(const TermOrNonterm &_term_nonterm)
+                            : term{_term_nonterm.term}, nonterm{_term_nonterm.nonterm} {}
 
-        bool isNonterm() const { return nonterm != UINT32_MAX; }
-    }; // TermOrNonterm END
+            bool isNonterm() const { return nonterm != UINT32_MAX; }
+        }; // TermOrNonterm END
 
-    namespace ParserReg {
         struct RuleState {
             uint32_t  substr_id;
             Nonterminal nonterm;
@@ -60,7 +60,7 @@ namespace Simple {
             char* rule_str = nullptr;
             std::vector<std::pair<Nonterminal, uint32_t>> nt_index;
 
-            ProdRule(const std::initializer_list<TermOrNonterm> &_terms_nonterms) {
+            ProdRule(const std::vector<TermOrNonterm> &_terms_nonterms) {
                 std::string __rule_str;
 
                 for (const auto &right : _terms_nonterms) {
@@ -74,6 +74,8 @@ namespace Simple {
                 memcpy(rule_str, __rule_str.data(), __rule_str.size());
                 rule_str[__rule_str.size()] = '\0';
             }
+            ProdRule(const std::initializer_list<TermOrNonterm> &_terms_nonterms)
+                            : ProdRule{std::vector<TermOrNonterm>{_terms_nonterms}} {}
             ProdRule(const ProdRule &_prod_rule) : rule_str{new char[_prod_rule.nt_index.back().second]},
                                                    nt_index{_prod_rule.nt_index} {
                 memcpy(rule_str, _prod_rule.rule_str, _prod_rule.nt_index.back().second);
@@ -93,6 +95,7 @@ namespace Simple {
                     if (_nt_mapping.find(el.first) != _nt_mapping.end())
                         el.first = _nt_mapping.at(el.first);
             }
+            void replaceRootNonterminal(Nonterminal _new_nt) { replaceNonterminal(nt_index.back().first, _new_nt); }
             std::string printRule(RuleState _state) const {
                 std::string __res;
                 uint32_t nt_id = 0u;
@@ -198,6 +201,12 @@ namespace Simple {
                     }
                 }
             }
+
+            void getExitNonterms(std::set<Nonterminal> &_exit_nt_set) const {
+                for (const auto &elem : nt_index)
+                    if (elem.first != nt_index.back().first)
+                        _exit_nt_set.emplace(elem.first);
+            }
         }; // ProdRule END
 
         // TODO: bring back nonterm IDs to support "aAAb" rules, where A - nonterminal
@@ -230,6 +239,8 @@ namespace Simple {
                     }
                 }
             }
+            RuleBlock(const RuleBlock &_block) : prod_rules{_block.prod_rules}, nonterm_exits{_block.nonterm_exits},
+                                                 nonterm_offset{_block.nonterm_offset} {}
 
             // This parse overload returns all rule states at the beginning of parsing.
             // 'substr' - substring (string with offset)
@@ -301,6 +312,11 @@ namespace Simple {
             }
             std::string printRule(const RuleBlockState &_curr_state) const {
                 return " -> " + prod_rules[_curr_state.rule_id].printRule(_curr_state.rule_state) + " (" + std::to_string(_curr_state.rule_id) + ')';
+            }
+
+            void getExitNonterminals(std::set<Nonterminal> &_exit_nt_set) const {
+                for (const auto &rule : prod_rules)
+                    rule.getExitNonterms(_exit_nt_set);
             }
         }; // RuleBlock END
 
@@ -470,20 +486,6 @@ namespace Simple {
         }; // RuleGrammar END
 
 
-        // // Note: probably need one 'default' copy of rule blocks and as many 'specified' instances as needed
-        // // UINT: rule_digit  (1) -> rule_nonterm_or_empty (2) -> rule_digit (1)
-        // //  INT: rule_signed (1) -> UINT (2,3)
-
-        // // Predefined rule blocks
-
-        RuleBlock rule_end     { {""} };
-        RuleBlock rule_nonterm { { "", 1u} }; // Note: An element from this rule can be used to synchronize nonterminals from different elements (by only changing its exit nonterm).
-        RuleBlock rule_nt_empty{ { "", 1u}, {""} };
-        RuleBlock rule_space   { {" ", 1u}, {"\t", 1u}, {"\n", 1u} };
-        RuleBlock rule_digit   { {"0", 1u}, { "1", 1u}, { "2", 1u}, {"3", 1u}, {"4", 1u}, {"5", 1u}, {"6", 1u}, {"7", 1u}, {"8", 1u}, {"9", 1u} };
-        RuleBlock rule_signed  { {"+", 1u}, { "-", 1u}, {  "", 1u} };
-
-
         struct Parser {
             std::vector<ParserState> parsed_nonterms;
             const RuleGrammar *grammar = nullptr;
@@ -588,7 +590,60 @@ namespace Simple {
                 return __res;
             }
         }; // Parser END
-    }; // ParserReg END
+
+        // // Note: probably need one 'default' copy of rule blocks and as many 'specified' instances as needed
+        // // UINT: rule_digit  (1) -> rule_nonterm_or_empty (2) -> rule_digit (1)
+        // //  INT: rule_signed (1) -> UINT (2,3)
+
+        // // Predefined rule blocks
+
+        namespace Blocks {
+            RuleBlock b_end   { {""} };
+            RuleBlock b_space { {" "}, {"\t"}, {"\n"} };
+            RuleBlock b_digit { {"0"}, {"1"}, {"2"}, {"3"}, {"4"}, {"5"}, {"6"}, {"7"}, {"8"}, {"9"} };
+            RuleBlock b_signed{ {"+"}, {"-"}, {""} };
+
+            // Returns a RuleBlock with one rule: "<Nt1><Nt2><Nt3>...<NtX>" where X is 'nt_count' (plus second, empty rule if 'empty_allowed' is true).
+            RuleBlock bNt(uint32_t _nt_count, bool _empty_allowed = false) {
+                std::vector<TermOrNonterm> __res((size_t)_nt_count, NONTERM_START);
+                for (uint32_t i = 0u; i < _nt_count; ++i)
+                    __res[i].nonterm = i+1;
+                return _empty_allowed ? RuleBlock{ProdRule{__res}, ProdRule{""}} : RuleBlock{ProdRule{__res}};
+            }
+
+            RuleBlock bLetterUpper(bool _empty_allowed = false) {
+                std::vector<TermOrNonterm> __res((size_t)26, NONTERM_ERR);
+                for (uint32_t i = 0u; i < 26; ++i)
+                    __res[i].term = 'A' + i;
+                return _empty_allowed ? RuleBlock{ProdRule{__res}, ProdRule{""}} : RuleBlock{ProdRule{__res}};
+            }
+
+            RuleBlock bLetterLower(bool _empty_allowed = false) {
+                std::vector<TermOrNonterm> __res((size_t)26, NONTERM_ERR);
+                for (uint32_t i = 0u; i < 26; ++i)
+                    __res[i].term = 'a' + i;
+                return _empty_allowed ? RuleBlock{ProdRule{__res}, ProdRule{""}} : RuleBlock{ProdRule{__res}};
+            }
+
+            RuleBlock bLetter(bool _empty_allowed = false) {
+                std::vector<TermOrNonterm> __res((size_t)52, NONTERM_ERR);
+                for (uint32_t i = 0u; i < 26; ++i)
+                    __res[i].term = 'A' + i;
+                for (uint32_t i = 0u; i < 26; ++i)
+                    __res[i+26].term = 'a' + i;
+                return _empty_allowed ? RuleBlock{ProdRule{__res}, ProdRule{""}} : RuleBlock{ProdRule{__res}};
+            }
+        }; // Blocks END
+
+        namespace Elements {
+            RuleElement e_uint{{ {0, {1,2}}, {2, {3,2}} }, { Blocks::bNt(2), Blocks::b_digit, Blocks::bNt(2, true), Blocks::b_digit }};
+            RuleElement e_int {{ {0, {1,2}}, {2, {3,4}}, {4, {5,4}} }, { Blocks::bNt(2), Blocks::b_signed, Blocks::bNt(2), Blocks::b_digit, Blocks::bNt(2, true), Blocks::b_digit }};
+        }; // Elements END
+    }; // Parser END
+
+    struct ArgParser {
+
+    }; // ArgParser END
 }; // Simple END
 
 

@@ -87,7 +87,8 @@
         "typeindex": "cpp",
         "variant": "cpp",
         "shared_mutex": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "version": "cpp"
     },
     "cmake.sourceDirectory": "C:/Programming/SimpleVKFW",
     "cmake.buildDirectory": "${workspaceFolder}/build_${buildType}/win/build",

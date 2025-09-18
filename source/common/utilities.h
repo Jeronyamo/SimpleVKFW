@@ -1,7 +1,7 @@
 #ifndef SVKFW_UTILITIES_H
 #define SVKFW_UTILITIES_H
 
-#include <algorithm>
+#include <type_traits>
 
 // this file contains various [template] classes/functions
 // used under the hood

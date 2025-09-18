@@ -2,6 +2,9 @@
 
 #include <vector>
 #include <iostream>
+#include <thread>
+#include <future>
+#include <chrono>
 
 // What to test
 #include "math/vectors.h"
@@ -88,25 +91,38 @@ namespace Simple {
             Img::save<Simple::Img::PNG>("tests/debug_mega_image_img3f.png", img3f);
         } SVKFW_SUBTEST_END(st1);
 
-        SVKFW_SUBTEST_BEG(st2, "Save/Load img differences") {
-            std::string __img_dir = "/Programming/study/MSUProject/disser/graphics/renders/";
+        // SVKFW_SUBTEST_BEG(st2, "Save/Load img differences") {
+        //     std::string __img_dir = "/Programming/study/MSUProject/disser/graphics/renders/";
 
-            genDiffImage(__img_dir + "arma_ref_0.png", __img_dir + "arma_res_0.png", __img_dir + "arma_diff.png");
-            genDiffImage(__img_dir + "bunny_ref_0.png", __img_dir + "bunny_iter_1014_0.png", __img_dir + "bunny_diff.png");
-            genDiffImage(__img_dir + "dragon_ref_0.png", __img_dir + "dragon_iter_1014_0.png", __img_dir + "dragon_diff.png");
-            genDiffImage(__img_dir + "happy_ref_8.png", __img_dir + "happy_iter_1008_8.png", __img_dir + "happy_diff.png");
-            genDiffImage(__img_dir + "nefertiti_ref_0.png", __img_dir + "nefertiti_iter_1010_0.png", __img_dir + "nefertiti_diff.png");
-            genDiffImage(__img_dir + "teapot_ref_0.png", __img_dir + "teapot_iter_1008_0.png", __img_dir + "teapot_diff.png");
-        } SVKFW_SUBTEST_END(st2);
+        //     genDiffImage(__img_dir + "arma_ref_0.png", __img_dir + "arma_res_0.png", __img_dir + "arma_diff.png");
+        //     genDiffImage(__img_dir + "bunny_ref_0.png", __img_dir + "bunny_iter_1014_0.png", __img_dir + "bunny_diff.png");
+        //     genDiffImage(__img_dir + "dragon_ref_0.png", __img_dir + "dragon_iter_1014_0.png", __img_dir + "dragon_diff.png");
+        //     genDiffImage(__img_dir + "happy_ref_8.png", __img_dir + "happy_iter_1008_8.png", __img_dir + "happy_diff.png");
+        //     genDiffImage(__img_dir + "nefertiti_ref_0.png", __img_dir + "nefertiti_iter_1010_0.png", __img_dir + "nefertiti_diff.png");
+        //     genDiffImage(__img_dir + "teapot_ref_0.png", __img_dir + "teapot_iter_1008_0.png", __img_dir + "teapot_diff.png");
+        // } SVKFW_SUBTEST_END(st2);
     SVKFW_TEST_END(Test2);
 
     SVKFW_TEST_BEG(Test3, "RtAudio")
+
+        struct AsyncExit {
+            static char getAnswer() {    
+                char __res = ' ';
+                while (__res != 'q' && __res != 'Q') { std::cin >> __res; }
+                return __res;
+            }
+
+            std::future<char> __res = std::async(getAnswer);
+
+            bool gotAnswer() { return __res.wait_for(std::chrono::seconds(1)) == std::future_status::ready; }
+        }; // AsyncExit END
+
 
         SVKFW_SUBTEST_BEG(st1, "Audio devices info") {
             RTA::AudioHandler audio_device;
 
             for (uint32_t dev_id : audio_device.rta_handler.getDeviceIds()) {
-                std::cout << audio_device.device_GetInfoStr(dev_id) << "\n";
+                std::cout << audio_device.deviceGetInfoStr_(dev_id) << "\n";
             }
         } SVKFW_SUBTEST_END(st1);
 
@@ -137,48 +153,44 @@ namespace Simple {
             if (!audio_o.streamIsOpen()) {
                 throw std::runtime_error(SVKFW_WRAPERR("Test 3","Audio stream is not open"));
             }
-            printf("Subtest 3: Success\n");
         } SVKFW_SUBTEST_END(st3);
 
         SVKFW_SUBTEST_BEG(st4, "Audio stream run") {
             RTA::AudioHandler audio_o;
-            const uint32_t __channels = 2;
+            const uint32_t __channels = 1;
             const uint32_t __buf_frames = 512;
             const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
 
-            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_OUT,
+            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_DUPLEX,
                                   Simple::RTA::DEVICE_MODE_DEFAULT,
                                   Simple::RTA::DEVICE_MODE_DEFAULT);
             audio_o.deviceUpdateAll();
             audio_o.streamSetOptions(0, 0, "Test Audio Output/Input", 0);
             audio_o.deviceOutputSetParameters(__channels);
             audio_o.deviceInputSetParameters(__channels);
-            audio_o.callbackSet(Simple::RTA::rtacb_sin, (void*)&__buf_size);
+            audio_o.callbackSet(Simple::RTA::rtacb_inout);
 
-            audio_o.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
-            if (!audio_o.streamIsOpen()) {
-                throw std::runtime_error(SVKFW_WRAPERR("Test 4","Audio stream is not open"));
-            }
+            audio_o.streamOpen(12000, __buf_frames, RTAUDIO_FLOAT32, false);
+            Tests::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
 
             audio_o.streamStart();
 
-            while (true) { audio_o.deviceUpdateAll(); }
-
-            printf("Subtest 4: Success\n");
+            AsyncExit __exit_state;
+            while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
         } SVKFW_SUBTEST_END(st4);
     SVKFW_TEST_END(Test3);
 
     SVKFW_TEST_BEG(Test4, "Parser")
 
-        static void parseNext(const ParserReg::ProdRule &_prod_rule, ParserReg::RuleState _state, NextSymbolType _expected_state) {
+        static void parseNext(const Parser::ProdRule &_prod_rule, Parser::RuleState _state, Parser::NextSymbolType _expected_state) {
             static uint32_t err_count = 1u;
-            NextSymbolType __next_info = _prod_rule.checkNext(_state);
+            Parser::NextSymbolType __next_info = _prod_rule.checkNext(_state);
             // printf("Next state: %d(%d)\n", (int)__next_info, (int)_expected_state);
             if (__next_info != _expected_state) throw std::runtime_error(SVKFW_WRAPERR("Test4 :: parseNext", "Error " + std::to_string(err_count)));
             err_count += 1;
         }
 
-        static void parseTerm(const ParserReg::ProdRule &_prod_rule, ParserReg::RuleState &_state, char _expected_ch) {
+        static void parseTerm(const Parser::ProdRule &_prod_rule, Parser::RuleState &_state, char _expected_ch) {
             static uint32_t err_count = 1u;
             bool __success = _prod_rule.parseRule(_state, _expected_ch);
             // printf("Next terminal symbol: %c(%c)\n", (_state.substr_id < _prod_rule.nt_index.back().second ? _prod_rule.rule_str[_state.substr_id-1] : ' '), _expected_ch); // "substr_id - 1" because parseRule increments it after parsing
@@ -186,7 +198,7 @@ namespace Simple {
             err_count += 1;
         }
 
-        static void parseNonterm(const ParserReg::ProdRule &_prod_rule, ParserReg::RuleState &_state, Nonterminal _expected_nt) {
+        static void parseNonterm(const Parser::ProdRule &_prod_rule, Parser::RuleState &_state, Parser::Nonterminal _expected_nt) {
             static uint32_t err_count = 1u;
             _prod_rule.getNontermNext(_state);
             // printf("Next nonterm: %d(%d)\n", _state.nonterm, _expected_nt);
@@ -195,57 +207,57 @@ namespace Simple {
         }
 
         SVKFW_SUBTEST_BEG(st1, "Parse single rule") {
-            Nonterminal nonterm1 = 1u;
-            Nonterminal nonterm2 = 2u;
-            Nonterminal nonterm3 = 3u;
-            ParserReg::ProdRule prod_rule1{{ nonterm1 }};
-            ParserReg::ProdRule prod_rule2{{ "u" }};
-            ParserReg::ProdRule prod_rule3{{ nonterm1, "u" }};
-            ParserReg::ProdRule prod_rule4{{ "ab", nonterm1, "u", nonterm2, nonterm3 }};
+            Parser::Nonterminal nonterm1 = 1u;
+            Parser::Nonterminal nonterm2 = 2u;
+            Parser::Nonterminal nonterm3 = 3u;
+            Parser::ProdRule prod_rule1{{ nonterm1 }};
+            Parser::ProdRule prod_rule2{{ "u" }};
+            Parser::ProdRule prod_rule3{{ nonterm1, "u" }};
+            Parser::ProdRule prod_rule4{{ "ab", nonterm1, "u", nonterm2, nonterm3 }};
 
             // State
-            ParserReg::RuleState __state{ 0u, NONTERM_START };
+            Parser::RuleState __state{ 0u, Parser::NONTERM_START };
 
             // Parse rule 1
             // printf("\nParse rule 1\n");
-            __state = ParserReg::RuleState{ 0u, NONTERM_START };
-            parseNext   (prod_rule1, __state, NEXT_NONTERMINAL);
+            __state = Parser::RuleState{ 0u, Parser::NONTERM_START };
+            parseNext   (prod_rule1, __state, Parser::NEXT_NONTERMINAL);
             parseNonterm(prod_rule1, __state, nonterm1);
-            parseNext   (prod_rule1, __state, NEXT_END);
+            parseNext   (prod_rule1, __state, Parser::NEXT_END);
 
             // Parse rule 2
             // printf("\nParse rule 2\n");
-            __state = ParserReg::RuleState{ 0u, NONTERM_START };
-            parseNext   (prod_rule2, __state, NEXT_TERMINAL);
+            __state = Parser::RuleState{ 0u, Parser::NONTERM_START };
+            parseNext   (prod_rule2, __state, Parser::NEXT_TERMINAL);
             parseTerm   (prod_rule2, __state, 'u');
             // printf("State: %d-%d\n", __state.nonterm, __state.substr_id);
-            parseNext   (prod_rule2, __state, NEXT_END);
+            parseNext   (prod_rule2, __state, Parser::NEXT_END);
 
             // Parse rule 3
             // printf("\nParse rule 3\n");
-            __state = ParserReg::RuleState{ 0u, NONTERM_START };
-            parseNext   (prod_rule3, __state, NEXT_NONTERMINAL);
+            __state = Parser::RuleState{ 0u, Parser::NONTERM_START };
+            parseNext   (prod_rule3, __state, Parser::NEXT_NONTERMINAL);
             parseNonterm(prod_rule3, __state, nonterm1);
-            parseNext   (prod_rule3, __state, NEXT_TERMINAL);
+            parseNext   (prod_rule3, __state, Parser::NEXT_TERMINAL);
             parseTerm   (prod_rule3, __state, 'u');
-            parseNext   (prod_rule3, __state, NEXT_END);
+            parseNext   (prod_rule3, __state, Parser::NEXT_END);
 
             // Parse rule 4
             // printf("\nParse rule 4\n");
-            __state = ParserReg::RuleState{ 0u, NONTERM_START };
-            parseNext   (prod_rule4, __state, NEXT_TERMINAL);
+            __state = Parser::RuleState{ 0u, Parser::NONTERM_START };
+            parseNext   (prod_rule4, __state, Parser::NEXT_TERMINAL);
             parseTerm   (prod_rule4, __state, 'a');
-            parseNext   (prod_rule4, __state, NEXT_TERMINAL);
+            parseNext   (prod_rule4, __state, Parser::NEXT_TERMINAL);
             parseTerm   (prod_rule4, __state, 'b');
-            parseNext   (prod_rule4, __state, NEXT_NONTERMINAL);
+            parseNext   (prod_rule4, __state, Parser::NEXT_NONTERMINAL);
             parseNonterm(prod_rule4, __state, nonterm1);
-            parseNext   (prod_rule4, __state, NEXT_TERMINAL);
+            parseNext   (prod_rule4, __state, Parser::NEXT_TERMINAL);
             parseTerm   (prod_rule4, __state, 'u');
-            parseNext   (prod_rule4, __state, NEXT_NONTERMINAL);
+            parseNext   (prod_rule4, __state, Parser::NEXT_NONTERMINAL);
             parseNonterm(prod_rule4, __state, nonterm2);
-            parseNext   (prod_rule4, __state, NEXT_NONTERMINAL);
+            parseNext   (prod_rule4, __state, Parser::NEXT_NONTERMINAL);
             parseNonterm(prod_rule4, __state, nonterm3);
-            parseNext   (prod_rule4, __state, NEXT_END);
+            parseNext   (prod_rule4, __state, Parser::NEXT_END);
 
             // printf("Success\n");
         } SVKFW_SUBTEST_END(st1);
@@ -257,34 +269,28 @@ namespace Simple {
             const char *parsed_str4 = "12.34";
             const char *parsed_str5 = "";
 
-            ParserReg::RuleBlock __block_digit  { {"0"}, {"1"}, {"2"}, {"3"}, {"4"}, {"5"}, {"6"}, {"7"}, {"8"}, {"9"} };
-            ParserReg::RuleBlock __block_digit_n{ {1u, 0u}, {""} }; // __block_digit
-            ParserReg::RuleBlock __block_uint   { {1u, 2u} }; // __block_digit, __block_digit_n
-            ParserReg::RuleBlock __block_signed { {"-", 1u}, {"+", 1u}, {1u} }; // __block_uint
-            ParserReg::RuleElement __elem_int{ {{0, {1}}, {1, {2, 3}}, {3, {2}}}, { __block_signed, __block_uint, __block_digit, __block_digit_n } };
-
             // Parse strings
             bool __res_parse = false;
             std::vector<std::string> __res_strings;
-            ParserReg::RuleGrammar __int_grammar{ {}, {__elem_int} };
-            ParserReg::Parser __int_parser{};
+            Parser::RuleGrammar __int_grammar{ {}, { Parser::Elements::e_int } };
+            Parser::Parser __int_parser{};
 
             __res_parse   = __int_parser.parse(parsed_str1, __int_grammar);
-            __res_strings = __int_parser.getElements(parsed_str1, NONTERM_START);
+            __res_strings = __int_parser.getElements(parsed_str1, Parser::NONTERM_START);
             Tests::testAssert(__res_parse, "Integer 1: '" + std::string(parsed_str1) + "' parse error");
             Tests::testAssert(__res_strings.size() == 1, "Integer 1: parsed rule element info size mismatch - " + std::to_string(__res_strings.size()) + " != 1");
             if (__res_strings.size() == 1)
                 Tests::testAssert(__res_strings[0] == parsed_str1, "Integer 1: retrieved integer error: '" + __res_strings[0] + "' != '" + std::string(parsed_str1) + "'");
 
             __res_parse   = __int_parser.parse(parsed_str2, __int_grammar);
-            __res_strings = __int_parser.getElements(parsed_str2, NONTERM_START);
+            __res_strings = __int_parser.getElements(parsed_str2, Parser::NONTERM_START);
             Tests::testAssert(__res_parse, "Integer 2: '" + std::string(parsed_str2) + "' parse error");
             Tests::testAssert(__res_strings.size() == 1, "Integer 2: parsed rule element info size mismatch - " + std::to_string(__res_strings.size()) + " != 1");
             if (__res_strings.size() == 1)
                 Tests::testAssert(__res_strings[0] == parsed_str2, "Integer 2: retrieved integer error: '" + __res_strings[0] + "' != '" + std::string(parsed_str2) + "'");
 
             __res_parse   = __int_parser.parse(parsed_str3, __int_grammar);
-            __res_strings = __int_parser.getElements(parsed_str3, NONTERM_START);
+            __res_strings = __int_parser.getElements(parsed_str3, Parser::NONTERM_START);
             Tests::testAssert(__res_parse, "Integer 3: '" + std::string(parsed_str3) + "' parse error");
             Tests::testAssert(__res_strings.size() == 1, "Integer 3: parsed rule element info size mismatch - " + std::to_string(__res_strings.size()) + " != 1");
             if (__res_strings.size() == 1)
@@ -314,6 +320,6 @@ int main(int argc, char **argv) {
     //            test_n [: subtest_n subtest_n...] [, test_n [: subtest_n subtest_n...]]
     // Example: svkfw_test 1, 3, 2, 4: 2 1 4,
 
-    Simple::Tests::TestSystem::run({4, 5}, {Simple::Tests::SUBTEST_ALL});
+    Simple::Tests::TestSystem::run({3}, {Simple::Tests::SUBTEST4});
     return 0;
 }
