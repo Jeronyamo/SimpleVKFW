@@ -54,6 +54,11 @@ namespace Simple {
             float getVolume() const { return volume/255.f*MAX_VOLUME; }
         }; // AudioConfig END
 
+        struct AudioBuffer {
+            float *buf = nullptr;
+            uint32_t buf_size; // in elements
+        } Global_audio_buf; // AudioBuffer END
+
 
         struct AudioHandler {
             RtAudio rta_handler;
@@ -104,6 +109,16 @@ namespace Simple {
                 RtAudio::StreamParameters* __o_params = (uint32_t(stream_config.stream_mode) & 1) ? &device_o.stream_parameters : nullptr;
                 RtAudio::StreamParameters* __i_params = (uint32_t(stream_config.stream_mode) & 2) ? &device_i.stream_parameters : nullptr;
 
+                if (_sample_rate == 0) {
+                    if (__o_params != nullptr) {
+                        uint32_t __preferred_srate = rta_handler.getDeviceInfo(__o_params->deviceId).preferredSampleRate;
+                        _sample_rate = __preferred_srate;
+                    }
+                    if (__o_params != nullptr) {
+                        uint32_t __preferred_srate = rta_handler.getDeviceInfo(__o_params->deviceId).preferredSampleRate;
+                        _sample_rate = std::max(_sample_rate, __preferred_srate);
+                    }
+                }
                 stream_config.sample_rate = _sample_rate;
                 stream_config.buffer_frames = _buf_frames;
                 stream_config.audio_format = _audio_format;
@@ -394,24 +409,49 @@ namespace Simple {
             // else if (_status)
             //     std::cout << "Stream underflow AND overflow detected" << std::endl;
 
-            // AudioHandler *__config = (AudioHandler*)_config;
+            AudioHandler *__config = (AudioHandler*)_config;
 
             // If the number of input and output channels is equal, we simply copy buffer here.
-            // if (__config->device_i.stream_parameters.nChannels == __config->device_o.stream_parameters.nChannels) {
-            //     uint32_t bytes = __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames *
-            //                     //  __config->stream_config.getBufferElemBytes();
-            //                     1;
-            //     // memcpy(_o_buffer, _i_buffer, bytes);
+            if (__config->device_i.stream_parameters.nChannels == __config->device_o.stream_parameters.nChannels) {
+                uint32_t bytes = __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames *
+                                 __config->stream_config.getBufferElemBytes();
+                memcpy(_o_buffer, _i_buffer, bytes);
 
-            //     if (__config->stream_config.audio_format == RTAUDIO_FLOAT32) {
-            //         float *__i_buffer = (float*) _i_buffer;
-            //         float *__o_buffer = (float*) _o_buffer;
+                // if (__config->stream_config.audio_format == RTAUDIO_FLOAT32) {
+                //     float *__i_buffer = (float*) _i_buffer;
+                //     float *__o_buffer = (float*) _o_buffer;
 
-            //         // #pragma omp parallel for
-            //         for (uint32_t i = 0u; i < __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames; ++i)
-            //             __o_buffer[i] = __i_buffer[i] * __config->audio_config.getVolume();
-            //     }
-            // }
+                //     // #pragma omp parallel for
+                //     for (uint32_t i = 0u; i < __config->device_o.stream_parameters.nChannels * __config->stream_config.buffer_frames; ++i)
+                //         __o_buffer[i] = __i_buffer[i] * __config->audio_config.getVolume();
+                // }
+            }
+            return 0;
+        }
+
+        int rtacb_record(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+                         double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            if (_status == RTAUDIO_INPUT_OVERFLOW)
+                printf("Record: Stream overflow detected\n");
+            else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
+                std::cout << "Record: Stream underflow detected" << std::endl;
+            // else if (_status)
+            //     std::cout << "Stream underflow AND overflow detected" << std::endl;
+
+            memcpy(Global_audio_buf.buf, _i_buffer, Global_audio_buf.buf_size * sizeof(float));
+            return 0;
+        }
+
+        int rtacb_playback(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+                         double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            if (_status == RTAUDIO_INPUT_OVERFLOW)
+                printf("Playback: Stream overflow detected\n");
+            else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
+                std::cout << "Playback: Stream underflow detected" << std::endl;
+            // else if (_status)
+            //     std::cout << "Stream underflow AND overflow detected" << std::endl;
+
+            memcpy(_o_buffer, Global_audio_buf.buf, Global_audio_buf.buf_size * sizeof(float));
             return 0;
         }
     }; // RTA END

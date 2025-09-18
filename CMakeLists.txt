@@ -61,6 +61,9 @@ function(svkfw_set_definitions SVKFW_TARGET)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
         target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_MAC PRIVATE SVKFW_CM_ANSI_ESC)
     endif()
+    if (${RTAUDIO_API_ASIO} STREQUAL ON)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE RTA_ASIO)
+    endif()
 endfunction()
 
 
@@ -154,8 +157,12 @@ PRIVATE
 
 
 ## RTAudio
+set(RTAUDIO_API_DS ON)
+set(RTAUDIO_API_ASIO OFF)
+set(RTAUDIO_API_WASAPI OFF)
 set(BUILD_TESTING Off)
 set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
+
 add_subdirectory(${EXTERN_SRC_RTAUDIO_DIR})
 set_target_properties(rtaudio PROPERTIES FOLDER "RtAudio")
 set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")

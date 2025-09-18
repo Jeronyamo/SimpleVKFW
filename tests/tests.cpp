@@ -157,8 +157,8 @@ namespace Simple {
 
         SVKFW_SUBTEST_BEG(st4, "Audio stream run") {
             RTA::AudioHandler audio_o;
-            const uint32_t __channels = 1;
-            const uint32_t __buf_frames = 512;
+            const uint32_t __channels = 2;
+            const uint32_t __buf_frames = 544;
             const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
 
             audio_o.streamSetMode(Simple::RTA::STREAM_MODE_DUPLEX,
@@ -170,7 +170,7 @@ namespace Simple {
             audio_o.deviceInputSetParameters(__channels);
             audio_o.callbackSet(Simple::RTA::rtacb_inout);
 
-            audio_o.streamOpen(12000, __buf_frames, RTAUDIO_FLOAT32, false);
+            audio_o.streamOpen(0, __buf_frames, RTAUDIO_SINT16, false);
             Tests::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
 
             audio_o.streamStart();
@@ -178,6 +178,45 @@ namespace Simple {
             AsyncExit __exit_state;
             while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
         } SVKFW_SUBTEST_END(st4);
+
+        SVKFW_SUBTEST_BEG(st5, "Audio stream run (2 streams)") {
+#ifdef RTA_ASIO
+            Tests::TestSystem::terminal_h.print_w("Subtest 5: ASIO doesn't support multiple audio streams, aborting");
+            return;
+#endif
+            RTA::AudioHandler audio_i, audio_o;
+            const uint32_t __channels = 1;
+            const uint32_t __buf_frames = 512;
+            const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
+            RTA::Global_audio_buf.buf_size = __buf_frames * __channels;
+            RTA::Global_audio_buf.buf = new float[__buf_frames * __channels]{};
+
+            audio_i.streamSetMode(Simple::RTA::STREAM_MODE_IN,
+                                  Simple::RTA::DEVICE_MODE_DEFAULT,
+                                  Simple::RTA::DEVICE_MODE_DEFAULT);
+            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_OUT,
+                                  Simple::RTA::DEVICE_MODE_DEFAULT,
+                                  Simple::RTA::DEVICE_MODE_DEFAULT);
+            audio_i.deviceUpdateAll();
+            audio_o.deviceUpdateAll();
+            audio_i.streamSetOptions(0, 0, "Test Audio Input", 0);
+            audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
+            audio_o.deviceOutputSetParameters(__channels);
+            audio_i.deviceInputSetParameters(__channels);
+            audio_i.callbackSet(Simple::RTA::rtacb_record);
+            audio_o.callbackSet(Simple::RTA::rtacb_playback);
+
+            audio_i.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
+            audio_o.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
+            Tests::testAssert(audio_i.streamIsOpen(), "Audio stream i is not open");
+            Tests::testAssert(audio_o.streamIsOpen(), "Audio stream o is not open");
+
+            audio_o.streamStart();
+            audio_i.streamStart();
+
+            AsyncExit __exit_state;
+            while (!__exit_state.gotAnswer()) { audio_i.deviceUpdateAll(); audio_o.deviceUpdateAll(); }
+        } SVKFW_SUBTEST_END(st5);
     SVKFW_TEST_END(Test3);
 
     SVKFW_TEST_BEG(Test4, "Parser")
