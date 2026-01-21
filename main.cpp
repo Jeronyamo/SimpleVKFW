@@ -1,10 +1,10 @@
-#include "interface/vkfw.h"
 #include "main/event_handler.h"
 #include "math/linalg.h"
 #include "main/camera.h"
 #include "main/input_handler.h"
-
 #include "main/image.h"
+#include "interface/vkfw.h"
+#include "interface/imgui_wrap.h"
 
 #include <iostream>
 
@@ -15,6 +15,8 @@ int main(int argc, char **argv) {
 // Config
     // return Simple::test_csound();
     const uint32_t FRAMES_IN_FLIGHT = 2u;
+
+    Simple::ImGuiHandler imgui_handler;
 
 // Scene info
 
@@ -227,7 +229,7 @@ int main(int argc, char **argv) {
     // Vertex input state
     Simple::VKFW::Vulkan_global_context_factory.c_graphics_pipeline.b_vertex_input_state.setBindings({{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }});
     Simple::VKFW::Vulkan_global_context_factory.c_graphics_pipeline.b_vertex_input_state.setAttributes({ { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
-                                                                                                                                    { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) } });
+                                                                                                         { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) } });
 
     // Input assembly state
     Simple::VKFW::Vulkan_global_context_factory.c_graphics_pipeline.b_input_assembly_state.setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -288,7 +290,7 @@ int main(int argc, char **argv) {
     ContextIndex ci_sem_image_available[FRAMES_IN_FLIGHT]{},
                  ci_sem_render_finished[FRAMES_IN_FLIGHT]{};
 
-    // Two cycles, so that the arrays are contigious (or just make a function that creates an array of semaphores)
+    // Two loops, so that the arrays are contigious (or just make a function that creates an array of semaphores)
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_sem_image_available[i] = Simple::VKFW::Vulkan_global_context_factory.createSemaphore();
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
@@ -320,6 +322,9 @@ int main(int argc, char **argv) {
 
     Simple::VKFW::Vulkan_global_context_func.waitForFences({ci_fen_staging});
 
+    // ImGUI init
+    imgui_handler.initializeContext(Simple::VKFW::Vulkan_global_context_func.vk_context, ci_qfamily, ci_queue_graphics, FRAMES_IN_FLIGHT);
+    imgui_handler.enableForSVKFWWindow(main_window, false);
 
 // Main loop
 
@@ -341,7 +346,7 @@ int main(int argc, char **argv) {
 
         Simple::VKFW::Vulkan_global_context_func.waitForFences({ci_fen_in_flight[current_frame]});
 
-        // Note: image_index always matches vulkan (and swapchain) context's ci_framebuffer and ci_image_view
+        // Note: 'image_index' matches vulkan (and swapchain) context's 'ci_framebuffer' and 'ci_image_view'
         image_index = Simple::VKFW::Vulkan_global_context_func.acquireNextImageKHR(ci_sem_image_available[current_frame]);
         if (image_index == UINT32_MAX) {
             Simple::VKFW::Vulkan_global_context_factory.cSwapchainRecreate(main_window);
@@ -352,14 +357,6 @@ int main(int argc, char **argv) {
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
         memcpy(ubo_mappings[current_frame], &ubo_camera, sizeof(ubo_camera));
-        // printf("View: [%f, %f, %f, %f], [%f, %f, %f, %f], [%f, %f, %f, %f], [%f, %f, %f, %f]\n", ubo_camera.view.M[0][0], ubo_camera.view.M[0][1], ubo_camera.view.M[0][2], ubo_camera.view.M[0][3],
-        //                                                                                          ubo_camera.view.M[1][0], ubo_camera.view.M[1][1], ubo_camera.view.M[1][2], ubo_camera.view.M[1][3],
-        //                                                                                          ubo_camera.view.M[2][0], ubo_camera.view.M[2][1], ubo_camera.view.M[2][2], ubo_camera.view.M[2][3],
-        //                                                                                          ubo_camera.view.M[3][0], ubo_camera.view.M[3][1], ubo_camera.view.M[3][2], ubo_camera.view.M[3][3]);
-        // printf("Proj: [%f, %f, %f, %f], [%f, %f, %f, %f], [%f, %f, %f, %f], [%f, %f, %f, %f]\n", ubo_camera.proj.M[0][0], ubo_camera.proj.M[0][1], ubo_camera.proj.M[0][2], ubo_camera.proj.M[0][3],
-        //                                                                                          ubo_camera.proj.M[1][0], ubo_camera.proj.M[1][1], ubo_camera.proj.M[1][2], ubo_camera.proj.M[1][3],
-        //                                                                                          ubo_camera.proj.M[2][0], ubo_camera.proj.M[2][1], ubo_camera.proj.M[2][2], ubo_camera.proj.M[2][3],
-        //                                                                                          ubo_camera.proj.M[3][0], ubo_camera.proj.M[3][1], ubo_camera.proj.M[3][2], ubo_camera.proj.M[3][3]);
 
         Simple::VKFW::Vulkan_global_context_func.resetFences({ci_fen_in_flight[current_frame]});
         Simple::VKFW::Vulkan_global_context_func.resetCommandBuffer(ci_cmd_buffer_drawing[current_frame]);
@@ -407,11 +404,10 @@ int main(int argc, char **argv) {
         // Submit
         Simple::VKFW::Vulkan_global_context_func.queueSubmit(ci_queue_graphics, {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT},
                                                             {ci_cmd_buffer_drawing [current_frame]}, {ci_sem_image_available[current_frame]},
-                                                            {ci_sem_render_finished[current_frame]},  ci_fen_in_flight[current_frame]);
+                                                            {ci_sem_render_finished[image_index]},  ci_fen_in_flight[current_frame]);
 
         // Present
-        image_index = Simple::VKFW::Vulkan_global_context_func.queuePresentKHR(ci_queue_pres, { ci_sem_render_finished[current_frame] }, { image_index });
-        // image_index = Simple::VKFW::Vulkan_global_context_func.queuePresentKHR(ci_queue_pres, pres_info, ci_sem_render_finished[current_frame]);
+        image_index = Simple::VKFW::Vulkan_global_context_func.queuePresentKHR(ci_queue_pres, { ci_sem_render_finished[image_index] }, { image_index });
         if (image_index == UINT32_MAX) {
             Simple::VKFW::Vulkan_global_context_factory.cSwapchainRecreate(main_window);
         }
@@ -425,6 +421,7 @@ int main(int argc, char **argv) {
         Simple::VKFW::Vulkan_global_context_func.resetCommandBuffer(ci_cmd_buffer_drawing[curr_frame]);
     }
 
+    imgui_handler.~ImGuiHandler();
     Simple::VKFW::destroyVulkanContext(Simple::VKFW::Vulkan_global_context);
 
     printf("Success\n");
