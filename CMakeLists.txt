@@ -147,12 +147,14 @@ add_library(imgui
     ${EXTERN_SRC_IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
 )
 
+target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
 target_include_directories(imgui
 PRIVATE
     ${EXTERN_INC_GLFW_DIR}
     ${EXTERN_SRC_IMGUI_DIR}
     ${EXTERN_SRC_IMGUI_DIR}/backends
     ${Vulkan_INCLUDE_DIR}
+    ${EXTERN_SRC_VOLK_DIR}
 )
 
 
