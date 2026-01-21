@@ -670,7 +670,7 @@ namespace Simple {
                     case ARG_CUSTOM: val_str = _arg_val.val_str; break;
                     case ARG_INT:    val_int = _arg_val.val_int; break;
                     case ARG_FLOAT:  val_flt = _arg_val.val_flt; break;
-                    case ARG_UNDEFINED:
+                    case ARG_UNDEFINED: break;
                 }
             }
             ArgValue(int   _val_int) : val_int{_val_int}, curr_type{ARG_INT} {}
@@ -903,7 +903,7 @@ namespace Simple {
             void setArgumentSource(int _argc, char** _argv) { argc = _argc; argv = _argv; }
 
             void parseAllArguments() {
-                std::vector<vec2i> __arg_indices;
+                std::vector<std::pair<int,int>> __arg_indices;
                 for (int i = 1; i < argc; ++i) {
                     if (argv[i][0] == '-') {
                         bool __check_name  = argv[i][1] == '-' && isalpha(argv[i][2]);
@@ -921,9 +921,9 @@ namespace Simple {
                 __arg_indices.push_back({argc, -1});
 
                 for (uint32_t i = 0u; i < __arg_indices.size()-1; ++i) {
-                    argument_values.push_back({ __arg_indices[i].y, ParseArgument(arguments[__arg_indices[i].y],
-                                                                                 __arg_indices[i+1].x - (__arg_indices[i].x+1),
-                                                                                (__arg_indices[i].x+1) < argc ? argv + (__arg_indices[i].x+1) : nullptr) });
+                    argument_values.push_back({ __arg_indices[i].second, ParseArgument(arguments[__arg_indices[i].second],
+                                                                                 __arg_indices[i+1].first - (__arg_indices[i].first+1),
+                                                                                (__arg_indices[i].first+1) < argc ? argv + (__arg_indices[i].first+1) : nullptr) });
                 }
             }
         }; // ArgParser END

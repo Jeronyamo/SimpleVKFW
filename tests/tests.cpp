@@ -1,14 +1,15 @@
-#include "tests.h"
-
 #include <vector>
 #include <iostream>
 #include <thread>
 #include <future>
 #include <chrono>
 
+#include "tests.h"
+
 // What to test
 #include "math/vectors.h"
 #include "main/image.h"
+#include "sound/sound.h"
 #include "interface/rtaudio_wrap.h"
 
 
@@ -85,20 +86,20 @@ namespace Simple {
             printf("Image3f: w: %d, h: %d, ch: %d\n", image3f.width, image3f.height, image3f.channels);
             printf("Img3f:   w: %d, h: %d, ch: %d\n",   img3f.width,   img3f.height,   img3f.channels);
 
-            Img::save<Simple::Img::PNG>("tests/debug_mega_image_u.png",   image_u);
-            Img::save<Simple::Img::PNG>("tests/debug_mega_image_f.png",   image_f);
-            Img::save<Simple::Img::PNG>("tests/debug_mega_image_3f.png",  image3f);
-            Img::save<Simple::Img::PNG>("tests/debug_mega_image_img3f.png", img3f);
+            Img::save<Img::PNG>("tests/debug_mega_image_u.png",   image_u);
+            Img::save<Img::PNG>("tests/debug_mega_image_f.png",   image_f);
+            Img::save<Img::PNG>("tests/debug_mega_image_3f.png",  image3f);
+            Img::save<Img::PNG>("tests/debug_mega_image_img3f.png", img3f);
         } SVKFW_SUBTEST_END(st1);
 
         // SVKFW_SUBTEST_BEG(st2, "Save/Load img differences") {
         //     std::string __img_dir = "/Programming/study/MSUProject/disser/graphics/renders/";
 
-        //     genDiffImage(__img_dir + "arma_ref_0.png", __img_dir + "arma_res_0.png", __img_dir + "arma_diff.png");
+        //     genDiffImage(__img_dir + "arma_ref_0.png", __img_dir + "iter_828_0 (6).png", __img_dir + "arma_diff.png");
         //     genDiffImage(__img_dir + "bunny_ref_0.png", __img_dir + "bunny_iter_1014_0.png", __img_dir + "bunny_diff.png");
-        //     genDiffImage(__img_dir + "dragon_ref_0.png", __img_dir + "dragon_iter_1014_0.png", __img_dir + "dragon_diff.png");
+        //     genDiffImage(__img_dir + "dragon_ref_0.png", __img_dir + "iter_828_0 (7).png", __img_dir + "dragon_diff.png");
         //     genDiffImage(__img_dir + "happy_ref_8.png", __img_dir + "happy_iter_1008_8.png", __img_dir + "happy_diff.png");
-        //     genDiffImage(__img_dir + "nefertiti_ref_0.png", __img_dir + "nefertiti_iter_1010_0.png", __img_dir + "nefertiti_diff.png");
+        //     genDiffImage(__img_dir + "nefertiti_ref_0.png", __img_dir + "iter_828_0 (5).png", __img_dir + "nefertiti_diff.png");
         //     genDiffImage(__img_dir + "teapot_ref_0.png", __img_dir + "teapot_iter_1008_0.png", __img_dir + "teapot_diff.png");
         // } SVKFW_SUBTEST_END(st2);
     SVKFW_TEST_END(Test2);
@@ -119,7 +120,7 @@ namespace Simple {
 
 
         SVKFW_SUBTEST_BEG(st1, "Audio devices info") {
-            RTA::AudioHandler audio_device;
+            Simple::RTA::AudioHandler audio_device;
 
             for (uint32_t dev_id : audio_device.rta_handler.getDeviceIds()) {
                 std::cout << audio_device.deviceGetInfoStr_(dev_id) << "\n";
@@ -129,9 +130,9 @@ namespace Simple {
         SVKFW_SUBTEST_BEG(st2, "Audio devices update") {
             RTA::AudioHandler audio_device;
 
-            audio_device.streamSetMode(Simple::RTA::STREAM_MODE_DUPLEX,
-                                       Simple::RTA::DEVICE_MODE_DEFAULT,
-                                       Simple::RTA::DEVICE_MODE_DEFAULT);
+            audio_device.streamSetMode(RTA::STREAM_MODE_DUPLEX,
+                                       RTA::DEVICE_MODE_DEFAULT,
+                                       RTA::DEVICE_MODE_DEFAULT);
 
             // while (true) {
                 audio_device.deviceInputUpdate();
@@ -141,34 +142,32 @@ namespace Simple {
 
         SVKFW_SUBTEST_BEG(st3, "Audio stream open") {
             RTA::AudioHandler audio_o;
-            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_DUPLEX,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT);
+            audio_o.streamSetMode(RTA::STREAM_MODE_DUPLEX,
+                                  RTA::DEVICE_MODE_DEFAULT,
+                                  RTA::DEVICE_MODE_DEFAULT);
             audio_o.deviceInputUpdate();
             audio_o.deviceOutputUpdate();
             audio_o.streamSetOptions(RTAUDIO_NONINTERLEAVED, 0, "Test Audio Output/Input", 0);
             audio_o.deviceOutputSetParameters(2);
             audio_o.deviceInputSetParameters(2);
-            audio_o.streamOpen(48000, 256, RTAUDIO_FLOAT32);
-            if (!audio_o.streamIsOpen()) {
-                throw std::runtime_error(SVKFW_WRAPERR("Test 3","Audio stream is not open"));
-            }
+            audio_o.streamOpen(0, 256, RTAUDIO_FLOAT32);
+            Tests::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
         } SVKFW_SUBTEST_END(st3);
 
-        SVKFW_SUBTEST_BEG(st4, "Audio stream run") {
+        SVKFW_SUBTEST_BEG(st4, "Audio run duplex stream") {
             RTA::AudioHandler audio_o;
             const uint32_t __channels = 2;
             const uint32_t __buf_frames = 544;
             const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
 
-            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_DUPLEX,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT);
+            audio_o.streamSetMode(RTA::STREAM_MODE_DUPLEX,
+                                  RTA::DEVICE_MODE_DEFAULT,
+                                  RTA::DEVICE_MODE_DEFAULT);
             audio_o.deviceUpdateAll();
             audio_o.streamSetOptions(0, 0, "Test Audio Output/Input", 0);
             audio_o.deviceOutputSetParameters(__channels);
             audio_o.deviceInputSetParameters(__channels);
-            audio_o.callbackSet(Simple::RTA::rtacb_inout);
+            audio_o.callbackSet(RTA::rtacb_inout);
 
             audio_o.streamOpen(0, __buf_frames, RTAUDIO_SINT16, false);
             Tests::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
@@ -179,44 +178,97 @@ namespace Simple {
             while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
         } SVKFW_SUBTEST_END(st4);
 
-        SVKFW_SUBTEST_BEG(st5, "Audio stream run (2 streams)") {
-#ifdef RTA_ASIO
-            Tests::TestSystem::terminal_h.print_w("Subtest 5: ASIO doesn't support multiple audio streams, aborting");
-            return;
-#endif
-            RTA::AudioHandler audio_i, audio_o;
-            const uint32_t __channels = 1;
-            const uint32_t __buf_frames = 512;
-            const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
-            RTA::Global_audio_buf.buf_size = __buf_frames * __channels;
-            RTA::Global_audio_buf.buf = new float[__buf_frames * __channels]{};
+        SVKFW_SUBTEST_BEG(st5, "Run separate in/out streams") {
+// #ifdef RTA_ASIO
+//             Tests::TestSystem::terminal_h.print_w("Subtest 5: ASIO doesn't support multiple audio streams, aborting");
+//             return;
+// #endif
+//             RTA::AudioHandler audio_i, audio_o;
+//             const uint32_t __channels = 1;
+//             const uint32_t __buf_frames = 512;
+//             const uint32_t __buf_size = __buf_frames * __channels * sizeof(int);
+//             RTA::Global_audio_buf.buf_size = __buf_frames * __channels;
+//             RTA::Global_audio_buf.buf = new float[__buf_frames * __channels]{};
 
-            audio_i.streamSetMode(Simple::RTA::STREAM_MODE_IN,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT);
-            audio_o.streamSetMode(Simple::RTA::STREAM_MODE_OUT,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT,
-                                  Simple::RTA::DEVICE_MODE_DEFAULT);
-            audio_i.deviceUpdateAll();
+//             audio_i.streamSetMode(RTA::STREAM_MODE_IN,
+//                                   RTA::DEVICE_MODE_DEFAULT,
+//                                   RTA::DEVICE_MODE_DEFAULT);
+//             audio_o.streamSetMode(RTA::STREAM_MODE_OUT,
+//                                   RTA::DEVICE_MODE_DEFAULT,
+//                                   RTA::DEVICE_MODE_DEFAULT);
+//             audio_i.deviceUpdateAll();
+//             audio_o.deviceUpdateAll();
+//             audio_i.streamSetOptions(0, 0, "Test Audio Input", 0);
+//             audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
+//             audio_o.deviceOutputSetParameters(__channels);
+//             audio_i.deviceInputSetParameters(__channels);
+//             audio_i.callbackSet(RTA::rtacb_record);
+//             audio_o.callbackSet(RTA::rtacb_playback);
+
+//             audio_i.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
+//             audio_o.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
+//             Tests::testAssert(audio_i.streamIsOpen(), "Audio stream i is not open");
+//             Tests::testAssert(audio_o.streamIsOpen(), "Audio stream o is not open");
+
+//             audio_o.streamStart();
+//             audio_i.streamStart();
+
+//             AsyncExit __exit_state;
+//             while (!__exit_state.gotAnswer()) { audio_i.deviceUpdateAll(); audio_o.deviceUpdateAll(); }
+        } SVKFW_SUBTEST_END(st5);
+
+        static void audioPlayer(std::vector<Sound::Sample::SmpItf*> _sources, const std::vector<float> &_weights, bool _set_srate_to_sources) {
+            RTA::AudioHandler audio_o;
+            const uint32_t __channels   =   2;
+            const uint32_t __buf_frames = 544;
+
+            audio_o.streamSetMode(RTA::STREAM_MODE_OUT,
+                                  RTA::DEVICE_MODE_DEFAULT);
             audio_o.deviceUpdateAll();
-            audio_i.streamSetOptions(0, 0, "Test Audio Input", 0);
             audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
             audio_o.deviceOutputSetParameters(__channels);
-            audio_i.deviceInputSetParameters(__channels);
-            audio_i.callbackSet(Simple::RTA::rtacb_record);
-            audio_o.callbackSet(Simple::RTA::rtacb_playback);
+            audio_o.callbackSet(RTA::rtacbDefault);
 
-            audio_i.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
-            audio_o.streamOpen(48000, __buf_frames, RTAUDIO_FLOAT32, false);
-            Tests::testAssert(audio_i.streamIsOpen(), "Audio stream i is not open");
-            Tests::testAssert(audio_o.streamIsOpen(), "Audio stream o is not open");
+            audio_o.streamOpen(0, __buf_frames, RTAUDIO_SINT16, false);
+            Tests::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
 
+            // Set audio to play
+            for (uint32_t i = 0u; i < _sources.size(); ++i) {
+                if (_set_srate_to_sources) _sources[i]->setSRate(audio_o.stream_config.sample_rate);
+                audio_o.playAudio(_sources[i], _weights[i]);
+            }
+
+            // Start stream
             audio_o.streamStart();
-            audio_i.streamStart();
 
             AsyncExit __exit_state;
-            while (!__exit_state.gotAnswer()) { audio_i.deviceUpdateAll(); audio_o.deviceUpdateAll(); }
-        } SVKFW_SUBTEST_END(st5);
+            while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
+            audio_o.streamStop();
+        }
+
+        SVKFW_SUBTEST_BEG(st6, "Audio - function sampler") {
+            static Sound::Sample::SmpSineWave __sine_wave1{440.f          };
+            static Sound::Sample::SmpSineWave __sine_wave2{440.f * (2.f/3)};
+
+            __sine_wave1.t_step = 1.f / 48000; // yet another evidence of SmpFunction's impracticality
+            __sine_wave2.t_step = 1.f / 48000;
+            static auto __wave_sampler = [&]() { return 0.45f * __sine_wave1.sample() + 0.45f * __sine_wave2.sample(); };
+            static Sound::Sample::SmpFunction __sampler{__wave_sampler};
+
+            audioPlayer({&__sampler}, {1.f}, true);
+        } SVKFW_SUBTEST_END(st6);
+
+        SVKFW_SUBTEST_BEG(st7, "Audio - mixer sampler") {
+            static Sound::Sample::SmpSineWave __sine_wave1{440.f          };
+            static Sound::Sample::SmpSineWave __sine_wave2{440.f * (2.f/3)};
+
+            audioPlayer({&__sine_wave1, &__sine_wave2}, {0.45f, 0.45f}, false);
+        } SVKFW_SUBTEST_END(st7);
+
+        SVKFW_SUBTEST_BEG(st8, "Audio - saw sampler") {
+            static Sound::Sample::SmpSaw __saw_sampler{440.f};
+            audioPlayer({&__saw_sampler}, {0.9f}, false);
+        } SVKFW_SUBTEST_END(st8);
     SVKFW_TEST_END(Test3);
 
     SVKFW_TEST_BEG(Test4, "Parser")
@@ -356,9 +408,22 @@ namespace Simple {
 
 int main(int argc, char **argv) {
     // Arguments: numbers of tests and subtests in this format:
-    //            test_n [: subtest_n subtest_n...] [, test_n [: subtest_n subtest_n...]]
-    // Example: svkfw_test 1, 3, 2, 4: 2 1 4,
+    //            --test_n [: subtest_n subtest_n...] [, --test_n [: subtest_n subtest_n...]]
+    // Example: svkfw_test --Test1 --Test3 --Test2 --Test4: 2 1 4
 
-    Simple::Tests::TestSystem::run({3}, {Simple::Tests::SUBTEST4});
+    // Simple::ArgParser tests_argparser{argc, argv};
+    // tests_argparser.addArgumentDescription
+
+    std::string motion_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\Abracadabra_edit";
+    std::string camera_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\camera_Brown Eyed Girls - Abracadabra by 000MMD\\lowangle_ver";
+    std::vector<uint32_t> split_frame_ids = { 111,225,516,601,877,1076,1301,1538,1756,1920,2152,2468,2706,2904,3275,3492,3726,3920,4052,4303,4536,4743,5071,5341,5555 };
+    Simple::ContentVMD::AttrAdjust motion_offset{true}, camera1_offset{true}, camera2_scale{false}, camera1_scale{false};
+    camera1_offset.pos_dist["xyz"] = {-12.f, 0.f, 0.f};
+    camera2_scale.pos_dist["xyz"] = {1.f, 0.935f, 1.f};
+
+    Simple::ContentVMD::CreateMixed(motion_fpath, camera_fpath, split_frame_ids, motion_offset,
+                                    camera1_scale, camera1_offset, camera2_scale, camera1_offset);
+
+    // Simple::Tests::TestSystem::run({3}, {Simple::Tests::SUBTEST6 | Simple::Tests::SUBTEST7 | Simple::Tests::SUBTEST8});
     return 0;
 }
