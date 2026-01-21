@@ -16,8 +16,6 @@ int main(int argc, char **argv) {
     // return Simple::test_csound();
     const uint32_t FRAMES_IN_FLIGHT = 2u;
 
-    Simple::ImGuiHandler imgui_handler;
-
 // Scene info
 
     // Geometry
@@ -59,6 +57,7 @@ int main(int argc, char **argv) {
     main_window_handler.setAllKeysHandler(&main_view_centered_proj);
     main_window_handler.setScrollHandler(&main_view_centered_proj);
     main_window_handler.setCursorHandler(&main_view_centered_proj);
+    main_window_handler.setAllMButtonsHandler(&main_view_centered_proj);
     main_window_handler.setFBufferSizeHandler(&main_view_centered_proj);
 
     // Window
@@ -71,6 +70,7 @@ int main(int argc, char **argv) {
     main_window_handler.setKeysHandler(&main_window_exit);
     main_window_handler.setGLFWCallbacks(main_window.window, Simple::WindowInput::INPUT_TYPE_GLFW_SCROLL |
                                                              Simple::WindowInput::INPUT_TYPE_GLFW_CURSOR |
+                                                             Simple::WindowInput::INPUT_TYPE_GLFW_MOUSE_BUTTON |
                                                              Simple::WindowInput::INPUT_TYPE_GLFW_FBUFFER_SIZE |
                                                              Simple::WindowInput::INPUT_TYPE_GLFW_KEY);
 
@@ -323,18 +323,12 @@ int main(int argc, char **argv) {
     Simple::VKFW::Vulkan_global_context_func.waitForFences({ci_fen_staging});
 
     // ImGUI init
-    imgui_handler.initializeContext(Simple::VKFW::Vulkan_global_context_func.vk_context, ci_qfamily, ci_queue_graphics, FRAMES_IN_FLIGHT);
-    imgui_handler.enableForSVKFWWindow(main_window, false);
+    main_window_handler.imgui_handler.initializeContext(&Simple::VKFW::Vulkan_global_context, ci_qfamily, ci_queue_graphics, FRAMES_IN_FLIGHT);
+    main_window_handler.imgui_handler.enableForSVKFWWindow(main_window, false);
 
 // Main loop
 
     uint32_t current_frame = 0u, image_index = UINT32_MAX;
-    // VkResult pres_res = VK_SUCCESS;
-    // VkPresentInfoKHR pres_info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-    // pres_info.swapchainCount = 1;
-    // pres_info.waitSemaphoreCount = 1;
-    // pres_info.pImageIndices = &image_index;
-    // pres_info.pResults = &pres_res;
 
     // Begin render pass create
     Simple::VKFW::Vulkan_global_context_func.b_begin_render_pass.setClearColors({ Simple::VKFW::ClearValue::build(0.f, 0.f, 0.f, 1.f) });
@@ -394,6 +388,11 @@ int main(int argc, char **argv) {
             // Draw indexed
             Simple::VKFW::Vulkan_global_context_func.cmdDrawIndexed(ci_cmd_buffer_drawing[current_frame], indices.size(), 1);
 
+            // Draw GUI
+            main_window_handler.imgui_handler.newFrame();
+            main_window_handler.imgui_handler.render();
+            main_window_handler.imgui_handler.fillCommandBuffer(Simple::VKFW::Vulkan_global_context_factory.vk_context->getObjectCommandBuffer(ci_cmd_buffer_drawing[current_frame]));
+
             // End render pass
             Simple::VKFW::Vulkan_global_context_func.cmdEndRenderPass(ci_cmd_buffer_drawing[current_frame]);
 
@@ -421,7 +420,7 @@ int main(int argc, char **argv) {
         Simple::VKFW::Vulkan_global_context_func.resetCommandBuffer(ci_cmd_buffer_drawing[curr_frame]);
     }
 
-    imgui_handler.~ImGuiHandler();
+    main_window_handler.imgui_handler.~ImGuiHandler();
     Simple::VKFW::destroyVulkanContext(Simple::VKFW::Vulkan_global_context);
 
     printf("Success\n");

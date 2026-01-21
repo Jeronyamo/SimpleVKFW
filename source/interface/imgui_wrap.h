@@ -16,6 +16,8 @@ namespace Simple {
     struct ImGuiHandler {
         ImGuiContext *context = nullptr;
         ImGui_ImplVulkan_InitInfo imgui_info{};
+        uint32_t min_image_count = 2u;
+        uint32_t descr_pool_size = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
 
          ImGuiHandler() {
             SVKFW_WASSERT(IMGUI_CHECKVERSION(), "ImGuiHandler Constructor", "ImGUI version mismatch\n");
@@ -36,6 +38,22 @@ namespace Simple {
             ImGui_ImplVulkan_Init(&imgui_info);
         }
 
+        void newFrame() {
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+        }
+        void render() {
+            ImGui::Begin("Window");
+            ImGui::Text("Hello from another window!");
+            ImGui::End();
+            ImGui::Render();
+        }
+        void fillCommandBuffer(VkCommandBuffer _cmd_buffer) {
+            ImDrawData* __draw_data = ImGui::GetDrawData();
+            ImGui_ImplVulkan_RenderDrawData(__draw_data, _cmd_buffer);
+        }
+
         void initializeContext(VKFW::VulkanContext* _vk_context, VKFW::ContextIndex _ci_qfamily,
                                VKFW::ContextIndex _ci_graphics_queue, uint32_t _image_count) {
             imgui_info.Instance = _vk_context->instance;
@@ -45,16 +63,28 @@ namespace Simple {
             imgui_info.Queue = _vk_context->queues[_ci_graphics_queue];
             imgui_info.RenderPass = _vk_context->render_pass;
             // imgui_info.DescriptorPool = _vk_context->descriptor_context.pools[_ci_descriptor_pool];
-            imgui_info.MinImageCount = getImguiMinImageCount();
-            imgui_info.ImageCount = std::max(_image_count, getImguiMinImageCount());
-            imgui_info.DescriptorPoolSize = getImguiMinPoolSize();
+            imgui_info.MinImageCount = getMinImageCount();
+            imgui_info.ImageCount = std::max(_image_count, getMinImageCount());
+            imgui_info.DescriptorPoolSize = getMinPoolSize();
         }
 
-        uint32_t getImguiMinImageCount() {
-            return 2; // read ImGui_ImplVulkan_InitInfo::MinImageCount description
+        void setMinImageCount(uint32_t _new_count) {
+            if (_new_count < 2) return;
+            min_image_count = _new_count;
+            ImGui_ImplVulkan_SetMinImageCount(_new_count);
         }
-        uint32_t getImguiMinPoolSize() {
-            return IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
+        uint32_t getMinImageCount() {
+            return min_image_count; // read ImGui_ImplVulkan_InitInfo::MinImageCount description
+        }
+        uint32_t getMinPoolSize() {
+            return descr_pool_size;
+        }
+
+        bool isGUIHovered() {
+            return ImGui::GetIO().WantCaptureMouse;
+        }
+        bool isKeyboardInUse() {
+            return ImGui::GetIO().WantCaptureKeyboard;
         }
     };
 };
