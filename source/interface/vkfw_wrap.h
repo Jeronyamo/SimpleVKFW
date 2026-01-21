@@ -1828,7 +1828,7 @@ namespace Simple {
                 }
 
                 void checkSetImageCount(uint32_t _count) {
-                    image_count = Math::clamp_CL(_count,
+                    image_count = Math::clampCL(_count,
                                                  capabilities.minImageCount,
                                                  capabilities.maxImageCount ? // (== 0) means no max
                                                  capabilities.maxImageCount : UINT32_MAX);
@@ -1846,10 +1846,10 @@ namespace Simple {
 
                     if (capabilities.currentExtent.width  != UINT32_MAX &&
                         capabilities.currentExtent.height != UINT32_MAX) {
-                        image_info.extent = { Math::clamp_CL(_extent.x,
+                        image_info.extent = { Math::clampCL(_extent.x,
                                                 capabilities.minImageExtent.width,
                                                 capabilities.maxImageExtent.width),
-                                            Math::clamp_CL(_extent.y,
+                                            Math::clampCL(_extent.y,
                                                 capabilities.minImageExtent.height,
                                                 capabilities.maxImageExtent.height)  };
                         // printf(SVKFW_WRAPINFO("VKFW :: Swapchain Builder :: checkSetExtent", "resulting swap extent: [%d, %d]\n"),
@@ -1869,10 +1869,10 @@ namespace Simple {
                     else {
                         vec2i __fbsize{_window.getFramebufferSize()};
 
-                        image_info.extent = { Math::clamp_CL((uint32_t)__fbsize.x,
+                        image_info.extent = { Math::clampCL((uint32_t)__fbsize.x,
                                                 capabilities.minImageExtent.width,
                                                 capabilities.maxImageExtent.width),
-                                              Math::clamp_CL((uint32_t)__fbsize.y,
+                                              Math::clampCL((uint32_t)__fbsize.y,
                                                 capabilities.minImageExtent.height,
                                                 capabilities.maxImageExtent.height)  };
                         // printf(SVKFW_WRAPINFO("VKFW :: Swapchain Builder :: chooseCurrentExtent", "from framebuffer size: [%d, %d]\n"),

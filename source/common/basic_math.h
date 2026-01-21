@@ -8,13 +8,13 @@
 
 
 // Absolute epsilon for float check
-// such that (1.0 / SVKFW_1EPS_FLT < FLT_MAX) == true
+// such that (1.0 / SVKFW_AEPS_FLT < FLT_MAX) == true
 #define SVKFW_AEPS_FLT 1e-38f
 // Absolute epsilon for double check
-// such that (1.0 / SVKFW_1EPS_DBL < DBL_MAX) == true
+// such that (1.0 / SVKFW_AEPS_DBL < DBL_MAX) == true
 #define SVKFW_AEPS_DBL 1e-308
 // Absolute epsilon for vec_flt_t (aka float) check
-// such that (1.0 / SVKFW_1EPS_FLT < FLT_MAX) == true
+// such that (1.0 / SVKFW_AEPS_FLT < FLT_MAX) == true
 #define SVKFW_AEPS SVKFW_AEPS_FLT
 
 #define SVKFW_EPS4 1e-4f
@@ -23,8 +23,8 @@
 #define SVKFW_EPS  SVKFW_EPS6
 
 
-#define SVKFW_DEG_TO_RAD (M_PI / 180)
-#define SVKFW_RAD_TO_DEG (180 / M_PI)
+#define SVKFW_DEG_TO_RAD float(M_PI / 180)
+#define SVKFW_RAD_TO_DEG float(180 / M_PI)
 
 
 namespace Simple {
@@ -52,13 +52,13 @@ namespace Simple {
         template <typename T> inline T cube(T _val) { return _val * _val * _val; }
         template <typename T> inline T sign(T _val) { return _val < 0 ? -1 : 1; }
 
-        // Zero check using absolute epsilon, use if value must be finite when inversed: (1.0 / _val)
+        // Zero check using absolute epsilon, use if value must be finite when inversed: (1.0 / 'val')
         inline bool notZero (float  _val) { return _val <= -SVKFW_AEPS_FLT || _val >= SVKFW_AEPS_FLT; }
         inline bool notZero (double _val) { return _val <= -SVKFW_AEPS_DBL || _val >= SVKFW_AEPS_DBL; }
         template <class T>
         inline bool notZero (T _val, T _eps = (T) SVKFW_EPS) { return _val <= -_eps || _val >= _eps; }
 
-        // Zero check for _val and _eps > 0
+        // Zero check for 'val' and 'eps' > 0
         template <typename T> inline bool closeToZero(T _val) { return _val < SVKFW_EPS && _val > -SVKFW_EPS; }
         template <typename T> inline bool closeToZero(T _val, T _eps) {
             if (_eps <= 0)
@@ -67,31 +67,31 @@ namespace Simple {
         }
 
 
-        // Check if _val is in the interval [_left, _right] (CLosed)
+        // Check if 'val' is in the interval ['left', 'right'] (CLosed)
         template <typename T>
-        inline bool is_between_CL(T _val, T _left, T _right) { return _val >= _left && _val <= _right; }
-        // Check if _val is in the interval [_left, _right) (Right Open)
+        inline bool isBetweenCL(T _val, T _left, T _right) { return _val >= _left && _val <= _right; }
+        // Check if 'val' is in the interval ['left', 'right') (Right Open)
         template <typename T>
-        inline bool is_between_RO(T _val, T _left, T _right) { return _val >= _left && _val <  _right; }
-        // Check if _val is in the interval (_left, _right] (Left Open)
+        inline bool isBetweenRO(T _val, T _left, T _right) { return _val >= _left && _val <  _right; }
+        // Check if 'val' is in the interval ('left', 'right'] (Left Open)
         template <typename T>
-        inline bool is_between_LO(T _val, T _left, T _right) { return _val >  _left && _val <= _right; }
-        // Check if _val is in the interval (_left, _right) (OPen)
+        inline bool isBetweenLO(T _val, T _left, T _right) { return _val >  _left && _val <= _right; }
+        // Check if 'val' is in the interval ('left', 'right') (OPen)
         template <typename T>
-        inline bool is_between_OP(T _val, T _left, T _right) { return _val >  _left && _val <  _right; }
+        inline bool isBetweenOP(T _val, T _left, T _right) { return _val >  _left && _val <  _right; }
 
-        // Clamp _val in the interval [_left, _right] (CLosed)
+        // Clamp 'val' in the interval ['left', 'right'] (CLosed)
         template <typename T>
-        T clamp_CL(T _val, T _left, T _right)              { return _val <= _left ? _left : (_val >= _right ? _right : _val); }
-        // Clamp _val in the interval [_left, _right) (Right Open)
+        T clampCL(T _val, T _left, T _right)              { return _val <= _left ? _left : (_val >= _right ? _right : _val); }
+        // Clamp 'val' in the interval ['left', 'right') (Right Open)
         template <typename T>
-        T clamp_RO(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left : (_val >= _right ? _right - _step : _val); }
-        // Clamp _val in the interval (_left, _right] (Left Open)
+        T clampRO(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left : (_val >= _right ? _right - _step : _val); }
+        // Clamp 'val' in the interval ('left', 'right'] (Left Open)
         template <typename T>
-        T clamp_LO(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left + _step : (_val >= _right ? _right : _val); }
-        // Clamp _val in the interval (_left, _right) (OPen)
+        T clampLO(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left + _step : (_val >= _right ? _right : _val); }
+        // Clamp 'val' in the interval ('left', 'right') (OPen)
         template <typename T>
-        T clamp_OP(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left + _step : (_val >= _right ? _right - _step : _val); }
+        T clampOP(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left + _step : (_val >= _right ? _right - _step : _val); }
 
 
         template <typename T>
@@ -150,11 +150,11 @@ namespace Simple {
         }
 
         Range& operator++() { from += step; --num; return *this; }
-        bool operator!=(const Range &other) const { return num; }
-        T operator*() const { return from; }
+        bool   operator!=(const Range &other) const { return num; }
+        T      operator *() const { return from; }
 
         Range begin() { return *this; }
-        Range end() { return to; }
+        Range   end() { return    to; }
 
 
         void calcItersNum() {

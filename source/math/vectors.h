@@ -841,6 +841,56 @@ namespace Simple {
         template <typename C, typename Y>
         Vec3Base<Util::comm_vecsub_type<C,Y>> cross(const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
             { return {op1.y * op2.z - op1.z * op2.y, op1.z * op2.x - op1.x * op2.z, op1.x * op2.y - op1.y * op2.x}; }
+
+
+        template <typename T>
+        Vec2Base<T> clampCL(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right) { return { clampCL(_val.x, _left.x, _right.x),
+                                                                                                clampCL(_val.y, _left.y, _right.y) }; }
+        template <typename T>
+        Vec3Base<T> clampCL(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right) { return { clampCL(_val.x, _left.x, _right.x),
+                                                                                                clampCL(_val.y, _left.y, _right.y),
+                                                                                                clampCL(_val.z, _left.z, _right.z) }; }
+        template <typename T>
+        Vec4Base<T> clampCL(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right) { return { clampCL(_val.x, _left.x, _right.x),
+                                                                                                clampCL(_val.y, _left.y, _right.y),
+                                                                                                clampCL(_val.z, _left.z, _right.z),
+                                                                                                clampCL(_val.w, _left.w, _right.w) }; }
+        template <typename T>
+        Vec2Base<T> clampRO(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampRO(_val.y, _left.y, _right.y, _step.y) }; }
+        template <typename T>
+        Vec3Base<T> clampRO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampRO(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampRO(_val.z, _left.z, _right.z, _step.z) }; }
+        template <typename T>
+        Vec4Base<T> clampRO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampRO(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampRO(_val.z, _left.z, _right.z, _step.z),
+                                                                                                                       clampRO(_val.w, _left.w, _right.w, _step.w) }; }
+        template <typename T>
+        Vec2Base<T> clampLO(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampLO(_val.y, _left.y, _right.y, _step.y) }; }
+        template <typename T>
+        Vec3Base<T> clampLO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampLO(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampLO(_val.z, _left.z, _right.z, _step.z) }; }
+        template <typename T>
+        Vec4Base<T> clampLO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampLO(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampLO(_val.z, _left.z, _right.z, _step.z),
+                                                                                                                       clampLO(_val.w, _left.w, _right.w, _step.w) }; }
+        template <typename T>
+        Vec2Base<T> clampOP(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampOP(_val.y, _left.y, _right.y, _step.y) }; }
+        template <typename T>
+        Vec3Base<T> clampOP(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampOP(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampOP(_val.z, _left.z, _right.z, _step.z) }; }
+        template <typename T>
+        Vec4Base<T> clampOP(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+                                                                                                                       clampOP(_val.y, _left.y, _right.y, _step.y),
+                                                                                                                       clampOP(_val.z, _left.z, _right.z, _step.z),
+                                                                                                                       clampOP(_val.w, _left.w, _right.w, _step.w) }; }
     }; // Math END
 
 

@@ -3,6 +3,8 @@
 
 #include <type_traits>
 
+#include "common/terminal.h"
+
 // this file contains various [template] classes/functions
 // used under the hood
 
@@ -15,6 +17,44 @@ namespace Simple {
         // template <bool flag> struct BoolFlag {};
         // BoolFlag<false> False;
         // BoolFlag<true> True;
+
+        
+
+        struct EnumCollector {
+            std::map<std::string, std::vector<std::string>> enum_collection;
+
+            void addEnum(const std::string &_enum_name, std::vector<std::string> _enum_values) {
+                for (const auto& en_data : enum_collection) {
+                    SVKFW_WASSERT(en_data.first != _enum_name, "Util :: EnumCollector", "Enum '" + _enum_name + "' - already exists");
+                    if (en_data.first == _enum_name) return;
+                }
+
+                for (char ch : _enum_name) {
+                    SVKFW_ASSERT(!isspace(ch), std::invalid_argument, "Util :: EnumCollector",
+                                "Enum '" + _enum_name + "' - enum name contains space character");
+                }
+
+                for (uint32_t i = 0u; i < _enum_values.size(); ++i) {
+                    std::vector<uint32_t> __dups;
+
+                    for (char ch : _enum_values[i]) {
+                        SVKFW_ASSERT(!isspace(ch), std::invalid_argument, "Util :: EnumCollector",
+                                  "Enum '" + _enum_name + "', value '" + _enum_values[i] + "' - contains space character");
+                    }
+
+                    for (uint32_t j = _enum_values.size()-1; j > i; --j)
+                        if (_enum_values[i] == _enum_values[j]) __dups.push_back(j);
+
+                    SVKFW_WASSERT(__dups.empty(), "Util :: EnumCollector",
+                                  "Enum '" + _enum_name + "', value '" + _enum_values[i] + "' - met " + std::to_string(__dups.size() + 1) + " times");
+
+                    for (uint32_t j : __dups)
+                        _enum_values.erase(_enum_values.begin()+j);
+                }
+
+                enum_collection[_enum_name] = _enum_values;
+            }
+        }; // EnumCollector END
 
 
         //  Image Utilities

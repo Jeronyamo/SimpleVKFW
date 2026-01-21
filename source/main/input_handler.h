@@ -375,7 +375,7 @@ namespace Simple {
             }
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
-                camera.proj_class.fovy = Math::clamp_CL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
             void processEventFBufferSize(GLFWwindow *_window, int _width, int _height, double _frame_time) override {
@@ -445,7 +445,7 @@ namespace Simple {
             }
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
-                camera.proj_class.fovy = Math::clamp_CL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
             void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time) override {
@@ -527,7 +527,7 @@ namespace Simple {
             }
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
-                camera.proj_class.fovy = Math::clamp_CL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
             void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time) override {

@@ -27,10 +27,10 @@ namespace Simple {
         HANDLE f_handle = INVALID_HANDLE_VALUE;
 
         FileBinReaderWin(const std::string &_fpath = "") { if (!_fpath.empty()) open(_fpath); }
-        ~FileBinReaderWin() { if (is_open()) close(); }
+        ~FileBinReaderWin() { if (isOpen()) close(); }
 
         inline void open(const std::string &_fpath)  {
-            // Get WCHAR stirng to open a file with (possibly) Unicode characters
+            // Get WCHAR string to open a file with (possibly) Unicode characters
             // for (char ch : _fpath)
             //     printf("%x ", uint8_t(ch));
             int __wchars_num = MultiByteToWideChar(CP_UTF8, 0, _fpath.c_str(), _fpath.size(), NULL, 0);
@@ -58,17 +58,17 @@ namespace Simple {
             if (__bytes_was_read == 0 && _size)
                 printf(SVKFW_WRAPINFO("FileBinReaderWin :: read", "EOF reached"));
         }
-        inline bool is_open() { return f_handle != INVALID_HANDLE_VALUE; }
-        inline void   close() { CloseHandle(f_handle); f_handle = INVALID_HANDLE_VALUE; }
+        inline bool isOpen() { return f_handle != INVALID_HANDLE_VALUE; }
+        inline void  close() { CloseHandle(f_handle); f_handle = INVALID_HANDLE_VALUE; }
 
 
         // The reason this class exists
 
         // Reads a single element of type T from binary file. Ineffective.
         template <class T>
-        T read_binary() {
+        T readBinary() {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderWin :: read_binary (1)", "Reading a pointer from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderWin :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
 
             char *__ch_buf[sizeof(T)]{};
             read((char *)__ch_buf, sizeof(T));
@@ -77,9 +77,9 @@ namespace Simple {
 
         // Reads a single element of type T from binary file. Ineffective.
         template <class T>
-        void read_binary(T &_val) {
+        void readBinary(T &_val) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderWin :: read_binary (2)", "Reading a pointer from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderWin :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
 
             char *__ch_buf[sizeof(T)]{};
             read((char *)__ch_buf, sizeof(T));
@@ -90,9 +90,9 @@ namespace Simple {
         // Reads an array of type T and length 'len' from binary file.
         // It doesn't handle possible misalignment.
         template <class T>
-        void read_binary_array(T* _buf, size_t _len) {
+        void readBinaryArray(T* _buf, size_t _len) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderWin :: read_binary_array", "Reading pointers from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderWin :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour"));
 
             read((char*)_buf, sizeof(T) * _len);
         }
@@ -102,7 +102,7 @@ namespace Simple {
         HANDLE f_handle = INVALID_HANDLE_VALUE;
 
         FileBinWriterWin(const std::string &_fpath = "", bool _truncate = false) { if (!_fpath.empty()) open(_fpath, _truncate); }
-        ~FileBinWriterWin() { if (is_open()) close(); }
+        ~FileBinWriterWin() { if (isOpen()) close(); }
 
         inline void open(const std::string &_fpath, bool _truncate = false)  {
             // Get WCHAR stirng to open a file with (possibly) Unicode characters
@@ -130,26 +130,26 @@ namespace Simple {
             if (__bytes_written != _size)
                 fprintf(svkfwwarn, "%s [%d/%d]\n", SVKFW_WRAPINFO("FileBinWriterWin :: write", "Could not write all bytes:"), __bytes_written, _size);
         }
-        inline bool is_open() { return f_handle != INVALID_HANDLE_VALUE; }
-        inline void   close() { CloseHandle(f_handle); f_handle = INVALID_HANDLE_VALUE; }
+        inline bool isOpen() { return f_handle != INVALID_HANDLE_VALUE; }
+        inline void  close() { CloseHandle(f_handle); f_handle = INVALID_HANDLE_VALUE; }
 
 
         // The reason this class exists
 
         // Writes a single element of type T to binary file. Ineffective.
         template <class T>
-        void write_binary(const T &_val) {
+        void writeBinary(const T &_val) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderWin :: write_binary", "Writing a pointer - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderWin :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour"));
 
             write((const char*)&_val, sizeof(T));
         }
 
         // Writes an array of type T and length 'len' to binary file.
         template <class T>
-        void write_binary_array(const T* _buf, size_t _len) {
+        void writeBinaryArray(const T* _buf, size_t _len) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderWin :: write_binary_array", "Writing pointers - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderWin :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour"));
 
             write((const char*)_buf, sizeof(T) * _len);
         }
@@ -168,21 +168,21 @@ namespace Simple {
         std::ifstream f_handle;
 
         FileBinReaderStd(const std::string &_fpath = "") { if (!_fpath.empty()) open(_fpath); }
-        ~FileBinReaderStd() { if (is_open()) close(); }
+        ~FileBinReaderStd() { if (isOpen()) close(); }
 
         inline void open(const std::string &_fpath)  { f_handle.open(_fpath, std::ios_base::in | std::ios_base::binary); }
         inline void read(char *_buf, uint32_t _size) { f_handle.read(_buf, _size); }
-        inline bool is_open() { return f_handle.is_open(); }
-        inline void   close() { f_handle.close(); }
+        inline bool isOpen() { return f_handle.isOpen(); }
+        inline void  close() {        f_handle. close(); }
 
 
         // The reason this class exists
 
         // Reads a single element of type T from binary file. Ineffective.
         template <class T>
-        T read_binary() {
+        T readBinary() {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderStd :: read_binary (1)", "Reading a pointer from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderStd :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
 
             char *__ch_buf[sizeof(T)]{};
             read((char *)__ch_buf, sizeof(T));
@@ -191,9 +191,9 @@ namespace Simple {
 
         // Reads a single element of type T from binary file. Ineffective.
         template <class T>
-        void read_binary(T &_val) {
+        void readBinary(T &_val) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderStd :: read_binary (2)", "Reading a pointer from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderStd :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
 
             char *__ch_buf[sizeof(T)]{};
             read((char *)__ch_buf, sizeof(T));
@@ -203,9 +203,9 @@ namespace Simple {
         // Reads an array of type T and length 'len' from binary file.
         // It doesn't handle possible misalignment.
         template <class T>
-        void read_binary_array(T* _buf, size_t _len) {
+        void readBinaryArray(T* _buf, size_t _len) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinReaderStd :: read_binary_array", "Reading pointers from file - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinReaderStd :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour"));
 
             read((char*)_buf, sizeof(T) * _len);
         }
@@ -215,31 +215,31 @@ namespace Simple {
         std::ofstream f_handle;
 
         FileBinWriterStd(const std::string &_fpath = "", bool _truncate = false) { if (!_fpath.empty()) open(_fpath, _truncate); }
-        ~FileBinWriterStd() { if (is_open()) close(); }
+        ~FileBinWriterStd() { if (isOpen()) close(); }
 
         inline void open(const std::string &_fpath, bool _truncate = false) { f_handle.open(_fpath, std::ios_base::out | std::ios_base::binary | (_truncate ? std::ios_base::trunc : (std::ios_base::openmode)0) ); }
         inline void write(const char *_buf, uint32_t _size) { f_handle.write(_buf, _size); }
-        inline bool is_open() { return f_handle.is_open(); }
-        inline bool    good() { return f_handle.   good(); }
-        inline void   close() { f_handle.close(); }
+        inline bool isOpen() { return f_handle.isOpen(); }
+        inline bool   good() { return f_handle.  good(); }
+        inline void  close() {        f_handle. close(); }
 
 
         // The reason this class exists
 
         // Writes a single element of type T to binary file. Ineffective.
         template <class T>
-        void write_binary(const T &_val) {
+        void writeBinary(const T &_val) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinWriterStd :: write_binary", "Writing a pointer - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinWriterStd :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour"));
 
             write((const char*)&_val, sizeof(T));
         }
 
         // Writes an array of type T and length 'len' to binary file.
         template <class T>
-        void write_binary_array(const T* _buf, size_t _len) {
+        void writeBinaryArray(const T* _buf, size_t _len) {
             if (std::is_reference<T>::value)
-                printf(SVKFW_WRAPWARN("FileBinWriterStd :: write_binary_array", "Writing pointers - this is most likely unwanted behaviour"));
+                printf(SVKFW_WRAPWARN("FileBinWriterStd :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour"));
 
             write((const char*)_buf, sizeof(T) * _len);
         }

@@ -4,7 +4,7 @@
 #include "math/vectors.h"
 
 
-/*  ==============================================  //
+/*  ==============================================  *\
                 y
                 │
                 │   z
@@ -28,7 +28,7 @@
 
     Positive angle direction - clockwise.
 
-//  ==============================================  */
+\*  ==============================================  */
 #define SVKFW_COORDINATE_SYSTEM_AGREEMENTS
 
 // TODO? Extract transforms (translation, scale etc.) from 4x4 transform matrix
@@ -309,6 +309,8 @@ namespace Simple {
                     roll = Math::atan2(2*(_q.i*_q.j + _q.k*_q.s), 1 - 2*(_q.i*_q.i + _q.k*_q.k));
                 }
 
+                operator vec3() { return { yaw, pitch, roll }; }
+
 
                 inline mat3 rotMat3D() const {
                     return ypr2rotMat3D(yaw, pitch, roll);
@@ -396,6 +398,10 @@ namespace Simple {
 
 
 //  ============  Quaternion <-> Euler angles  ============  \\
+
+            Quaternion ypr2quaternion(const EulerAngles &_ypr) {
+                return ypr2quaternion(_ypr.yaw, _ypr.pitch, _ypr.roll);
+            }
 
             Quaternion ypr2quaternion(float _y, float _p, float _r) {
                 float s1 = Math::sin(_y * 0.5f), c1 = Math::cos(_y * 0.5f),
@@ -804,12 +810,12 @@ namespace Simple {
             BezierLinear(const BezierLinear<V> &_c) : P0{_c.P0}, P1{_c.P1} {}
 
             V interpolate(float _t) const override {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return P0 + _t * (P1 - P0);
             }
 
             static V interpolate(float _t, const V &_p0, const V &_p1) {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return _p0 + _t * (_p1 - _p0);
             }
         }; // BezierLinear END
@@ -823,12 +829,12 @@ namespace Simple {
             BezierQuadratic(const BezierQuadratic<V> &_c) : P0{_c.P0}, P1{_c.P1}, P2{_c.P2} {}
 
             V interpolate(float _t) const override {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return P1 + Math::sqr(1.f - _t) * (P0 - P1) + (_t * _t) * (P2 - P1);
             }
 
             static V interpolate(float _t, const V &_p0, const V &_p1, const V &_p2) {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return _p1 + Math::sqr(1.f - _t) * (_p0 - _p1) + (_t * _t) * (_p2 - _p1);
             }
         }; // BezierQuadratic END
@@ -844,13 +850,13 @@ namespace Simple {
             BezierCubic(const BezierCubic<V> &_c) : P0{_c.P0}, P1{_c.P1}, P2{_c.P2}, P3{_c.P3} {}
 
             V interpolate(float _t) const override {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return Math::cube(1.f - _t) *  P0 +
                             3 * (1.f - _t) * _t * ( P1 + _t * ( P2 -  P1)) + (_t * _t * _t) *  P3;
             }
 
             static V interpolate(float _t, const V &_p0, const V &_p1, const V &_p2, const V &_p3) {
-                _t = Math::clamp_CL(_t, 0.f, 1.f);
+                _t = Math::clampCL(_t, 0.f, 1.f);
                 return Math::cube(1.f - _t) * _p0 +
                             3 * (1.f - _t) * _t * (_p1 + _t * (_p2 - _p1)) + (_t * _t * _t) * _p3;
             }
@@ -880,7 +886,7 @@ namespace Simple {
             Slerp(const Slerp &_s) : Q1{_s.Q1}, Q2{_s.Q2} {}
 
             Affine::Rotation::Quaternion interpolate(float _u) const {
-                _u = Math::clamp_CL(_u, 0.f, 1.f);
+                _u = Math::clampCL(_u, 0.f, 1.f);
 
                 float __theta = Math::acos(Math::dot(Q1, Q2));
                 if (Math::closeToZero(__theta)) return Q1;
@@ -892,7 +898,7 @@ namespace Simple {
 
             static Affine::Rotation::Quaternion interpolate(float _u, const Affine::Rotation::Quaternion &_q1,
                                                                       const Affine::Rotation::Quaternion &_q2) {
-                _u = Math::clamp_CL(_u, 0.f, 1.f);
+                _u = Math::clampCL(_u, 0.f, 1.f);
                 // if greedy, use one variable instead of "norm" and "theta"
                 float __norm = Math::sqrt(_q1.norm2() * _q2.norm2());
                 if (Math::closeToZero(__norm )) return _q1;
