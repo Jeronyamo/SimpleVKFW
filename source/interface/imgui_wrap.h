@@ -13,6 +13,24 @@
 
 
 namespace Simple {
+    struct ImGuiWindow {
+        std::string window_name;
+        bool window_open = true;
+        ImGuiWindowFlags  flags;
+
+        ImGuiWindow(std::string _window_name = "", ImGuiWindowFlags _flags = 0) : window_name{_window_name}, flags{_flags} {}
+        
+        void renderWindow() {
+            if (window_name.empty()) return;
+
+            bool __window_active = ImGui::Begin(window_name.c_str(), &window_open, flags);
+            if (__window_active) {
+            }
+            ImGui::End();
+        }
+    }; // ImGuiWindow END
+
+
     struct ImGuiHandler {
         ImGuiContext *context = nullptr;
         ImGui_ImplVulkan_InitInfo imgui_info{};
@@ -47,6 +65,9 @@ namespace Simple {
             ImGui::Begin("Window");
             ImGui::Text("Hello from another window!");
             ImGui::End();
+            ImGui::Begin("Window");
+            ImGui::Text("Hello from another window!");
+            ImGui::End();
             ImGui::Render();
         }
         void fillCommandBuffer(VkCommandBuffer _cmd_buffer) {
@@ -61,7 +82,7 @@ namespace Simple {
             imgui_info.Device = _vk_context->device;
             imgui_info.QueueFamily = _vk_context->queue_families[_ci_qfamily];
             imgui_info.Queue = _vk_context->queues[_ci_graphics_queue];
-            imgui_info.RenderPass = _vk_context->render_pass;
+            imgui_info.PipelineInfoMain.RenderPass = _vk_context->render_pass;
             // imgui_info.DescriptorPool = _vk_context->descriptor_context.pools[_ci_descriptor_pool];
             imgui_info.MinImageCount = getMinImageCount();
             imgui_info.ImageCount = std::max(_image_count, getMinImageCount());
@@ -86,7 +107,7 @@ namespace Simple {
         bool isKeyboardInUse() {
             return ImGui::GetIO().WantCaptureKeyboard;
         }
-    };
-};
+    }; // ImGuiHandler END
+}; // Simple END
 
 #endif
