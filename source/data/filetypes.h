@@ -6,7 +6,6 @@
 
 #include "common/terminal.h"
 #include "math/linalg.h"
-#include "data/json.h"
 #include "platform_dependent/pd_filetypes.h"
 
 
@@ -1050,18 +1049,409 @@ namespace Simple {
 
     // JSON
 
+    
+    namespace Util {
+        std::pair<uint32_t, uint32_t> parseWords(const std::vector<std::string> &_words, const char *_json_str) {
+            uint32_t __res_index = UINT32_MAX, __res_offset = UINT32_MAX;
+
+            for (uint32_t i = 0u; i < _words.size(); ++i) {
+                bool __matches = false;
+                for (uint32_t j = 0u; j < _words[i].size(); ++j) {
+                    if (_json_str[j] == '\0' || _json_str[j] != _words[i][j])
+                        break;
+                    __matches = j+1 == _words[i].size();
+                }
+                if (__matches) { __res_index = i; __res_offset = _words[i].size(); }
+            }
+
+            return { __res_index, __res_offset };
+        }
+        uint32_t skipWhitespace(const char *_json_str) {
+            uint32_t __res_offset = 0u;
+            if (_json_str != nullptr)
+                while (std::isspace(_json_str[__res_offset]) && _json_str[__res_offset] != '\0')
+                    __res_offset += 1;
+            return __res_offset;
+        }
+    };
+
+    enum JSONType {
+        JSON_TYPE_NULL = 1,
+        JSON_TYPE_BOOL = 2,
+        JSON_TYPE_NUM  = 4,
+        JSON_TYPE_STR  = 8,
+        JSON_TYPE_ARR  = 16,
+        JSON_TYPE_OBJ  = 32,
+    }; // JSONType END
+
+
     struct ContentJSON : FiletypeContentItf {
         struct JSONNode {
-            JSON::JSONType node_type = JSON::JSON_TYPE_NULL;
+            JSONType node_type = JSON_TYPE_NULL;
             union {
                 bool value_bool;
                 double value_num;
                 std::string value_str;
-                std::vector<JSONNode> value_arr;
-                std::pair<std::string, JSONNode*> value_obj;
+                std::vector<JSONNode> value_arr_obj;
             };
+
             JSONNode() {}
+            JSONNode(const JSONNode &_node) : node_type{_node.node_type} {
+                switch (node_type) {
+                    case JSON_TYPE_ARR :
+                    case JSON_TYPE_OBJ : new (&value_arr_obj) std::vector<JSONNode>;
+                                               value_arr_obj = _node.value_arr_obj; break;
+                    case JSON_TYPE_STR : new (&value_str) std::string;
+                                               value_str  = _node.value_str;  break;
+                    case JSON_TYPE_BOOL: value_bool = _node.value_bool; break;
+                    case JSON_TYPE_NUM : value_num  = _node.value_num ; break;
+                    case JSON_TYPE_NULL: break;
+                }
+            }
+            ~JSONNode() { removeValue(); }
+
+            const JSONNode& operator=(const JSONNode& _node) {
+                removeValue();
+
+                switch (node_type) {
+                    case JSON_TYPE_ARR :
+                    case JSON_TYPE_OBJ : new (&value_arr_obj) std::vector<JSONNode>;
+                                               value_arr_obj = _node.value_arr_obj; break;
+                    case JSON_TYPE_STR : new (&value_str) std::string;
+                                               value_str  = _node.value_str;  break;
+                    case JSON_TYPE_BOOL: value_bool = _node.value_bool; break;
+                    case JSON_TYPE_NUM : value_num  = _node.value_num ; break;
+                    case JSON_TYPE_NULL: break;
+                }
+                return *this;
+            }
+
+            void removeValue() {
+                switch (node_type) {
+                    case JSON_TYPE_ARR :
+                    case JSON_TYPE_OBJ :   value_arr_obj.~vector(); break;
+                    case JSON_TYPE_STR : value_str.~basic_string(); break;
+                    default: break;
+                }
+                node_type = JSON_TYPE_NULL;
+            }
+
+        // Switch Active Value
+
+            void switchValueNull() {
+                removeValue();
+                node_type = JSON_TYPE_NULL;
+            }
+            void switchValueBool() {
+                removeValue();
+                node_type = JSON_TYPE_BOOL;
+                value_bool = false;
+            }
+            void switchValueNum () {
+                removeValue();
+                node_type = JSON_TYPE_NUM;
+                value_num = 0.0;
+            }
+            void switchValueStr () {
+                removeValue();
+                node_type = JSON_TYPE_STR;
+                new (&value_str) std::string;
+            }
+            void switchValueArr () {
+                removeValue();
+                node_type = JSON_TYPE_ARR;
+                new (&value_arr_obj) std::vector<JSONNode>;
+            }
+            void switchValueObj () {
+                removeValue();
+                node_type = JSON_TYPE_OBJ;
+                new (&value_arr_obj) std::vector<JSONNode>;
+            }
+
+        // Set Value
+
+            void setValueNull() {
+                switchValueNull();
+            }
+            void setValueBool(bool _value) {
+                switchValueBool();
+                value_bool = _value;
+            }
+            void setValueStr(const std::string &_value) {
+                switchValueStr();
+                value_str = _value;
+            }
+            void setValueNum(double _value) {
+                switchValueNum();
+                value_num = _value;
+            }
+            void setValueArr(const std::vector<JSONNode> &_value) {
+                switchValueArr();
+                value_arr_obj = _value;
+            }
+            void setValueObj(const JSONNode &_key, const JSONNode &_value) {
+                switchValueObj();
+                value_arr_obj = {_key, _value};
+            }
+
+        // Read Value From String
+
+            uint32_t readValueNull(const char *_json_str) {
+                std::pair<uint32_t,uint32_t> __index_offset = Util::parseWords({"null"}, _json_str);
+                setValueNull();
+                return __index_offset.second;
+            }
+            uint32_t readValueBool(const char *_json_str) {
+                std::pair<uint32_t,uint32_t> __index_offset = Util::parseWords({"false","true"}, _json_str);
+                setValueBool(__index_offset.first);
+                return __index_offset.second;
+            }
+            uint32_t readValueNum (const char *_json_str) {
+                std::size_t __res_offset = UINT32_MAX;
+                double __value = 0.0;
+                try {
+                    __value = std::stod(_json_str, &__res_offset);
+                }
+                catch (std::exception) { __res_offset = UINT32_MAX; }
+                setValueNum(__value);
+                return (uint32_t) __res_offset;
+
+            }
+            uint32_t readValueStr (const char *_json_str) {
+                bool __finish = _json_str == nullptr || _json_str[0] != '"';
+                uint32_t __res_offset = UINT32_MAX;
+
+                for (uint32_t i = 1u; !__finish; ++i) {
+                    switch (_json_str[i]) {
+                        case  '"': __res_offset = i+1;
+                        case '\0': __finish = true;
+                        case '\\': ++i;
+                    }
+                }
+                if (__res_offset != UINT32_MAX)
+                    setValueStr(std::string(_json_str+1, _json_str+__res_offset-1));
+                return __res_offset;
+            }
+            uint32_t readValueArr (const char *_json_str) {
+                uint32_t __res_offset = UINT32_MAX;
+
+                bool __finish = _json_str == nullptr || _json_str[0] != '[';
+                uint32_t __tmp_offset = 0u, __sum_offset = __finish ? UINT32_MAX : 1u;
+                switchValueArr();
+                while (!__finish) {
+                    value_arr_obj.emplace_back();
+                    __tmp_offset = value_arr_obj.back().readValue(_json_str+__sum_offset);
+                    if (__tmp_offset == UINT32_MAX) {
+                        std::string __warn_msg = SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueArr", "couldn't read JSON object in array\n");
+                        fprintf(svkfwwarn, "%s\n", __warn_msg.c_str());
+                        break;
+                    }
+                    __sum_offset += __tmp_offset;
+
+                    // Finish state
+                    if (_json_str[__sum_offset] == ']') {
+                        __finish = _json_str[__sum_offset] == ']';
+                        __sum_offset += 1;
+                    }
+                    else if (_json_str[__sum_offset] == ',') {
+                        __sum_offset += 1;
+                        // Processing trailing comma
+                        __tmp_offset = Util::skipWhitespace(_json_str+__sum_offset);
+                        __sum_offset += __tmp_offset;
+
+                        // Finish state
+                        if (_json_str[__sum_offset] == ']') {
+                            __finish = _json_str[__sum_offset] == ']';
+                            __sum_offset += 1;
+                        }
+                    }
+                    else {
+                        std::string __warn_msg = SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueArr", "unexpected symbol: " + std::to_string(_json_str[__sum_offset]));
+                        fprintf(svkfwwarn, "%s\n", __warn_msg.c_str());
+                        break;
+                    }
+                }
+                if (__finish) __res_offset = __sum_offset;
+                return __res_offset;
+            }
+            uint32_t readValueObj (const char *_json_str) {
+                uint32_t __res_offset = UINT32_MAX;
+
+                bool __finish = _json_str == nullptr || _json_str[0] != '{';
+                uint32_t __tmp_offset = 0u, __sum_offset = __finish ? UINT32_MAX : 1u;
+                switchValueObj();
+                while (!__finish) {
+                    // Reading string
+                    value_arr_obj.emplace_back();
+                    __tmp_offset = value_arr_obj.back().readValue(_json_str+__sum_offset);
+                    if (__tmp_offset == UINT32_MAX) {
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueObj", "couldn't read first JSON object (string) in object\n"));
+                        break;
+                    }
+                    __sum_offset += __tmp_offset;
+
+                    // Reading ':'
+                    if (_json_str[__sum_offset] != ':') {
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueObj", "unexpected symbol instead of ':' - '%c'\n"), _json_str[__sum_offset]);
+                        break;
+                    }
+                    __sum_offset += 1;
+
+                    // Reading object
+                    value_arr_obj.emplace_back();
+                    __tmp_offset = value_arr_obj.back().readValue(_json_str+__sum_offset);
+                    if (__tmp_offset == UINT32_MAX) {
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueObj", "couldn't read second JSON object in object\n"));
+                        break;
+                    }
+                    __sum_offset += __tmp_offset;
+
+                    // Finish state
+                    if (_json_str[__sum_offset] == '}') {
+                        __finish = _json_str[__sum_offset] == '}';
+                        __sum_offset += 1;
+                    }
+                    else if (_json_str[__sum_offset] == ',') {
+                        __sum_offset += 1;
+                        // Processing trailing comma
+                        __tmp_offset = Util::skipWhitespace(_json_str+__sum_offset);
+                        __sum_offset += __tmp_offset;
+
+                        // Finish state
+                        if (_json_str[__sum_offset] == '}') {
+                            __finish = _json_str[__sum_offset] == '}';
+                            __sum_offset += 1;
+                        }
+                    }
+                    else {
+                        std::string __warn_msg = SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueObj", "unexpected symbol: " + std::to_string(_json_str[__sum_offset]));
+                        fprintf(svkfwwarn, __warn_msg.c_str());
+                        break;
+                    }
+                }
+                if (__finish) __res_offset = __sum_offset;
+                return __res_offset;
+            }
+
+            uint32_t readValue(const char *_json_str) {
+                uint32_t __res_offset = 0u;
+                if (_json_str == nullptr) return UINT32_MAX;
+
+                uint32_t __tmp_offset = Util::skipWhitespace(_json_str);
+                __res_offset += __tmp_offset;
+
+                switch (_json_str[__res_offset]) {
+                    case 't':
+                    case 'f': __tmp_offset = readValueBool(_json_str + __res_offset); break;
+                    case 'n': __tmp_offset = readValueNull(_json_str + __res_offset); break;
+                    case '"': __tmp_offset = readValueStr (_json_str + __res_offset); break;
+                    case '[': __tmp_offset = readValueArr (_json_str + __res_offset); break;
+                    case '{': __tmp_offset = readValueObj (_json_str + __res_offset); break;
+                    default : __tmp_offset = readValueNum (_json_str + __res_offset); break;
+                }
+                if (__tmp_offset == UINT32_MAX) return UINT32_MAX;
+                __res_offset += __tmp_offset;
+
+                __tmp_offset = Util::skipWhitespace(_json_str+__res_offset);
+                __res_offset += __tmp_offset;
+                return __res_offset;
+            }
+
+        // Write Values To String
+            std::vector<std::string> writeValueNull(uint32_t _indent = 0u) {
+                return {"null"};
+            }
+            std::vector<std::string> writeValueBool(uint32_t _indent = 0u) {
+                return { value_bool ? "true" : "false" };
+            }
+            std::vector<std::string> writeValueNum (uint32_t _indent = 0u) {
+                long long __decimal_part = (long long)value_num;
+                return { std::abs(__decimal_part - value_num) < 1e-6 ? std::to_string(__decimal_part) : std::to_string(value_num) };
+            }
+            std::vector<std::string> writeValueStr (uint32_t _indent = 0u) {
+                return {'"' + value_str + '"'};
+            }
+            std::vector<std::string> writeValueArr (uint32_t _indent = 0u) {
+                const std::string __indent_str = std::string(size_t(_indent), ' ');
+                std::vector<std::string> __res, __tmp_res;
+                if (value_arr_obj.empty()) _indent = 0u;
+
+                __res.push_back("[");
+                for (uint32_t i = 0u; i < value_arr_obj.size(); ++i) {
+                    __tmp_res = value_arr_obj[i].writeValue(_indent);
+                    for (auto& ln : __tmp_res)
+                        __res.push_back(__indent_str + ln);
+                    if (i+1 < value_arr_obj.size())
+                        __res.back() += ",";
+                }
+                __res.push_back("]");
+
+                if (_indent == 0) {
+                    for (uint32_t i = 1u; i < __res.size(); ++i)
+                        __res[0] += ' ' + __res[i];
+                    __res.resize(1);
+                }
+
+                return __res;
+            }
+            std::vector<std::string> writeValueObj (uint32_t _indent = 0u) {
+                const std::string __indent_str = std::string(size_t(_indent), ' ');
+                std::vector<std::string> __res, __tmp_res;
+                if (value_arr_obj.empty()) _indent = 0u;
+
+                __res.push_back("{");
+                for (uint32_t i = 0u; i < value_arr_obj.size(); i+=2) {
+                    __tmp_res = value_arr_obj[i].writeValue(_indent);
+                    for (auto& ln : __tmp_res)
+                        __res.push_back(__indent_str + ln);
+                    __res.back() += " : ";
+
+                    __tmp_res = value_arr_obj[i+1].writeValue(_indent);
+                    __res.back() += __tmp_res[0];
+                    for (uint32_t j = 1u; j < __tmp_res.size(); ++j)
+                        __res.push_back(__indent_str + __tmp_res[j]);
+                    if (i+2 < value_arr_obj.size())
+                        __res.back() += ",";
+                }
+                __res.push_back("}");
+
+                if (_indent == 0) {
+                    for (uint32_t i = 1u; i < __res.size(); ++i)
+                        __res[0] += ' ' + __res[i];
+                    __res.resize(1);
+                }
+
+                return __res;
+            }
+
+            std::vector<std::string> writeValue(uint32_t _indent = 0u) {
+                switch (node_type) {
+                    case JSON_TYPE_NULL: return writeValueNull(_indent);
+                    case JSON_TYPE_BOOL: return writeValueBool(_indent);
+                    case JSON_TYPE_NUM : return writeValueNum (_indent);
+                    case JSON_TYPE_STR : return writeValueStr (_indent);
+                    case JSON_TYPE_ARR : return writeValueArr (_indent);
+                    case JSON_TYPE_OBJ : return writeValueObj (_indent);
+                }
+                return {};
+            }
         } root_node; // JSONNode END
+
+        ContentJSON() {}
+        virtual ~ContentJSON() override {}
+
+        void readFromString(const char *_json_str) {
+            root_node.readValue(_json_str);
+        }
+        std::string writeToString(uint32_t _indent = 0u) {
+            auto __lines = root_node.writeValue(_indent);
+            std::string __res;
+            for (auto& ln : __lines) {
+                __res += ln + '\n';
+                ln.clear();
+            }
+            return __res;
+        }
     }; // ContentJSON END
 }; // Simple END
 

@@ -11,7 +11,6 @@
 #include "main/image.h"
 #include "sound/sound.h"
 #include "interface/rtaudio_wrap.h"
-#include "data/json.h"
 
 
 namespace Simple {
@@ -446,12 +445,11 @@ int main(int argc, char **argv) {
 }";
     printf("JSON Original:\n%s\n", json_example.c_str());
 
-    uint32_t offset = 0u;
-    Simple::JSON::JSONTypeItf *json_parsed = Simple::JSON::parseJSONType(json_example.c_str(), offset);
-    auto lines = json_parsed->writeString(2u);
-    printf("JSON Parsed:\n");
-    for (auto ln : lines)
-        printf("%s\n", ln.c_str());
+    Simple::ContentJSON json_parsed;
+    json_parsed.readFromString(json_example.c_str());
+
+    std::string res_json = json_parsed.writeToString(2);
+    printf("\nJSON Parsed:\n%s\n", res_json.c_str());
 
     // std::string motion_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\Abracadabra_edit";
     // std::string camera_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\camera_Brown Eyed Girls - Abracadabra by 000MMD\\lowangle_ver";
