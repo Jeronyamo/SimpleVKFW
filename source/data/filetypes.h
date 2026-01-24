@@ -4,9 +4,9 @@
 #include <map>
 #include <vector>
 
-#include "terminal.h"
-#include "linalg.h"
-
+#include "common/terminal.h"
+#include "math/linalg.h"
+#include "data/json.h"
 #include "platform_dependent/pd_filetypes.h"
 
 
@@ -1051,7 +1051,17 @@ namespace Simple {
     // JSON
 
     struct ContentJSON : FiletypeContentItf {
-
+        struct JSONNode {
+            JSON::JSONType node_type = JSON::JSON_TYPE_NULL;
+            union {
+                bool value_bool;
+                double value_num;
+                std::string value_str;
+                std::vector<JSONNode> value_arr;
+                std::pair<std::string, JSONNode*> value_obj;
+            };
+            JSONNode() {}
+        } root_node; // JSONNode END
     }; // ContentJSON END
 }; // Simple END
 

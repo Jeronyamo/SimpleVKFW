@@ -11,6 +11,7 @@
 #include "main/image.h"
 #include "sound/sound.h"
 #include "interface/rtaudio_wrap.h"
+#include "data/json.h"
 
 
 namespace Simple {
@@ -413,16 +414,54 @@ int main(int argc, char **argv) {
 
     // Simple::ArgParser tests_argparser{argc, argv};
     // tests_argparser.addArgumentDescription
+    
+    // Example from Wikipedia
+    std::string json_example = "{\n\
+  \"first_name\": \"John\",\n\
+  \"last_name\": \"Smith\",\n\
+  \"is_alive\": true,\n\
+  \"age\": 27,\n\
+  \"address\": {\n\
+    \"street_address\": \"21 2nd Street\",\n\
+    \"city\": \"New York\",\n\
+    \"state\": \"NY\",\n\
+    \"postal_code\": \"10021-3100\"\n\
+  },\n\
+  \"phone_numbers\": [\n\
+    {\n\
+      \"type\": \"home\",\n\
+      \"number\": \"212 555-1234\"\n\
+    },\n\
+    {\n\
+      \"type\": \"office\",\n\
+      \"number\": \"646 555-4567\"\n\
+    }\n\
+  ],\n\
+  \"children\": [\n\
+    \"Catherine\",\n\
+    \"Thomas\",\n\
+    \"Trevor\"\n\
+  ],\n\
+  \"spouse\": null\n\
+}";
+    printf("JSON Original:\n%s\n", json_example.c_str());
 
-    std::string motion_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\Abracadabra_edit";
-    std::string camera_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\camera_Brown Eyed Girls - Abracadabra by 000MMD\\lowangle_ver";
-    std::vector<uint32_t> split_frame_ids = { 111,225,516,601,877,1076,1301,1538,1756,1920,2152,2468,2706,2904,3275,3492,3726,3920,4052,4303,4536,4743,5071,5341,5555 };
-    Simple::ContentVMD::AttrAdjust motion_offset{true}, camera1_offset{true}, camera2_scale{false}, camera1_scale{false};
-    camera1_offset.pos_dist["xyz"] = {-12.f, 0.f, 0.f};
-    camera2_scale.pos_dist["xyz"] = {1.f, 0.935f, 1.f};
+    uint32_t offset = 0u;
+    Simple::JSON::JSONTypeItf *json_parsed = Simple::JSON::parseJSONType(json_example.c_str(), offset);
+    auto lines = json_parsed->writeString(2u);
+    printf("JSON Parsed:\n");
+    for (auto ln : lines)
+        printf("%s\n", ln.c_str());
 
-    Simple::ContentVMD::CreateMixed(motion_fpath, camera_fpath, split_frame_ids, motion_offset,
-                                    camera1_scale, camera1_offset, camera2_scale, camera1_offset);
+    // std::string motion_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\Abracadabra_edit";
+    // std::string camera_fpath = "D:\\Another\\Stuff\\MMD\\StudioMMDs\\NewMotions\\NatsumiSanMotions\\Brown Eyed Girls - Abracadabra\\camera_Brown Eyed Girls - Abracadabra by 000MMD\\lowangle_ver";
+    // std::vector<uint32_t> split_frame_ids = { 111,225,516,601,877,1076,1301,1538,1756,1920,2152,2468,2706,2904,3275,3492,3726,3920,4052,4303,4536,4743,5071,5341,5555 };
+    // Simple::ContentVMD::AttrAdjust motion_offset{true}, camera1_offset{true}, camera2_scale{false}, camera1_scale{false};
+    // camera1_offset.pos_dist["xyz"] = {-12.f, 0.f, 0.f};
+    // camera2_scale.pos_dist["xyz"] = {1.f, 0.935f, 1.f};
+
+    // Simple::ContentVMD::CreateMixed(motion_fpath, camera_fpath, split_frame_ids, motion_offset,
+    //                                 camera1_scale, camera1_offset, camera2_scale, camera1_offset);
 
     // Simple::Tests::TestSystem::run({3}, {Simple::Tests::SUBTEST6 | Simple::Tests::SUBTEST7 | Simple::Tests::SUBTEST8});
     return 0;
