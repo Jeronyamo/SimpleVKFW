@@ -445,7 +445,7 @@ int main(int argc, char **argv) {
 }";
     printf("JSON Original:\n%s\n", json_example.c_str());
 
-    Simple::ContentJSON json_parsed;
+    Simple::File::ContentJSON json_parsed;
     json_parsed.readFromString(json_example.c_str());
 
     std::string res_json = json_parsed.writeToString(2);

@@ -12,6 +12,7 @@
 namespace Simple {
 // Utilities
 
+    namespace File {
     enum Filetype : uint32_t {
         NONE,
         BIN,
@@ -33,7 +34,7 @@ namespace Simple {
         virtual bool  read(const std::string &_fpath) = 0;
         virtual void write(const std::string &_fpath) = 0;
         // Used when file reader has to recognize a file without extension
-        virtual bool tryHeaders(FileBinReader &_ftype_file) = 0;
+        virtual bool tryHeaders(File::ReaderItf &_ftype_file) = 0;
     }; // FiletypeReaderWriter END
 
 
@@ -451,7 +452,7 @@ namespace Simple {
 
         bool read(const std::string &_fpath) override {
             // Open file
-            FileBinReader __ftype_file{_fpath};
+            FileReader __ftype_file{_fpath};
 
             // Header
             const uint32_t header_len = 30;
@@ -561,7 +562,7 @@ namespace Simple {
 
         void write(const std::string &_fpath) override {
             // Open file
-            FileBinWriter __ftype_file{_fpath};
+            FileWriter __ftype_file{_fpath};
 
             // Header
             const uint32_t __header_len = 30;
@@ -616,13 +617,13 @@ namespace Simple {
             }
         }
 
-        bool tryHeaders(FileBinReader &_ftype_file) override {
+        bool tryHeaders(ReaderItf &_ftype_file) override {
             const uint32_t header_len = 30;
             char __ch_buffer[32]{};
 
             _ftype_file.read(__ch_buffer, header_len);
             std::string __res_str = std::string(__ch_buffer, __ch_buffer + header_len - 5);
-            return __res_str == "Vocaloid Motion Data file" || __res_str == "Vocaloid Motion Data 0002";
+            return _ftype_file.isValid() && (__res_str == "Vocaloid Motion Data file" || __res_str == "Vocaloid Motion Data 0002");
         }
     }; // ReaderWriterVMD END
 
@@ -1453,6 +1454,8 @@ namespace Simple {
             return __res;
         }
     }; // ContentJSON END
+
+    }; // File END
 }; // Simple END
 
 #endif
