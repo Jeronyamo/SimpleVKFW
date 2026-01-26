@@ -10,8 +10,6 @@
 
 
 namespace Simple {
-// Utilities
-
     namespace File {
         enum Filetype : uint32_t {
             NONE,
@@ -32,10 +30,28 @@ namespace Simple {
             virtual ~FiletypeReaderWriterItf() {}
 
             virtual bool  read(const std::string &_fpath) = 0;
-            virtual void write(const std::string &_fpath) = 0;
+            virtual bool write(const std::string &_fpath) = 0;
             // Used when file reader has to recognize a file without extension
             virtual bool tryHeaders(File::ReaderItf &_ftype_file) = 0;
         }; // FiletypeReaderWriter END
+
+// Utilities
+
+        bool pathHasExtension(const std::string &_fpath) {
+            bool __res = true;
+            if ( _fpath.rfind('.') == _fpath.npos || _fpath == ".") __res = false;
+            if ((_fpath.rfind( '/') < _fpath.npos && _fpath.rfind('.') <= _fpath.rfind( '/'))  ||
+                (_fpath.rfind('\\') < _fpath.npos && _fpath.rfind('.') <= _fpath.rfind('\\'))) __res = false;
+            return __res;
+        }
+
+        std::string pathGetExtension(const std::string &_fpath) {
+            return pathHasExtension(_fpath) ? _fpath.substr(_fpath.rfind('.') + 1) : "";
+        }
+
+        std::string pathRemoveExtension(const std::string &_fpath) {
+            return pathHasExtension(_fpath) ? _fpath.substr(0u, _fpath.rfind('.')) : _fpath;
+        }
 
 
 // Implementations
@@ -437,8 +453,8 @@ namespace Simple {
             }
 
             static void SetNameFromMapping(BoneKeyframe &_bone_kframe, std::string _mapping_str);
-            static void CreateReflected(const std::string &_vmd_path_no_ext, bool _fix_blink = true);
-            static void CreateMixed(const std::string &_motion_vmd_path_no_ext, const std::string &_camera_vmd_path_no_ext,
+            static void  ModifyData(const std::string &_vmd_path, bool _fix_blink = true, bool _make_reflected = true);
+            static void CreateMixed(const std::string &_motion_vmd_path, const std::string &_camera_vmd_path,
                                     const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
                                     const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset,
                                     const AttrAdjust &_camera2_scale, const AttrAdjust &_camera2_offset, bool _fix_blink = true);
@@ -450,9 +466,10 @@ namespace Simple {
 
             ReaderWriterVMD(const std::string &_fpath = "") { if (!_fpath.empty()) read(_fpath); }
 
-            bool read(const std::string &_fpath) override {
+            virtual bool read(const std::string &_fpath) override {
                 // Open file
                 FileReader __ftype_file{_fpath};
+                if (!__ftype_file.isOpen()) return false;
 
                 // Header
                 const uint32_t header_len = 30;
@@ -560,9 +577,10 @@ namespace Simple {
                 return true;
             }
 
-            void write(const std::string &_fpath) override {
+            virtual bool write(const std::string &_fpath) override {
                 // Open file
                 FileWriter __ftype_file{_fpath};
+                if (!__ftype_file.isOpen()) return false;
 
                 // Header
                 const uint32_t __header_len = 30;
@@ -615,6 +633,7 @@ namespace Simple {
                     __ftype_file.writeBinary(file_content.keyframes_camera[i].fov     );
                     __ftype_file.writeBinary((uint8_t)file_content.keyframes_camera[i].perspect);
                 }
+                return __ftype_file.isValid();
             }
 
             bool tryHeaders(ReaderItf &_ftype_file) override {
@@ -952,23 +971,33 @@ namespace Simple {
                 _bone_kframe.bone_name[i] = _mapping_str[i];
         }
 
-        void ContentVMD::CreateReflected(const std::string &_vmd_path_no_ext, bool _fix_blink) {
-            ReaderWriterVMD __vmd_file{_vmd_path_no_ext + ".vmd"};
+        void ContentVMD::ModifyData(const std::string &_vmd_path, bool _fix_blink, bool _make_reflected) {
+            ReaderWriterVMD __vmd_file{_vmd_path};
+            std::string __vmd_path_no_ext = pathRemoveExtension(_vmd_path), __suffix = "";
 
             if (_fix_blink) {
                 ContentVMD::MorphAttrClampMinmax blink_clamp_info{0.01f, 0.99f};
                 __vmd_file.file_content.clampFrames({}, {{"blink", blink_clamp_info}});
-                __vmd_file.write(_vmd_path_no_ext + "2.vmd");
+                __suffix += "2";
+                __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: CreateReflected", "Saved motion with fixed blink to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
             }
-
-            __vmd_file.file_content.reflectMovement();
-            __vmd_file.write(_vmd_path_no_ext + (_fix_blink ? "2" : "") + "_reflected.vmd");
+            if (_make_reflected) {
+                __vmd_file.file_content.reflectMovement();
+                __suffix += "_reflected";
+                __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: CreateReflected", "Saved reflected motion to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
+            }
         }
 
-        void ContentVMD::CreateMixed(const std::string &_motion_vmd_path_no_ext, const std::string &_camera_vmd_path_no_ext, const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
-                                    const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset, const AttrAdjust &_camera2_scale, const AttrAdjust &_camera2_offset, bool _fix_blink) {
+        void ContentVMD::CreateMixed(const std::string &_motion_vmd_path, const std::string &_camera_vmd_path,
+                                     const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
+                                     const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset,
+                                     const AttrAdjust &_camera2_scale, const AttrAdjust &_camera2_offset, bool _fix_blink) {
             // Reflected motion
-            ReaderWriterVMD __vmd_file{_motion_vmd_path_no_ext + ".vmd"};
+            std::string __motion_vmd_path_no_ext = pathRemoveExtension(_motion_vmd_path);
+            std::string __camera_vmd_path_no_ext = pathRemoveExtension(_camera_vmd_path);
+            ReaderWriterVMD __vmd_file{__motion_vmd_path_no_ext + ".vmd"};
 
             if (!__vmd_file.file_content.keyframes_camera.empty())
                 throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "motion VMD file has camera keyframes"));
@@ -1001,15 +1030,15 @@ namespace Simple {
                 __vmd_file.file_content.clampFrames({}, {{"blink", __blink_clamp_info}});
             }
 
-            __vmd_file.write(_motion_vmd_path_no_ext + "2.vmd");
+            __vmd_file.write(__motion_vmd_path_no_ext + "2.vmd");
 
             __vmd_file.file_content.reflectMovement();
-            __vmd_file.write(_motion_vmd_path_no_ext + "2_reflected.vmd");
+            __vmd_file.write(__motion_vmd_path_no_ext + "2_reflected.vmd");
 
 
             // Reflected camera
-            __vmd_file.read(_camera_vmd_path_no_ext + ".vmd");
-            ReaderWriterVMD __vmd_file2{_camera_vmd_path_no_ext + ".vmd"};
+            __vmd_file.read(__camera_vmd_path_no_ext + ".vmd");
+            ReaderWriterVMD __vmd_file2{__camera_vmd_path_no_ext + ".vmd"};
 
             if (__vmd_file.file_content.keyframes_camera.empty())
                 throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "camera VMD file has no camera keyframes"));
@@ -1021,12 +1050,12 @@ namespace Simple {
 
             __vmd_file2.file_content.reflectMovement();
 
-            __vmd_file .write(_camera_vmd_path_no_ext + "2.vmd");
-            __vmd_file2.write(_camera_vmd_path_no_ext + "2_reflected.vmd");
+            __vmd_file .write(__camera_vmd_path_no_ext + "2.vmd");
+            __vmd_file2.write(__camera_vmd_path_no_ext + "2_reflected.vmd");
 
             // Mixed camera
             __vmd_file.file_content.mixCamera(__vmd_file2.file_content, _split_frame_ids);
-            __vmd_file .write(_camera_vmd_path_no_ext + "2_mixed.vmd");
+            __vmd_file .write(__camera_vmd_path_no_ext + "2_mixed.vmd");
         }
 
 
