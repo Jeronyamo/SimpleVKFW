@@ -13,13 +13,6 @@ namespace Simple {
     namespace Util {
         //  Types and parameters
 
-        // struct ParamFlag {};
-        // template <bool flag> struct BoolFlag {};
-        // BoolFlag<false> False;
-        // BoolFlag<true> True;
-
-        
-
         struct EnumCollector {
             std::map<std::string, std::vector<std::string>> enum_collection;
 
@@ -57,10 +50,14 @@ namespace Simple {
         }; // EnumCollector END
 
 
-        //  Image Utilities
+        //  Functions
 
-        // template <int C1, int C2> struct MinConstexpr { int minv = C1 < C2 ? C1 : C2; };
-        // template <int C1, int C2> struct MaxConstexpr { int maxv = C1 > C2 ? C1 : C2; };
+        std::string stringStrip(const std::string &_in_str) {
+            long __offset1 = 0, __offset2 = _in_str.size()-1;
+            for (; __offset1 < _in_str.size() && std::isspace(_in_str[__offset1]); ++__offset1);
+            for (; __offset2 >=             0 && std::isspace(_in_str[__offset2]); --__offset2);
+            return _in_str.substr(__offset1, __offset2+1);
+        }
 
 
         //  Template "shortcuts"
