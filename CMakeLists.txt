@@ -94,6 +94,8 @@ set(SVKFW_ALL_INCULDES
 
     ## External
     ${SVKFW_EXTERN_INC_DIR}
+    ${SVKFW_EXTERN_LIB_DIR}
+    ${SVKFW_EXTERN_SRC_DIR}
     # Note: GLAD not needed for vulkan/volk (SOGLFW legacy):
     # ${EXTERN_INC_GLAD_DIR}
     ${EXTERN_INC_STBI_DIR}
@@ -105,11 +107,6 @@ set(SVKFW_ALL_INCULDES
 
     ## SVKFW
     ${SVKFW_SOURCE_DIR}
-    ${SVKFW_SOURCE_DIR}/common
-    ${SVKFW_SOURCE_DIR}/data
-    ${SVKFW_SOURCE_DIR}/math
-    ${SVKFW_SOURCE_DIR}/interface
-    ${SVKFW_SOURCE_DIR}/main
 )
 
 

@@ -4,15 +4,13 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/source/**",
-
                 "${workspaceFolder}/ext_includes",
                 "${workspaceFolder}/ext_includes/STBI",
-
                 "${workspaceFolder}/ext_sources/glfw/include",
                 "${workspaceFolder}/ext_sources/imgui",
                 "${workspaceFolder}/ext_sources/volk",
-
-                "${VULKAN_SDK}/Include"
+                "${VULKAN_SDK}/Include",
+                "${workspaceFolder}/ext_sources"
             ],
             "defines": [
                 "_DEBUG",
