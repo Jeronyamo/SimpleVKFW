@@ -20,13 +20,15 @@ namespace Simple {
     // InputType
 
         enum InputTypeGLFW {
-            INPUT_TYPE_GLFW_KEY = 1,
-            INPUT_TYPE_GLFW_CURSOR = 2,
-            INPUT_TYPE_GLFW_MOUSE_BUTTON = 4,
-            INPUT_TYPE_GLFW_SCROLL = 8,
-            INPUT_TYPE_GLFW_FBUFFER_SIZE = 16,
+            INPUT_TYPE_GLFW_KEY          = 1 << 0,
+            INPUT_TYPE_GLFW_CURSOR       = 1 << 1,
+            INPUT_TYPE_GLFW_MOUSE_BUTTON = 1 << 2,
+            INPUT_TYPE_GLFW_SCROLL       = 1 << 3,
+            INPUT_TYPE_GLFW_FBUFFER_SIZE = 1 << 4,
+            INPUT_TYPE_GLFW_CURSOR_ENTER = 1 << 5,
+            INPUT_TYPE_GLFW_CHAR         = 1 << 6,
+            INPUT_TYPE_GLFW_MONITOR      = 1 << 7,
         }; // InputTypeGLFW END
-
 
     // InputHandlerItf
 
@@ -35,11 +37,14 @@ namespace Simple {
 
             virtual ~InputHandlerItf() {}
 
-            virtual void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _gui_hovered) {}
-            virtual void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time, bool _gui_hovered) {}
-            virtual void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time, bool _gui_hovered) {}
-            virtual void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time, bool _gui_hovered) {}
+            virtual void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time) {}
+            virtual void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time) {}
+            virtual void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) {}
+            virtual void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time) {}
             virtual void processEventFBufferSize(GLFWwindow* _window, int _width, int _height, double _frame_time) {}
+            virtual void processEventCursorEnter(GLFWwindow* _window, int _entered) {}
+            virtual void processEventChar(GLFWwindow* _window, uint32_t _character) {}
+            virtual void processEventMonitor(GLFWmonitor* _monitor, int _event) {}
         }; // InputHandlerBase END
 
 
@@ -50,6 +55,9 @@ namespace Simple {
         void callbackMButton(GLFWwindow* _window, int _button, int _action, int _mods);
         void callbackScroll(GLFWwindow* _window, double _offset_x, double _offset_y);
         void callbackFBufferSize(GLFWwindow* _window, int _width, int _height);
+        void callbackCursorEnter(GLFWwindow* _window, int _entered);
+        void callbackChar(GLFWwindow* _window, uint32_t _character);
+        void callbackMonitor(GLFWmonitor* _monitor, int _event);
 
 
     // FrameInputHandlerGLFW
@@ -71,7 +79,7 @@ namespace Simple {
             ClockTick<std::chrono::high_resolution_clock, double> frame_clock;
             double frame_time = 0.; // updated every frame
 
-            ImGuiHandler imgui_handler;
+            ImGUI::ImGuiHandler imgui_handler;
 
             FrameInputHandlerGLFW(GLFWwindow* _window = nullptr, uint32_t _cback_types = UINT32_MAX) {
                 if (_window) setGLFWCallbacks(_window, _cback_types);
@@ -109,6 +117,12 @@ namespace Simple {
                     glfwSetMouseButtonCallback(_window, callbackMButton);
                 if (_cback_types & InputTypeGLFW::INPUT_TYPE_GLFW_FBUFFER_SIZE)
                     glfwSetFramebufferSizeCallback(_window, callbackFBufferSize);
+                if (_cback_types & InputTypeGLFW::INPUT_TYPE_GLFW_CURSOR_ENTER)
+                    glfwSetCursorEnterCallback(_window, callbackCursorEnter);
+                if (_cback_types & InputTypeGLFW::INPUT_TYPE_GLFW_CHAR)
+                    glfwSetCharCallback(_window, callbackChar);
+                if (_cback_types & InputTypeGLFW::INPUT_TYPE_GLFW_MONITOR)
+                    glfwSetMonitorCallback(callbackMonitor);
 
                 glfwSetWindowUserPointer(_window, this);
             }
@@ -178,21 +192,21 @@ namespace Simple {
                     __input_handler = handler_bind_key[_scancode];
 
                 if (__input_handler != nullptr)
-                    __input_handler->processEventKey(_window, _key, _scancode, _action, _mods, frame_time, imgui_handler.isKeyboardInUse());
+                    __input_handler->processEventKey(_window, _key, _scancode, _action, _mods, frame_time);
                 // else
                 //     fprintf(svkfwwarn, "%s %s", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventKey", " no handler set for key:"), glfwGetKeyName(_key, _scancode));
             }
 
             void eventCursor(GLFWwindow* _window, double _pos_x, double _pos_y) {
                 if (handler_bind_cursor != nullptr)
-                    handler_bind_cursor->processEventCursor(_window, _pos_x, _pos_y, frame_time, imgui_handler.isGUIHovered());
+                    handler_bind_cursor->processEventCursor(_window, _pos_x, _pos_y, frame_time);
                 // else
                 //     fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventCursor", " no handler set for cursor position"));
             }
 
             void eventScroll(GLFWwindow* _window, double _offset_x, double _offset_y) {
                 if (handler_bind_scroll != nullptr)
-                    handler_bind_scroll->processEventScroll(_window, _offset_x, _offset_y, frame_time, imgui_handler.isGUIHovered());
+                    handler_bind_scroll->processEventScroll(_window, _offset_x, _offset_y, frame_time);
                 // else
                 //     fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventScroll", " no handler set for mouse scroll"));
             }
@@ -203,7 +217,7 @@ namespace Simple {
                     __input_handler = handler_bind_mbutton[_button];
 
                 if (__input_handler != nullptr)
-                    __input_handler->processEventMButton(_window, _button, _action, _mods, frame_time, imgui_handler.isGUIHovered());
+                    __input_handler->processEventMButton(_window, _button, _action, _mods, frame_time);
                 // else
                 //     fprintf(svkfwwarn, "%s %d", SVKFW_WRAPWARN("WindowInput :: FrameInputHandlerGLFW :: eventMButton", " no handler set for mouse button:"), _button);
             }
@@ -234,27 +248,51 @@ namespace Simple {
 
         void callbackKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods) {
             FrameInputHandlerGLFW *__input_handler = static_cast<FrameInputHandlerGLFW*>(glfwGetWindowUserPointer(_window));
+            ImGui_ImplGlfw_KeyCallback(_window, _key, _scancode, _action, _mods);
+            if (__input_handler->imgui_handler.isKeyboardInUse()) {
+                if (_action == GLFW_PRESS) return;
+            }
             __input_handler->eventKey(_window, _key, _scancode, _action, _mods);
         }
 
         void callbackCursor(GLFWwindow* _window, double _pos_x, double _pos_y) {
             FrameInputHandlerGLFW *__input_handler = static_cast<FrameInputHandlerGLFW*>(glfwGetWindowUserPointer(_window));
+            ImGui_ImplGlfw_CursorPosCallback(_window, _pos_x, _pos_y);
+            if (__input_handler->imgui_handler.isGUIHovered()) return;
             __input_handler->eventCursor(_window, _pos_x, _pos_y);
         }
 
         void callbackMButton(GLFWwindow* _window, int _button, int _action, int _mods) {
             FrameInputHandlerGLFW *__input_handler = static_cast<FrameInputHandlerGLFW*>(glfwGetWindowUserPointer(_window));
+            ImGui_ImplGlfw_MouseButtonCallback(_window, _button, _action, _mods);
+            if (__input_handler->imgui_handler.isGUIHovered()) {
+                if (_action == GLFW_PRESS) return;
+            }
             __input_handler->eventMButton(_window, _button, _action, _mods);
         }
 
         void callbackScroll(GLFWwindow* _window, double _offset_x, double _offset_y) {
             FrameInputHandlerGLFW *__input_handler = static_cast<FrameInputHandlerGLFW*>(glfwGetWindowUserPointer(_window));
+            ImGui_ImplGlfw_ScrollCallback(_window, _offset_x, _offset_y);
+            if (__input_handler->imgui_handler.isGUIHovered()) return;
             __input_handler->eventScroll(_window, _offset_x, _offset_y);
         }
 
         void callbackFBufferSize(GLFWwindow* _window, int _width, int _height) {
             FrameInputHandlerGLFW *__input_handler = static_cast<FrameInputHandlerGLFW*>(glfwGetWindowUserPointer(_window));
             __input_handler->eventFBufferSize(_window, _width, _height);
+        }
+
+        void callbackCursorEnter(GLFWwindow* _window, int _entered) {
+            ImGui_ImplGlfw_CursorEnterCallback(_window, _entered);
+        }
+
+        void callbackChar(GLFWwindow* _window, uint32_t _character) {
+            ImGui_ImplGlfw_CharCallback(_window, _character);
+        }
+
+        void callbackMonitor(GLFWmonitor* _monitor, int _event) {
+            ImGui_ImplGlfw_MonitorCallback(_monitor, _event);
         }
 
 
@@ -273,10 +311,7 @@ namespace Simple {
                 managed_window.window = nullptr; // Not handling this window here
             }
 
-            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _keyboard_used) override {
-                if (_keyboard_used) {
-                    ImGui_ImplGlfw_KeyCallback(_window, _key, _scancode, _action, _mods);
-                }
+            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_ESCAPE) && _action == GLFW_RELEASE) {
                     glfwSetWindowShouldClose(managed_window.window, GLFW_TRUE);
                 }
@@ -330,11 +365,7 @@ namespace Simple {
             ProjPerspective& getClassView() { return camera.proj_class; }
             ViewGeneral& getClassProj() { return camera.view_class; }
 
-            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _keyboard_used) override {
-                if (_keyboard_used) {
-                    ImGui_ImplGlfw_KeyCallback(_window, _key, _scancode, _action, _mods);
-                    if (_action == GLFW_PRESS) return;
-                }
+            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
                     if (_action == GLFW_PRESS) {
                         cam_move_state.x = bool(cam_move_state.y) + 1;
@@ -383,10 +414,8 @@ namespace Simple {
                 camera.view_class.look_at += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
 
-            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time, bool _gui_hovered) override {
-                if (!_gui_hovered)
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
-                else ImGui_ImplGlfw_ScrollCallback(_window, _offset_x, _offset_y);
+            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
             void processEventFBufferSize(GLFWwindow *_window, int _width, int _height, double _frame_time) override {
@@ -411,11 +440,7 @@ namespace Simple {
             ProjPerspective& getClassView() { return camera.proj_class; }
             ViewCentered&    getClassProj() { return camera.view_class; }
 
-            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _keyboard_used) override {
-                if (_keyboard_used) {
-                    ImGui_ImplGlfw_KeyCallback(_window, _key, _scancode, _action, _mods);
-                    if (_action == GLFW_PRESS) return;
-                }
+            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
                     if (_action == GLFW_PRESS) {
                         cam_move_state.x = bool(cam_move_state.y) + 1;
@@ -462,21 +487,15 @@ namespace Simple {
                 camera.view_class.look_at += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
 
-            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time, bool _gui_hovered) override {
-                if (_gui_hovered && !LMB_active)
-                    ImGui_ImplGlfw_MouseButtonCallback(_window, _button, _action, _mods);
+            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {
+                ImGui_ImplGlfw_MouseButtonCallback(_window, _button, _action, _mods);
             }
 
-            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time, bool _gui_hovered) override {
-                if (!_gui_hovered)
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
-                else ImGui_ImplGlfw_ScrollCallback(_window, _offset_x, _offset_y);
+            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
-            void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time, bool _gui_hovered) override {
-                if (_gui_hovered && !LMB_active)
-                    ImGui_ImplGlfw_CursorPosCallback(_window, _pos_x, _pos_y);
-
+            void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time) override {
                 if (glfwGetMouseButton(_window, GLFW_MOUSE_BUTTON_LEFT) != GLFW_RELEASE) {
                     vec2 __cur_pos{(float)_pos_x, (float)_pos_y};
                     if (LMB_active) {
@@ -485,10 +504,8 @@ namespace Simple {
                         camera.view_class.yaw   += __pos_offset.x * speed_coef;
                         camera.view_class.pitch += __pos_offset.y * speed_coef;
                     }
-                    if (!_gui_hovered) {
-                        LMB_active = true;
-                        last_cursor_pos = __cur_pos;
-                    }
+                    LMB_active = true;
+                    last_cursor_pos = __cur_pos;
                 }
                 else
                     LMB_active = false;
@@ -516,11 +533,7 @@ namespace Simple {
             ProjPerspective& getClassView() { return camera.proj_class; }
             ViewPOV& getClassProj() { return camera.view_class; }
 
-            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _keyboard_used) override {
-                if (_keyboard_used) {
-                    ImGui_ImplGlfw_KeyCallback(_window, _key, _scancode, _action, _mods);
-                    if (_action == GLFW_PRESS) return;
-                }
+            void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
                     if (_action == GLFW_PRESS) {
                         cam_move_state.x = bool(cam_move_state.y) + 1;
@@ -559,21 +572,13 @@ namespace Simple {
                 }
             }
 
-            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time, bool _gui_hovered) override {
-                if (_gui_hovered && !LMB_active)
-                    ImGui_ImplGlfw_MouseButtonCallback(_window, _button, _action, _mods);
+            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {}
+
+            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
+                camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
             }
 
-            void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time, bool _gui_hovered) override {
-                if (!_gui_hovered)
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
-                else ImGui_ImplGlfw_ScrollCallback(_window, _offset_x, _offset_y);
-            }
-
-            void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time, bool _gui_hovered) override {
-                if (_gui_hovered && !LMB_active)
-                    ImGui_ImplGlfw_CursorPosCallback(_window, _pos_x, _pos_y);
-
+            void processEventCursor(GLFWwindow *_window, double _pos_x, double _pos_y, double _frame_time) override {
                 if (glfwGetMouseButton(_window, GLFW_MOUSE_BUTTON_LEFT) != GLFW_RELEASE) {
                     vec2 __cur_pos{(float)_pos_x, (float)_pos_y};
                     if (LMB_active) {
@@ -582,10 +587,8 @@ namespace Simple {
                         camera.view_class.yaw   += __pos_offset.x * speed_coef;
                         camera.view_class.pitch -= __pos_offset.y * speed_coef;
                     }
-                    if (!_gui_hovered) {
-                        LMB_active = true;
-                        last_cursor_pos = __cur_pos;
-                    }
+                    LMB_active = true;
+                    last_cursor_pos = __cur_pos;
                 }
                 else
                     LMB_active = false;

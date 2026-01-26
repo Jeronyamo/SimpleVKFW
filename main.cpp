@@ -3,6 +3,7 @@
 #include "main/camera.h"
 #include "main/input_handler.h"
 #include "main/image.h"
+#include "main/imgui_events.h"
 #include "interface/vkfw.h"
 #include "interface/imgui_wrap.h"
 
@@ -66,13 +67,12 @@ int main(int argc, char **argv) {
 
     Simple::WindowInput::DefaultHandler main_window_exit{main_window.window};
 
+    // ImGUI widgets
+    main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiWidgetLoadFile{});
+
     // Callbacks
     main_window_handler.setKeysHandler(&main_window_exit);
-    main_window_handler.setGLFWCallbacks(main_window.window, Simple::WindowInput::INPUT_TYPE_GLFW_SCROLL |
-                                                             Simple::WindowInput::INPUT_TYPE_GLFW_CURSOR |
-                                                             Simple::WindowInput::INPUT_TYPE_GLFW_MOUSE_BUTTON |
-                                                             Simple::WindowInput::INPUT_TYPE_GLFW_FBUFFER_SIZE |
-                                                             Simple::WindowInput::INPUT_TYPE_GLFW_KEY);
+    main_window_handler.setGLFWCallbacks(main_window.window);
 
 // VKFW
 
@@ -420,7 +420,10 @@ int main(int argc, char **argv) {
         Simple::VKFW::Vulkan_global_context_func.resetCommandBuffer(ci_cmd_buffer_drawing[curr_frame]);
     }
 
+    // ImGUI widgets destruction
+    delete main_window_handler.imgui_handler.widgets[0];
     main_window_handler.imgui_handler.~ImGuiHandler();
+
     Simple::VKFW::destroyVulkanContext(Simple::VKFW::Vulkan_global_context);
 
     printf("Success\n");
