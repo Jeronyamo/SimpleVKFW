@@ -1409,11 +1409,11 @@ namespace Simple {
                 if (_size == 0u) {
                     _size = std::min(vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
                                      vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
-                    printf("Scr buffer size: %d, Dst buffer size: %d\n", vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
-                                                                         vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
+                    // printf("Scr buffer size: %d, Dst buffer size: %d\n", vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
+                    //                                                      vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
                 }
                 VkBufferCopy __region_info{ _offset_src, _offset_dst, _size };
-                printf("Region info: offset src: %d, offset dst: %d, size: %d\n", __region_info.srcOffset, __region_info.dstOffset, __region_info.size);
+                // printf("Region info: offset src: %d, offset dst: %d, size: %d\n", __region_info.srcOffset, __region_info.dstOffset, __region_info.size);
 
                 vkCmdCopyBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer),
                                 vk_context->getObjectBuffer(_ci_buffer_src),
