@@ -33,6 +33,12 @@ namespace Simple {
         }; // WidgetItf END
 
 
+// Widget wrappers
+
+    // "Static"/"Utility" widgets
+
+        // Text output
+
         struct WidgetText : WidgetItf {
             char *text = nullptr;
 
@@ -55,12 +61,23 @@ namespace Simple {
             virtual void renderFull() override { render(); }
         }; // WidgetText END
 
+        // TODO: ImGui::TextColored(), ImGui::TextWrapped(), ImGui::LabelText(), ImGui::BulletText()
+
+        // TODO: ImGui::Spacing(), ImGui::NewLine(), ImGui::SameLine(), ImGui::Separator(), ImGui::Dummy()
+
+        // TODO: ImGui::BeginTooltip(), ImGui::EndTooltip(), ImGui::BeginPopup(), ImGui::EndPopup(), ImGui::BeginPopupModal(), ImGui::EndPopupModal()
+
+
+    // "Interactive"/"Main" widgets
+
+        // Buttons
+
         struct WidgetButton : WidgetItf {
             char *name = nullptr;
             ActionItf *action = nullptr;
             vec2f size{0.f};
 
-            WidgetButton(const std::string &_name, ActionItf *_action = nullptr) : name{new char[_name.size()+1]}, action{_action} {
+            WidgetButton(const std::string &_name, ActionItf *_action = nullptr, vec2f _size = {}) : name{new char[_name.size()+1]}, action{_action}, size{_size} {
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
             WidgetButton(const WidgetButton &_widget) : action{_widget.action}, size{_widget.size} {
@@ -76,6 +93,53 @@ namespace Simple {
             virtual void     render() override { if (action) action->action(); }
             virtual void renderFull() override { if (begin()) render(); }
         }; // WidgetButton END
+
+        struct WidgetSmallButton : WidgetItf {
+            char *name = nullptr;
+            ActionItf *action = nullptr;
+
+            WidgetSmallButton(const std::string &_name, ActionItf *_action = nullptr) : name{new char[_name.size()+1]}, action{_action} {
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetSmallButton(const WidgetSmallButton &_widget) : action{_widget.action} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetSmallButton() override { safeDeleteArr(name); }
+
+            virtual bool      begin() override { return ImGui::SmallButton(name); }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetSmallButton END
+
+        // TODO: ImGui::InvisibleButton(), ImGui::ImageButton()
+
+        struct WidgetRadioButton : WidgetItf {
+            char *name = nullptr;
+            ActionItf *action = nullptr;
+            bool active = false;
+
+            WidgetRadioButton(const std::string &_name, ActionItf *_action = nullptr, bool _active = true) : name{new char[_name.size()+1]}, action{_action}, active{_active} {
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetRadioButton(const WidgetRadioButton &_widget) : action{_widget.action}, active{_widget.active} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetRadioButton() override { safeDeleteArr(name); }
+
+            virtual bool      begin() override { return ImGui::RadioButton(name, active); }
+            virtual void        end() override {}
+            virtual void     render() override { active = !active; printf("Radio button is %d\n", active);   if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetRadioButton END
+
+        // TODO: ImGui::ColorButton()
 
         struct WidgetCheckbox : WidgetItf {
             char *name = nullptr;
@@ -99,6 +163,9 @@ namespace Simple {
             virtual void     render() override { if (action) action->action(); }
             virtual void renderFull() override { if (begin()) render(); }
         }; // WidgetCheckbox END
+
+
+        // Input text/multiline
 
         struct WidgetInputText : WidgetItf {
             char *name = nullptr, *buf_str = nullptr;
@@ -132,6 +199,284 @@ namespace Simple {
             virtual void     render() override { if (action) action->action(); }
             virtual void renderFull() override { if (begin()) render(); }
         }; // WidgetInputText END
+
+        // TODO: ImGui::InputTextMultiline()
+
+
+        // Input numbers
+
+        struct WidgetInputFloat : WidgetItf {
+            char *name = nullptr;
+            const char *format = "%.3f";
+            ActionItf *action = nullptr;
+            vec4f value{};
+            float step = 0.f, step_fast = 0.f;
+            uint32_t float_count = 0; // 1 to 4
+            ImGuiInputTextFlags flags = 0;
+
+            WidgetInputFloat(const std::string &_name, uint32_t _float_count, vec4f _default_value = {0.f}, const char *_format = "%.3f", ActionItf *_action = nullptr,
+                             ImGuiInputTextFlags _flags = 0, float _step = 0.f, float _step_fast = 0.f)
+                            : name{new char[_name.size()+1]}, float_count{_float_count}, value{_default_value}, action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
+                SVKFW_WASSERT(float_count > 0 && float_count < 5, "ImGUI:: WidgetInputFloat Constructor", "correct 'float_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetInputFloat(const WidgetInputFloat &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+                                                                step_fast{_widget.step_fast}, float_count{_widget.float_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetInputFloat() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                switch (float_count) {
+                    case 1: return ImGui::InputFloat (name, &value.x, step, step_fast, format, flags);
+                    case 2: return ImGui::InputFloat2(name, &value.x, format, flags);
+                    case 3: return ImGui::InputFloat3(name, &value.x, format, flags);
+                    case 4: return ImGui::InputFloat4(name, &value.x, format, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetInputFloat END
+
+        struct WidgetInputInt16 : WidgetItf {
+            char *name = nullptr;
+            ActionItf *action = nullptr;
+            vec4i16 value{};
+            int16_t step = 0.f, step_fast = 0.f;
+            uint32_t int16_count = 0; // 1 to 4
+            ImGuiInputTextFlags flags = 0;
+
+            WidgetInputInt16(const std::string &_name, uint32_t _int16_count, vec4i16 _default_value = {0}, const char *_format = "%.3f", ActionItf *_action = nullptr,
+                             ImGuiInputTextFlags _flags = 0, int16_t _step = 1, int16_t _step_fast = 100)
+                            : name{new char[_name.size()+1]}, int16_count{_int16_count}, value{_default_value}, action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
+                SVKFW_WASSERT(int16_count > 0 && int16_count < 5, "ImGUI:: WidgetInputInt16 Constructor", "correct 'int32_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetInputInt16(const WidgetInputInt16 &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+                                                                step_fast{_widget.step_fast}, int16_count{_widget.int16_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetInputInt16() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                const char* __format = (flags & ImGuiInputTextFlags_CharsHexadecimal) ? "%08X" : "%d";
+                switch (int16_count) {
+                    case 1: return ImGui::InputScalar (name, ImGuiDataType_S16, &value.x, &step, &step_fast, __format, flags);
+                    case 2:
+                    case 3:
+                    case 4: return ImGui::InputScalarN(name, ImGuiDataType_S16, &value.x, int16_count, &step, &step_fast, __format, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetInputInt16 END
+
+        struct WidgetInputInt32 : WidgetItf {
+            char *name = nullptr;
+            ActionItf *action = nullptr;
+            vec4i32 value{};
+            int32_t step = 0.f, step_fast = 0.f;
+            uint32_t int32_count = 0; // 1 to 4
+            ImGuiInputTextFlags flags = 0;
+
+            WidgetInputInt32(const std::string &_name, uint32_t _int32_count, vec4i32 _default_value = {0}, const char *_format = "%.3f", ActionItf *_action = nullptr,
+                             ImGuiInputTextFlags _flags = 0, int32_t _step = 1, int32_t _step_fast = 100)
+                            : name{new char[_name.size()+1]}, int32_count{_int32_count}, value{_default_value}, action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
+                SVKFW_WASSERT(int32_count > 0 && int32_count < 5, "ImGUI:: WidgetInputInt32 Constructor", "correct 'int32_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetInputInt32(const WidgetInputInt32 &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+                                                                step_fast{_widget.step_fast}, int32_count{_widget.int32_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetInputInt32() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                switch (int32_count) {
+                    case 1: return ImGui::InputInt (name, &value.x, step, step_fast, flags);
+                    case 2: return ImGui::InputInt2(name, &value.x, flags);
+                    case 3: return ImGui::InputInt3(name, &value.x, flags);
+                    case 4: return ImGui::InputInt4(name, &value.x, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetInputInt32 END
+
+        struct WidgetInputUint32 : WidgetItf {
+            char *name = nullptr;
+            ActionItf *action = nullptr;
+            vec4u32 value{};
+            uint32_t step = 0.f, step_fast = 0.f;
+            uint32_t uint32_count = 0; // 1 to 4
+            ImGuiInputTextFlags flags = 0;
+
+            WidgetInputUint32(const std::string &_name, uint32_t _uint32_count, vec4u32 _default_value = {0u}, const char *_format = "%.3f", ActionItf *_action = nullptr,
+                             ImGuiInputTextFlags _flags = 0, uint32_t _step = 1u, uint32_t _step_fast = 100u)
+                            : name{new char[_name.size()+1]}, uint32_count{_uint32_count}, value{_default_value}, action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
+                SVKFW_WASSERT(uint32_count > 0 && uint32_count < 5, "ImGUI:: WidgetInputUint32 Constructor", "correct 'uint32_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetInputUint32(const WidgetInputUint32 &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+                                                                  step_fast{_widget.step_fast}, uint32_count{_widget.uint32_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetInputUint32() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                const char* __format = (flags & ImGuiInputTextFlags_CharsHexadecimal) ? "%08X" : "%d";
+                switch (uint32_count) {
+                    case 1: return ImGui::InputScalar (name, ImGuiDataType_U32, &value.x, &step, &step_fast, __format, flags);
+                    case 2:
+                    case 3:
+                    case 4: return ImGui::InputScalarN(name, ImGuiDataType_U32, &value.x, uint32_count, &step, &step_fast, __format, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetInputUint32 END
+
+
+        // Sliders
+
+        struct WidgetSliderFloat : WidgetItf {
+            char *name = nullptr;
+            const char *format = "%.3f";
+            ActionItf *action = nullptr;
+            vec4f value{};
+            vec2f limits = 0.f; // .x - min, .y - max
+            uint32_t float_count = 0; // 1 to 4
+            ImGuiSliderFlags flags = 0;
+
+            WidgetSliderFloat(const std::string &_name, uint32_t _float_count, vec4f _default_value = {0.f}, float _lim_min = 0.f, float _lim_max = 1.f,
+                             const char *_format = "%.3f", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
+                            : name{new char[_name.size()+1]}, float_count{_float_count}, value{_default_value}, action{_action}, flags{_flags}, limits{_lim_min, _lim_max} {
+                SVKFW_WASSERT(float_count > 0 && float_count < 5, "ImGUI:: WidgetSliderFloat Constructor", "correct 'float_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetSliderFloat(const WidgetSliderFloat &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+                                                                float_count{_widget.float_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetSliderFloat() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                switch (float_count) {
+                    case 1: return ImGui::SliderFloat (name, &value.x, limits.x, limits.y, format, flags);
+                    case 2: return ImGui::SliderFloat2(name, &value.x, limits.x, limits.y, format, flags);
+                    case 3: return ImGui::SliderFloat3(name, &value.x, limits.x, limits.y, format, flags);
+                    case 4: return ImGui::SliderFloat4(name, &value.x, limits.x, limits.y, format, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetSliderFloat END
+
+        // TODO: ImGui::SliderInt(), ImGui::SliderScalar()
+
+
+        // Drag widgets
+
+        struct WidgetDragFloat : WidgetItf {
+            char *name = nullptr;
+            const char *format = "%.3f";
+            ActionItf *action = nullptr;
+            vec4f value{};
+            vec2f limits = 0.f; // .x - min, .y - max
+            float speed = 1.f;
+            uint32_t float_count = 0; // 1 to 4
+            ImGuiSliderFlags flags = 0;
+
+            WidgetDragFloat(const std::string &_name, uint32_t _float_count, vec4f _default_value = {0.f}, float _lim_min = 0.f, float _lim_max = 1.f,
+                              float _speed = 1.f, const char *_format = "%.3f", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
+                            : name{new char[_name.size()+1]}, float_count{_float_count}, value{_default_value}, action{_action}, flags{_flags}, limits{_lim_min, _lim_max}, speed{_speed} {
+                SVKFW_WASSERT(float_count > 0 && float_count < 5, "ImGUI:: WidgetDragFloat Constructor", "correct 'float_count' values are [1,4]\n");
+                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
+            }
+            WidgetDragFloat(const WidgetDragFloat &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+                                                                float_count{_widget.float_count}, flags{_widget.flags} {
+                safeDeleteArr(name);
+                uint32_t __name_len = std::strlen(_widget.name)+1;
+                name = new char[__name_len]{};
+                memcpy(name, _widget.name, __name_len*sizeof(char));
+            }
+            virtual ~WidgetDragFloat() override { safeDeleteArr(name); }
+
+            virtual bool begin() override {
+                switch (float_count) {
+                    case 1: return ImGui::DragFloat (name, &value.x, speed, limits.x, limits.y, format, flags);
+                    case 2: return ImGui::DragFloat2(name, &value.x, speed, limits.x, limits.y, format, flags);
+                    case 3: return ImGui::DragFloat3(name, &value.x, speed, limits.x, limits.y, format, flags);
+                    case 4: return ImGui::DragFloat4(name, &value.x, speed, limits.x, limits.y, format, flags);
+                    default: break;
+                }
+                return false;
+            }
+            virtual void        end() override {}
+            virtual void     render() override { if (action) action->action(); }
+            virtual void renderFull() override { if (begin()) render(); }
+        }; // WidgetDragFloat END
+
+        // TODO: ImGui::DragInt(), ImGui::DragScalar()
+
+
+        // Color
+
+        // TODO: ImGui::ColorEdit3(), ImGui::ColorEdit4(), ImGui::ColorPicker3(), ImGui::ColorPicker4()
+
+
+        // Plots
+
+        // TODO: ImGui::PlotLines(), ImGui::PlotHistogram()
+
+        // TODO: ImGui::Image(), ImGui::ProgressBar(), ImGui::Bullet()
+
+
+        // Tab
+
+        // TODO: ImGui::BeginTabBar(), ImGui::BeginTabItem(), ImGui::EndTabItem()
+
+        // TODO: ImGui::Columns(), ImGui::BeginTable()
+
+
+        // Tree structures
+
+        // TODO: ImGui::TreeNode(), ImGui::TreePush(), ImGui::TreePop(), ImGui::CollapsingHeader()
+
+        // TODO: ImGui::Combo(), ImGui::ListBox(), ImGui::Selectable()
+
+
+        // Menu widgets
 
         struct WidgetMenuItem : WidgetItf {
             char *name = nullptr, *shortcut = nullptr;
@@ -228,6 +573,8 @@ namespace Simple {
         }; // WidgetMenuBar END
 
 
+        // Window widgets
+
         struct WidgetWindowChild : WidgetItf {
             std::string name;
             vec2f       size;
@@ -236,8 +583,8 @@ namespace Simple {
             uint32_t is_began = false;
             std::vector<WidgetItf*> widgets;
 
-            WidgetWindowChild(const std::string &_name, vec2f _size, ImGuiChildFlags _child_flags = 0,
-                              ImGuiWindowFlags _window_flags = 0) : name{_name}, child_flags{_child_flags},
+            WidgetWindowChild(const std::string &_name, vec2f _size = {}, ImGuiChildFlags _child_flags = 0,
+                              ImGuiWindowFlags _window_flags = 0) : name{_name}, size{_size}, child_flags{_child_flags},
                                                                     window_flags{_window_flags} {}
 
             virtual bool  begin() override {
@@ -301,6 +648,8 @@ namespace Simple {
             }
         }; // WidgetWindow END
 
+
+// ImGUI Handler
 
         struct ImGuiHandler {
             ImGuiContext *context = nullptr;
