@@ -69,6 +69,7 @@ int main(int argc, char **argv) {
 
     // ImGUI widgets
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiWidgetLoadFile{});
+    main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiTestWindow{});
 
     // Callbacks
     main_window_handler.setKeysHandler(&main_window_exit);
@@ -421,6 +422,7 @@ int main(int argc, char **argv) {
     }
 
     // ImGUI widgets destruction
+    delete main_window_handler.imgui_handler.widgets[1];
     delete main_window_handler.imgui_handler.widgets[0];
     main_window_handler.imgui_handler.~ImGuiHandler();
 
