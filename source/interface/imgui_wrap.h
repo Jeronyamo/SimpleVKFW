@@ -211,7 +211,7 @@ namespace Simple {
             ActionItf *action = nullptr;
             vec4f value{};
             float step = 0.f, step_fast = 0.f;
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiInputTextFlags flags = 0;
 
             WidgetInputFloat(const std::string &_name, uint32_t _val_count, vec4f _default_value = {0.f}, const char *_format = "%.3f",
@@ -249,8 +249,8 @@ namespace Simple {
             char *name = nullptr;
             ActionItf *action = nullptr;
             vec4i32 value{};
-            int32_t step = 0.f, step_fast = 0.f;
-            uint32_t val_count = 0; // 1 to 4
+            int32_t step = 1, step_fast = 100;
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiInputTextFlags flags = 0;
 
             WidgetInputInt32(const std::string &_name, uint32_t _val_count, vec4i32 _default_value = {0}, ActionItf *_action = nullptr,
@@ -289,8 +289,8 @@ namespace Simple {
             const char *format = "%d";
             ActionItf *action = nullptr;
             vec4u32 value{};
-            uint32_t step = 0.f, step_fast = 0.f;
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t step = 1u, step_fast = 100u;
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiInputTextFlags flags = 0; // Does not support 'ImGuiInputTextFlags_CharsHexadecimal' flag. If value is expected to be hexadecimal, use 'format' = "%08X" instead
 
             WidgetInputUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%d",
@@ -335,7 +335,7 @@ namespace Simple {
             ActionItf *action = nullptr;
             vec4f value{};
             vec2f limits = {0.f, 1.f}; // '.x' - min, '.y' - max
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetSliderFloat(const std::string &_name, uint32_t _val_count, vec4f _default_value = {0.f}, float _lim_min = 0.f,
@@ -375,7 +375,7 @@ namespace Simple {
             ActionItf *action = nullptr;
             vec4i32 value{};
             vec2i32 limits = {0, 100}; // '.x' - min, '.y' - max
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetSliderInt32(const std::string &_name, uint32_t _val_count, vec4i32 _default_value = {0}, int32_t _lim_min = 0,
@@ -415,7 +415,7 @@ namespace Simple {
             ActionItf *action = nullptr;
             vec4u32 value{};
             vec2u32 limits = {0u, 100u}; // '.x' - min, '.y' - max
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetSliderUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, uint32_t _lim_min = 0u,
@@ -460,7 +460,7 @@ namespace Simple {
             vec4f value{};
             vec2f limits = {0.f, 1.f}; // '.x' - min, '.y' - max
             float speed = 1.f;
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetDragFloat(const std::string &_name, uint32_t _val_count, vec4f _default_value = {0.f}, float _lim_min = 0.f, float _lim_max = 1.f,
@@ -500,7 +500,7 @@ namespace Simple {
             vec4i32 value{};
             vec2i32 limits = {0, 100}; // '.x' - min, '.y' - max
             float speed = 1.f;
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetDragInt32(const std::string &_name, uint32_t _val_count, vec4i32 _default_value = {0}, const char *_format = "%d", int32_t _lim_min = 0,
@@ -541,7 +541,7 @@ namespace Simple {
             vec4u32 value{};
             vec2u32 limits = {0u, 100u}; // '.x' - min, '.y' - max
             float speed = 1.f;
-            uint32_t val_count = 0; // 1 to 4
+            uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
             WidgetDragUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%d",
