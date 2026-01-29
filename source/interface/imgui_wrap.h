@@ -245,47 +245,6 @@ namespace Simple {
             virtual void renderFull() override { if (begin()) render(); }
         }; // WidgetInputFloat END
 
-        struct WidgetInputInt16 : WidgetItf {
-            char *name = nullptr;
-            const char *format = "%d";
-            ActionItf *action = nullptr;
-            vec4i16 value{};
-            int16_t step = 0.f, step_fast = 0.f;
-            uint32_t val_count = 0; // 1 to 4
-            ImGuiInputTextFlags flags = 0; // Does not support 'ImGuiInputTextFlags_CharsHexadecimal' flag. If value is expected to be hexadecimal, use 'format' = "%08X" instead
-
-            WidgetInputInt16(const std::string &_name, uint32_t _val_count, vec4i16 _default_value = {0}, const char *_format = "%d",
-                             ActionItf *_action = nullptr, ImGuiInputTextFlags _flags = 0, int16_t _step = 1, int16_t _step_fast = 100)
-                            : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format},
-                              action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
-                SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetInputInt16 Constructor", "expected 'val_count' values are [1,4]\n");
-                memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
-            }
-            WidgetInputInt16(const WidgetInputInt16 &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
-                                                                step_fast{_widget.step_fast}, val_count{_widget.val_count}, flags{_widget.flags} {
-                safeDeleteArr(name);
-                uint32_t __name_len = std::strlen(_widget.name)+1;
-                name = new char[__name_len]{};
-                memcpy(name, _widget.name, __name_len*sizeof(char));
-            }
-            virtual ~WidgetInputInt16() override { safeDeleteArr(name); }
-
-            virtual bool begin() override {
-                // const char* __format = (flags & ImGuiInputTextFlags_CharsHexadecimal) ? "%08X" : "%d";
-                switch (val_count) {
-                    case 1: return ImGui::InputScalar (name, ImGuiDataType_S16, &value.x, &step, &step_fast, format, flags);
-                    case 2:
-                    case 3:
-                    case 4: return ImGui::InputScalarN(name, ImGuiDataType_S16, &value.x, val_count, &step, &step_fast, format, flags);
-                    default: break;
-                }
-                return false;
-            }
-            virtual void        end() override {}
-            virtual void     render() override { if (action) action->action(); }
-            virtual void renderFull() override { if (begin()) render(); }
-        }; // WidgetInputInt16 END
-
         struct WidgetInputInt32 : WidgetItf {
             char *name = nullptr;
             ActionItf *action = nullptr;
