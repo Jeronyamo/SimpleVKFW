@@ -718,7 +718,7 @@ namespace Simple {
             }
 
             bool isGUIHovered() {
-                return ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+                return ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
             }
             bool isKeyboardInUse() {
                 return ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
