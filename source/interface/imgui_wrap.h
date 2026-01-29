@@ -455,12 +455,12 @@ namespace Simple {
             const char *format = "%d";
             ActionItf *action = nullptr;
             vec4u32 value{};
-            vec2u32 limits = {0.f, 1.f}; // '.x' - min, '.y' - max
+            vec2u32 limits = {0u, 100u}; // '.x' - min, '.y' - max
             uint32_t val_count = 0; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
-            WidgetSliderUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0}, uint32_t _lim_min = 0.f,
-                               uint32_t _lim_max = 1.f, const char *_format = "%d", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
+            WidgetSliderUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, uint32_t _lim_min = 0u,
+                               uint32_t _lim_max = 100u, const char *_format = "%d", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
                             : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, action{_action}, flags{_flags}, limits{_lim_min, _lim_max} {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetSliderUint32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
@@ -544,7 +544,7 @@ namespace Simple {
             uint32_t val_count = 0; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
-            WidgetDragInt32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0}, const char *_format = "%d", int32_t _lim_min = 0,
+            WidgetDragInt32(const std::string &_name, uint32_t _val_count, vec4i32 _default_value = {0}, const char *_format = "%d", int32_t _lim_min = 0,
                             int32_t _lim_max = 100, float _speed = 1.f, ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
                             : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format},
                               action{_action}, flags{_flags}, limits{_lim_min, _lim_max}, speed{_speed} {
@@ -580,13 +580,13 @@ namespace Simple {
             const char *format = "%d";
             ActionItf *action = nullptr;
             vec4u32 value{};
-            vec2u32 limits = {0, 100}; // '.x' - min, '.y' - max
+            vec2u32 limits = {0u, 100u}; // '.x' - min, '.y' - max
             float speed = 1.f;
             uint32_t val_count = 0; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
-            WidgetDragUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0}, const char *_format = "%d",
-                             uint32_t _lim_min = 0, uint32_t _lim_max = 100, float _speed = 1.f, ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
+            WidgetDragUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%d",
+                             uint32_t _lim_min = 0u, uint32_t _lim_max = 100u, float _speed = 1.f, ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
                             : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format},
                               action{_action}, flags{_flags}, limits{_lim_min, _lim_max}, speed{_speed} {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetDragUint32 Constructor", "expected 'val_count' values are [1,4]\n");
