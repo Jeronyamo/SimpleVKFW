@@ -57,51 +57,68 @@ namespace Simple {
     SVKFW_TEST_BEG(Test2, "Images")
 
         static void genDiffImage(const std::string &_img_path1, const std::string &_img_path2, const std::string &_img_path_res) {
-            auto image1 = Img::load3f(_img_path1.c_str());
-            auto image2 = Img::load3f(_img_path2.c_str());
+            Img::Image3f image1(_img_path1);
+            Img::Image3f image2(_img_path2);
 
             if (image1.width != image2.width || image1.height != image2.height)
                 throw std::runtime_error(SVKFW_WRAPERR("Test2 :: genDiffImage", "image sizes don't match"));
 
-            Image3f __res{image1.width, image1.height};
+            Img::Image3f __res{image1.width, image1.height};
             for (uint32_t i = 0u; i < __res.img.size(); ++i) {
                 float __diff = image1.img[i].x - image2.img[i].x;
                 vec3f __other_color = __diff < 0.f ? vec3f{1.f,0.f,0.f} : vec3f{0.f,0.f,1.f};
                 __res.img[i] = __other_color * std::abs(__diff) + vec3f{1.f} * (1.f - std::abs(__diff));
             }
 
-            Img::save<Img::PNG>(_img_path_res.c_str(), __res);
+            __res.imgSave<Img::PNG>(_img_path_res);
         }
 
         SVKFW_SUBTEST_BEG(st1, "Save/Load") {
-            auto image_f = Img::loadf ("tests/debug_mega_image.png");
-            auto image3f = Img::load3f("tests/debug_mega_image.png");
-            auto image_u = Img::loadu ("tests/debug_mega_image.png");
+            Img::Image4f image4f("tests/resources/test_bunny.png");
+            Img::Image3f image3f("tests/resources/test_bunny.png");
+            Img::Image3u image3u("tests/resources/test_bunny.png");
 
             printf("Images loaded\n");
-            Image3f img3f = image_f.convert(0,1,2);
+            Img::Image3f img3f = image3u.imgSwitchType();
 
-            printf("Image u: w: %d, h: %d, ch: %d\n", image_u.width, image_u.height, image_u.channels);
-            printf("Image f: w: %d, h: %d, ch: %d\n", image_f.width, image_f.height, image_f.channels);
+            printf("Image u: w: %d, h: %d, ch: %d\n", image3u.width, image3u.height, image3u.channels);
+            printf("Image f: w: %d, h: %d, ch: %d\n", image4f.width, image4f.height, image4f.channels);
             printf("Image3f: w: %d, h: %d, ch: %d\n", image3f.width, image3f.height, image3f.channels);
             printf("Img3f:   w: %d, h: %d, ch: %d\n",   img3f.width,   img3f.height,   img3f.channels);
 
-            Img::save<Img::PNG>("tests/debug_mega_image_u.png",   image_u);
-            Img::save<Img::PNG>("tests/debug_mega_image_f.png",   image_f);
-            Img::save<Img::PNG>("tests/debug_mega_image_3f.png",  image3f);
-            Img::save<Img::PNG>("tests/debug_mega_image_img3f.png", img3f);
+            image3u.imgSave<Img::PNG>("tests/out/test_bunny_3u.png");
+            image4f.imgSave<Img::PNG>("tests/out/test_bunny_4f.png");
+            image3f.imgSave<Img::PNG>("tests/out/test_bunny_3f.png");
+            img3f  .imgSave<Img::PNG>("tests/out/test_bunny_img3f.png");
         } SVKFW_SUBTEST_END(st1);
 
-        // SVKFW_SUBTEST_BEG(st2, "Save/Load img differences") {
-        //     std::string __img_dir = "/Programming/study/MSUProject/disser/graphics/renders/";
+        SVKFW_SUBTEST_BEG(st2, "Basic image transforms") {
+            Img::Image4f image4f("tests/resources/test_bunny.png");
 
-        //     genDiffImage(__img_dir + "arma_ref_0.png", __img_dir + "iter_828_0 (6).png", __img_dir + "arma_diff.png");
-        //     genDiffImage(__img_dir + "bunny_ref_0.png", __img_dir + "bunny_iter_1014_0.png", __img_dir + "bunny_diff.png");
-        //     genDiffImage(__img_dir + "dragon_ref_0.png", __img_dir + "iter_828_0 (7).png", __img_dir + "dragon_diff.png");
-        //     genDiffImage(__img_dir + "happy_ref_8.png", __img_dir + "happy_iter_1008_8.png", __img_dir + "happy_diff.png");
-        //     genDiffImage(__img_dir + "nefertiti_ref_0.png", __img_dir + "iter_828_0 (5).png", __img_dir + "nefertiti_diff.png");
-        //     genDiffImage(__img_dir + "teapot_ref_0.png", __img_dir + "teapot_iter_1008_0.png", __img_dir + "teapot_diff.png");
-        // } SVKFW_SUBTEST_END(st2);
+            image4f.imgMirror(true, true);
+            image4f.imgSave<Img::PNG>("tests/out/test_bunny_mirror_xy.png");
+            image4f.imgMirror(true, true);
+            image4f = image4f.imgResample(image4f.width*0.566, image4f.height*0.666);
+            image4f.imgSave<Img::PNG>("tests/out/test_bunny_resampled.png");
+            image4f.imgTranspose();
+            image4f.imgSave<Img::PNG>("tests/out/test_bunny_transpose.png");
+            image4f.imgSave<Img::PNG>("tests/out/test_bunny_transpose.png");
+            Img::Image1f r   = image4f.imgGetChannels(0);
+            Img::Image2f bg  = image4f.imgGetChannels(2, 1);
+            Img::Image3f bgr =   Img::CombineChannels(bg, r);
+            bgr.imgSave<Img::PNG>("tests/out/test_bunny_BGR.png");
+        } SVKFW_SUBTEST_END(st2);
+
+        SVKFW_SUBTEST_BEG(st3, "Save/Load img differences") {
+            std::string __img_dir = "/Programming/SimpleVKFW/tests/diff/";
+
+            // genDiffImage(__img_dir + "armadillo_ref.png", __img_dir + "armadillo_res.png", __img_dir + "arma_diff.png");
+            // genDiffImage(__img_dir + "bunny_ref.png"    , __img_dir + "bunny_res.png"    , __img_dir + "bunny_diff.png");
+            // genDiffImage(__img_dir + "dragon_ref.png"   , __img_dir + "dragon_res.png"   , __img_dir + "dragon_diff.png");
+            // genDiffImage(__img_dir + "happy_ref.png"    , __img_dir + "happy_res.png"    , __img_dir + "happy_diff.png");
+            // genDiffImage(__img_dir + "nefertiti_ref.png", __img_dir + "nefertiti_res.png", __img_dir + "nefertiti_diff.png");
+            // genDiffImage(__img_dir + "teapot_ref.png"   , __img_dir + "teapot_res.png"   , __img_dir + "teapot_diff.png");
+        } SVKFW_SUBTEST_END(st3);
     SVKFW_TEST_END(Test2);
 
     SVKFW_TEST_BEG(Test3, "RtAudio")
@@ -427,6 +444,6 @@ int main(int argc, char **argv) {
     // Simple::ArgParser tests_argparser{argc, argv};
     // tests_argparser.addArgumentDescription
 
-    // Simple::Tests::TestSystem::run({3}, {Simple::Tests::SUBTEST6 | Simple::Tests::SUBTEST7 | Simple::Tests::SUBTEST8});
+    Simple::Tests::TestSystem::run({2}, {Simple::Tests::SUBTEST2});
     return 0;
 }

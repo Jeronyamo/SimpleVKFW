@@ -129,6 +129,8 @@ namespace Simple {
         typename std::enable_if<std::is_same<AllT, bool>::value, bool>::type all() const { return x && y; }
         template <typename AllT = C>
         typename std::enable_if<std::is_same<AllT, bool>::value, bool>::type any() const { return x || y; }
+        template <typename AllT = C>
+        typename std::enable_if<std::is_same<AllT, bool>::value, bool>::type non() const { return !(x || y); }
 
 
         template <char ind0, char ind1>
@@ -311,6 +313,33 @@ namespace Simple {
         { return {op1 * op2.x, op1 * op2.y}; }
     template <typename C, typename Y> Vec2Base<Util::comm_type<C,Y>> operator/(Y op1, const Vec2Base<C> &op2)
         { return {op1 / op2.x, op1 / op2.y}; }
+
+
+    template <typename C, typename Y> Vec2Base<bool> operator> (const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 >  op2.x, op1 >  op2.y}; }
+    template <typename C, typename Y> Vec2Base<bool> operator< (const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 <  op2.x, op1 <  op2.y}; }
+    template <typename C, typename Y> Vec2Base<bool> operator>=(const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 >= op2.x, op1 >= op2.y}; }
+    template <typename C, typename Y> Vec2Base<bool> operator<=(const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 <= op2.x, op1 <= op2.y}; }
+    template <typename C, typename Y> Vec2Base<bool> operator==(const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 == op2.x, op1 == op2.y}; }
+    template <typename C, typename Y> Vec2Base<bool> operator!=(const C &op1, const Vec2Base<Y> &op2)
+        { return {op1 != op2.x, op1 != op2.y}; }
+
+    template <typename C, typename Y> Vec2Base<bool> operator> (const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x >  op2, op1.y >  op2}; }
+    template <typename C, typename Y> Vec2Base<bool> operator< (const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x <  op2, op1.y <  op2}; }
+    template <typename C, typename Y> Vec2Base<bool> operator>=(const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x >= op2, op1.y >= op2}; }
+    template <typename C, typename Y> Vec2Base<bool> operator<=(const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x <= op2, op1.y <= op2}; }
+    template <typename C, typename Y> Vec2Base<bool> operator==(const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x == op2, op1.y == op2}; }
+    template <typename C, typename Y> Vec2Base<bool> operator!=(const Vec2Base<C> &op1, const Y &op2)
+        { return {op1.x != op2, op1.y != op2}; }
 
     template <typename C, typename Y> Vec2Base<bool> operator> (const Vec2Base<C> &op1, const Vec2Base<Y> &op2)
         { return {op1.x >  op2.x, op1.y >  op2.y}; }
@@ -538,6 +567,33 @@ namespace Simple {
         { return {op1 * op2.x, op1 * op2.y, op1 * op2.z}; }
     template <typename C, typename Y> Vec3Base<Util::comm_type<C,Y>> operator/(Y op1, const Vec3Base<C> &op2)
         { return {op1 / op2.x, op1 / op2.y, op1 / op2.z}; }
+
+
+    template <typename C, typename Y> Vec3Base<bool> operator> (const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 >  op2.x, op1 >  op2.y, op1 >  op2.z}; }
+    template <typename C, typename Y> Vec3Base<bool> operator< (const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 <  op2.x, op1 <  op2.y, op1 <  op2.z}; }
+    template <typename C, typename Y> Vec3Base<bool> operator>=(const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 >= op2.x, op1 >= op2.y, op1 >= op2.z}; }
+    template <typename C, typename Y> Vec3Base<bool> operator<=(const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 <= op2.x, op1 <= op2.y, op1 <= op2.z}; }
+    template <typename C, typename Y> Vec3Base<bool> operator==(const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 == op2.x, op1 == op2.y, op1 == op2.z}; }
+    template <typename C, typename Y> Vec3Base<bool> operator!=(const C &op1, const Vec3Base<Y> &op2)
+        { return {op1 != op2.x, op1 != op2.y, op1 != op2.z}; }
+
+    template <typename C, typename Y> Vec3Base<bool> operator> (const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x >  op2, op1.y >  op2, op1.z >  op2}; }
+    template <typename C, typename Y> Vec3Base<bool> operator< (const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x <  op2, op1.y <  op2, op1.z <  op2}; }
+    template <typename C, typename Y> Vec3Base<bool> operator>=(const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x >= op2, op1.y >= op2, op1.z >= op2}; }
+    template <typename C, typename Y> Vec3Base<bool> operator<=(const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x <= op2, op1.y <= op2, op1.z <= op2}; }
+    template <typename C, typename Y> Vec3Base<bool> operator==(const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x == op2, op1.y == op2, op1.z == op2}; }
+    template <typename C, typename Y> Vec3Base<bool> operator!=(const Vec3Base<C> &op1, const Y &op2)
+        { return {op1.x != op2, op1.y != op2, op1.z != op2}; }
 
     template <typename C, typename Y> Vec3Base<bool> operator> (const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
         { return {op1.x >  op2.x, op1.y >  op2.y, op1.z >  op2.z}; }
@@ -774,6 +830,33 @@ namespace Simple {
         { return {op1 * op2.x, op1 * op2.y, op1 * op2.z, op1 * op2.w}; }
     template <typename C, typename Y> Vec4Base<Util::comm_type<C,Y>> operator/(Y op1, const Vec4Base<C> &op2)
         { return {op1 / op2.x, op1 / op2.y, op1 / op2.z, op1 / op2.w}; }
+
+
+    template <typename C, typename Y> Vec4Base<bool> operator> (const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 >  op2.x, op1 >  op2.y, op1 >  op2.z, op1 >  op2.w}; }
+    template <typename C, typename Y> Vec4Base<bool> operator< (const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 <  op2.x, op1 <  op2.y, op1 <  op2.z, op1 <  op2.w}; }
+    template <typename C, typename Y> Vec4Base<bool> operator>=(const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 >= op2.x, op1 >= op2.y, op1 >= op2.z, op1 >= op2.w}; }
+    template <typename C, typename Y> Vec4Base<bool> operator<=(const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 <= op2.x, op1 <= op2.y, op1 <= op2.z, op1 <= op2.w}; }
+    template <typename C, typename Y> Vec4Base<bool> operator==(const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 == op2.x, op1 == op2.y, op1 == op2.z, op1 == op2.w}; }
+    template <typename C, typename Y> Vec4Base<bool> operator!=(const C &op1, const Vec4Base<Y> &op2)
+        { return {op1 != op2.x, op1 != op2.y, op1 != op2.z, op1 != op2.w}; }
+
+    template <typename C, typename Y> Vec4Base<bool> operator> (const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x >  op2, op1.y >  op2, op1.z >  op2, op1.w >  op2}; }
+    template <typename C, typename Y> Vec4Base<bool> operator< (const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x <  op2, op1.y <  op2, op1.z <  op2, op1.w <  op2}; }
+    template <typename C, typename Y> Vec4Base<bool> operator>=(const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x >= op2, op1.y >= op2, op1.z >= op2, op1.w >= op2}; }
+    template <typename C, typename Y> Vec4Base<bool> operator<=(const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x <= op2, op1.y <= op2, op1.z <= op2, op1.w <= op2}; }
+    template <typename C, typename Y> Vec4Base<bool> operator==(const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x == op2, op1.y == op2, op1.z == op2, op1.w == op2}; }
+    template <typename C, typename Y> Vec4Base<bool> operator!=(const Vec4Base<C> &op1, const Y &op2)
+        { return {op1.x != op2, op1.y != op2, op1.z != op2, op1.w != op2}; }
 
     template <typename C, typename Y> Vec4Base<bool> operator> (const Vec4Base<C> &op1, const Vec4Base<Y> &op2)
         { return {op1.x >  op2.x, op1.y >  op2.y, op1.z >  op2.z, op1.w >  op2.w}; }
