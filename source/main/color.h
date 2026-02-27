@@ -240,7 +240,12 @@ namespace Simple {
             inline T getChannel(const Vec3Base<T> _col, int _ch1) { return _col[_ch1]; }
             template <typename T>
             inline T getChannel(const Vec4Base<T> _col, int _ch1) { return _col[_ch1]; }
-            
+
+        // Clamp color values to LDR limits
+            template <typename T>
+            inline T clampLDR(const T &_col) {
+                return Math::clampCL(_col, {0}, {Util::ChanMax<Util::ColorChanType<T>>::val});
+            }
         }; // Func END
 
 

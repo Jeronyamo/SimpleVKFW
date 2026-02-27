@@ -874,6 +874,21 @@ namespace Simple {
 
 //  ============  Vector utilities  ============  \\
 
+    namespace Util {
+        template <typename T, int Ch>
+        struct VecConstructorSct {};
+        template <typename T>
+        struct VecConstructorSct<T, 2> { using type = Vec2Base<T>; };
+        template <typename T>
+        struct VecConstructorSct<T, 3> { using type = Vec3Base<T>; };
+        template <typename T>
+        struct VecConstructorSct<T, 4> { using type = Vec4Base<T>; };
+        
+        template <typename T, int Ch>
+        using VecConstructor = typename VecConstructorSct<T, Ch>::type;
+    }; // Util END
+    
+
     namespace Math {
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec2Base<Util::remove_ref_c<Y>>>::type
@@ -903,7 +918,35 @@ namespace Simple {
             { return {op1.x > op2.x ? op1.x : op2.x, op1.y > op2.y ? op1.y : op2.y, op1.z > op2.z ? op1.z : op2.z, op1.w > op2.w ? op1.w : op2.w}; }
 
 
+        template <typename C>
+        flt_t sum(const C &op1)
+            { return op1; }
+        template <typename C>
+        flt_t sum(const Vec2Base<C> &op1)
+            { return op1.x + op1.y; }
+        template <typename C>
+        flt_t sum(const Vec3Base<C> &op1)
+            { return op1.x + op1.y + op1.z; }
+        template <typename C>
+        flt_t sum(const Vec4Base<C> &op1)
+            { return op1.x + op1.y + op1.z + op1.w; }
 
+        template <typename C>
+        flt_t pow(const C &op1, float _pow)
+            { return std::pow(op1, _pow); }
+        template <typename C>
+        Vec2Base<float> pow(const Vec2Base<C> &op1, float _pow)
+            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow)}; }
+        template <typename C>
+        Vec3Base<float> pow(const Vec3Base<C> &op1, float _pow)
+            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow), std::pow(op1.z, _pow)}; }
+        template <typename C>
+        Vec4Base<float> pow(const Vec4Base<C> &op1, float _pow)
+            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow), std::pow(op1.z, _pow), std::pow(op1.w, _pow)}; }
+
+        template <typename C, typename Y>
+        flt_t dot(const C &op1, const Y &op2)
+            { return op1 * op2; }
         template <typename C, typename Y>
         flt_t dot(const Vec2Base<C> &op1, const Vec2Base<Y> &op2)
             { return op1.x * op2.x + op1.y * op2.y; }
@@ -914,6 +957,8 @@ namespace Simple {
         flt_t dot(const Vec4Base<C> &op1, const Vec4Base<Y> &op2)
             { return op1.x * op2.x + op1.y * op2.y + op1.z * op2.z + op1.w * op2.w; }
 
+        template <typename C, typename Y>
+        flt_t dist(const C &op1, const Y &op2) { return std::abs(op1 - op2); }
         template <typename C, typename Y>
         flt_t dist(const Vec2Base<C> &op1, const Vec2Base<Y> &op2) { return (op1 - op2).norm(); }
         template <typename C, typename Y>

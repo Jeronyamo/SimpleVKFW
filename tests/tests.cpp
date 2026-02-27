@@ -119,6 +119,21 @@ namespace Simple {
             // genDiffImage(__img_dir + "nefertiti_ref.png", __img_dir + "nefertiti_res.png", __img_dir + "nefertiti_diff.png");
             // genDiffImage(__img_dir + "teapot_ref.png"   , __img_dir + "teapot_res.png"   , __img_dir + "teapot_diff.png");
         } SVKFW_SUBTEST_END(st3);
+
+        SVKFW_SUBTEST_BEG(st4, "Image Metrics") {
+            Img::Image4f image4f("tests/resources/test_bunny.png");
+
+            float res_mse  = Img::Metric:: MSE(image4f, image4f);
+            float res_psnr = Img::Metric::PSNR(image4f, image4f);
+            float res_ssim = Img::Metric::SSIM(image4f, image4f);
+            printf("Image metrics for identical images:  MSE = %f\n", res_mse );
+            printf("Image metrics for identical images: PSNR = %f\n", res_psnr);
+            printf("Image metrics for identical images: SSIM = %f\n", res_ssim);
+
+            Tests::testAssert(res_mse , Tests::TEST_COMP_E,   0.f, "MSE  for identical images", "MSE ", "Expected");
+            Tests::testAssert(res_psnr, Tests::TEST_COMP_E, 100.f, "PSNR for identical images", "PSNR", "Expected");
+            Tests::testAssert(res_ssim, Tests::TEST_COMP_E,   1.f, "SSIM for identical images", "SSIM", "Expected");
+        } SVKFW_SUBTEST_END(st4);
     SVKFW_TEST_END(Test2);
 
     SVKFW_TEST_BEG(Test3, "RtAudio")
@@ -444,6 +459,6 @@ int main(int argc, char **argv) {
     // Simple::ArgParser tests_argparser{argc, argv};
     // tests_argparser.addArgumentDescription
 
-    Simple::Tests::TestSystem::run({2}, {Simple::Tests::SUBTEST2});
+    Simple::Tests::TestSystem::run({2}, {Simple::Tests::SUBTEST4});
     return 0;
 }

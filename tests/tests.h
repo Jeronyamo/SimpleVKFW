@@ -214,6 +214,11 @@ namespace Simple {
                 TestSystem::subtest_asserts.clear();
             }
 
+            void print_assert_result(const AssertInfoSct &_assert_info) {
+                // TODO: print assertion results
+                // terminal_h.print_w();
+            }
+
             void print_end() {
                 terminal_h.print_wcent(TSTYLE_BOLD, "SimpleVKFW Test System End", '=');
                 printf("\n");
@@ -269,8 +274,8 @@ namespace Simple {
                     catch (std::exception) {
                         __subtest_crashed = true;
                     }
+                    submitSubtestGlobalInfo(__subtest_crashed);
                 }
-                submitSubtestGlobalInfo(__subtest_crashed);
             }
         }
 
