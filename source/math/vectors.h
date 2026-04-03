@@ -890,31 +890,54 @@ namespace Simple {
     
 
     namespace Math {
+        template <typename Y>
+        inline Util::remove_ref_c<Y> minOf(const Vec2Base<Y> &op1)
+            { return std::min(op1.x, op1.y); }
+        template <typename Y>
+        inline Util::remove_ref_c<Y> maxOf(const Vec2Base<Y> &op1)
+            { return std::max(op1.x, op1.y); }
+
+        template <typename Y>
+        inline Util::remove_ref_c<Y> minOf(const Vec3Base<Y> &op1)
+            { return std::min(std::min(op1.x, op1.y), op1.z); }
+        template <typename Y>
+        inline Util::remove_ref_c<Y> maxOf(const Vec3Base<Y> &op1)
+            { return std::min(std::min(op1.x, op1.y), op1.z); }
+
+        template <typename Y>
+        inline Util::remove_ref_c<Y> minOf(const Vec4Base<Y> &op1)
+            { return std::min(std::min(std::min(op1.x, op1.y), op1.z), op1.w); }
+        template <typename Y>
+        inline Util::remove_ref_c<Y> maxOf(const Vec4Base<Y> &op1)
+            { return std::max(std::max(std::max(op1.x, op1.y), op1.z), op1.w); }
+
+
+
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec2Base<Util::remove_ref_c<Y>>>::type
         min(const Vec2Base<Y> &op1, const Vec2Base<Z> &op2)
             { return {op1.x < op2.x ? op1.x : op2.x, op1.y < op2.y ? op1.y : op2.y}; }
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec2Base<Util::remove_ref_c<Y>>>::type
-        max(const Vec2Base<Y> &op1, const Vec2Base<Y> &op2)
+        max(const Vec2Base<Y> &op1, const Vec2Base<Z> &op2)
             { return {op1.x > op2.x ? op1.x : op2.x, op1.y > op2.y ? op1.y : op2.y}; }
 
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec3Base<Util::remove_ref_c<Y>>>::type
-        min(const Vec3Base<Y> &op1, const Vec3Base<Y> &op2)
+        min(const Vec3Base<Y> &op1, const Vec3Base<Z> &op2)
             { return {op1.x < op2.x ? op1.x : op2.x, op1.y < op2.y ? op1.y : op2.y, op1.z < op2.z ? op1.z : op2.z}; }
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec3Base<Util::remove_ref_c<Y>>>::type
-        max(const Vec3Base<Y> &op1, const Vec3Base<Y> &op2)
+        max(const Vec3Base<Y> &op1, const Vec3Base<Z> &op2)
             { return {op1.x > op2.x ? op1.x : op2.x, op1.y > op2.y ? op1.y : op2.y, op1.z > op2.z ? op1.z : op2.z}; }
 
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec4Base<Util::remove_ref_c<Y>>>::type
-        min(const Vec4Base<Y> &op1, const Vec4Base<Y> &op2)
+        min(const Vec4Base<Y> &op1, const Vec4Base<Z> &op2)
             { return {op1.x < op2.x ? op1.x : op2.x, op1.y < op2.y ? op1.y : op2.y, op1.z < op2.z ? op1.z : op2.z, op1.w < op2.w ? op1.w : op2.w}; }
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec4Base<Util::remove_ref_c<Y>>>::type
-        max(const Vec4Base<Y> &op1, const Vec4Base<Y> &op2)
+        max(const Vec4Base<Y> &op1, const Vec4Base<Z> &op2)
             { return {op1.x > op2.x ? op1.x : op2.x, op1.y > op2.y ? op1.y : op2.y, op1.z > op2.z ? op1.z : op2.z, op1.w > op2.w ? op1.w : op2.w}; }
 
 

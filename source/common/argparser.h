@@ -10,6 +10,7 @@
 #include "common/memory.h"
 #include "common/terminal.h"
 #include "common/utilities.h"
+#include "math/vectors.h"
 
 
 namespace Simple {
@@ -645,53 +646,39 @@ namespace Simple {
 
 //  ================  ArgParser  ================  \\
 
-    namespace ArgParser {
-        enum ArgTypeEm : uint32_t {
-            ARG_UNDEFINED, ARG_INT, ARG_FLOAT, ARG_STR, ARG_ENUM, ARG_CUSTOM // ARG_ENUM - when a specific string is expected, ARG_CUSTOM - uses custom parse grammar from Parser namespace
-        };
+    template <typename T>
+    inline T argumentCaster(const std::string &_casted_string);
+    template <typename T>
+    inline Vec2Base<T> argumentCaster(const std::string &_str_x, const std::string &_str_y) {
+        return Vec2Base<T>{ argumentCaster<T>(_str_x), argumentCaster<T>(_str_y) };
+    }
+    template <typename T>
+    inline Vec3Base<T> argumentCaster(const std::string &_str_x, const std::string &_str_y, const std::string &_str_z) {
+        return Vec3Base<T>{ argumentCaster<T>(_str_x), argumentCaster<T>(_str_y), argumentCaster<T>(_str_z) };
+    }
+    template <typename T>
+    inline Vec4Base<T> argumentCaster(const std::string &_str_x, const std::string &_str_y, const std::string &_str_z, const std::string &_str_w) {
+        return Vec4Base<T>{ argumentCaster<T>(_str_x), argumentCaster<T>(_str_y), argumentCaster<T>(_str_z), argumentCaster<T>(_str_w) };
+    }
 
-        Util::EnumCollector Enum_collector;
+    template <>
+    inline int      argumentCaster<int     >(const std::string &_casted_string) { return std::stoi(_casted_string); }
+    template <>
+    inline uint8_t  argumentCaster<uint8_t >(const std::string &_casted_string) { return (uint8_t ) std::stoul(_casted_string); }
+    template <>
+    inline uint16_t argumentCaster<uint16_t>(const std::string &_casted_string) { return (uint16_t) std::stoul(_casted_string); }
+    template <>
+    inline uint32_t argumentCaster<uint32_t>(const std::string &_casted_string) { return (uint32_t) std::stoul(_casted_string); }
+    template <>
+    inline float    argumentCaster<float   >(const std::string &_casted_string) { return std::stof(_casted_string); }
+    template <>
+    inline double   argumentCaster<double  >(const std::string &_casted_string) { return std::stod(_casted_string); }
 
 
-        struct ArgValue {
-            ArgTypeEm curr_type = ARG_UNDEFINED;
-
-            union {
-                int         val_int;
-                float       val_flt;
-                std::string val_str;
-            };
-
-            ArgValue() {}
-            ArgValue(const ArgValue &_arg_val) {
-                switch (_arg_val.curr_type) {
-                    case ARG_STR:
-                    case ARG_ENUM:
-                    case ARG_CUSTOM: val_str = _arg_val.val_str; break;
-                    case ARG_INT:    val_int = _arg_val.val_int; break;
-                    case ARG_FLOAT:  val_flt = _arg_val.val_flt; break;
-                    case ARG_UNDEFINED: break;
-                }
-            }
-            ArgValue(int   _val_int) : val_int{_val_int}, curr_type{ARG_INT} {}
-            ArgValue(float _val_flt) : val_flt{_val_flt}, curr_type{ARG_FLOAT} {}
-            ArgValue(const std::string &_val_str, ArgTypeEm _str_type = ARG_STR) : val_str{_val_str}, curr_type{_str_type} {}
-            ~ArgValue() {}
-        }; // ArgValue END
-
-        struct ArgType {
-            ArgTypeEm arg_type;
-            uint32_t arg_count;
-            std::string enum_name; // Set in ArgParser::Enum_collector
-
-            ArgType(ArgTypeEm _arg_type, uint32_t _arg_count = 1, const std::string &_enum_name = "")
-                            : arg_type{_arg_type}, arg_count{_arg_count}, enum_name{_enum_name} {}
-        }; // ArgType END
-
+    struct ArgParser {
         struct ArgDescription {
             std::string arg_name, arg_alias, arg_description;
-            std::vector<ArgType>  arg_types; // either single 'ARG_CUSTOM' or a vector of other types (except 'ARG_UNDEFINED')
-            Parser::Parser *custom_arg_parser = nullptr; // only one 'ARG_CUSTOM' per argument is allowed, because anything ArgParser can parse may be handed to Parser 
+            std::vector<uint32_t> arg_counts;
 
             static void ValidateName(const std::string &_arg_name) {
                 SVKFW_ASSERT(   !_arg_name.empty(), std::invalid_argument, "ArgParser :: ArgDescription :: ValidateName",
@@ -700,7 +687,7 @@ namespace Simple {
                                 "Argument name '" + _arg_name + "' doesn't start with a letter");
 
                 for (uint32_t i = 1u; i < _arg_name.size(); ++i) {
-                    SVKFW_ASSERT(isalnum(_arg_name[i]) && _arg_name[i] != '_', std::invalid_argument, "ArgParser :: ArgDescription :: ValidateName",
+                    SVKFW_ASSERT(isalnum(_arg_name[i]) || _arg_name[i] == '_', std::invalid_argument, "ArgParser :: ArgDescription :: ValidateName",
                                     "Argument name '" + _arg_name + "' - symbol '" + _arg_name[i] + "' isn't allowed");
                 }
             }
@@ -711,64 +698,53 @@ namespace Simple {
                                 "Argument alias '" + _arg_alias + "' doesn't start with a letter");
 
                 for (uint32_t i = 1u; i < _arg_alias.size(); ++i) {
-                    SVKFW_ASSERT(isalnum(_arg_alias[i]) && _arg_alias[i] != '_', std::invalid_argument, "ArgParser :: ArgDescription :: ValidateAlias",
+                    SVKFW_ASSERT(isalnum(_arg_alias[i]) || _arg_alias[i] == '_', std::invalid_argument, "ArgParser :: ArgDescription :: ValidateAlias",
                                     "Argument alias '" + _arg_alias + "' - symbol '" + _arg_alias[i] + "' isn't allowed");
                 }
             }
-            static void ValidateTypes(const std::vector<ArgType> &_arg_types) {
-                for (uint32_t i = 0u; i < _arg_types.size(); ++i) {
-                    SVKFW_ASSERT(_arg_types[i].arg_type != ARG_UNDEFINED, std::invalid_argument, "ArgParser :: ArgDescription :: ValidateTypes",
-                                    "Parameter (" + std::to_string(i) + "): Parameter of undefined type");
-                    SVKFW_ASSERT(_arg_types[i].arg_count != 0 || i == _arg_types.size() - 1, std::invalid_argument, "ArgParser :: ArgDescription :: ValidateTypes",
-                                    "Parameter (" + std::to_string(i) + "): A vector of undefined length is only allowed at the end");
-                    SVKFW_ASSERT(_arg_types[i].arg_type != ARG_ENUM || !_arg_types[i].enum_name.empty(), std::invalid_argument, "ArgParser :: ArgDescription :: ValidateTypes",
-                                    "Parameter (" + std::to_string(i) + "): Enum parameter has no allowed values");
-                    SVKFW_ASSERT(_arg_types[i].arg_type != ARG_CUSTOM || (_arg_types.size() == 1 && _arg_types[i].arg_count == 1), std::invalid_argument, "ArgParser :: ArgDescription :: ValidateTypes",
-                                    "Parameter (" + std::to_string(i) + "): Custom parameter must be the only parameter of the argument: 'arg_types' size " + std::to_string(_arg_types.size()) + " != 1  AND/OR  'arg_count' value " + std::to_string(_arg_types[i].arg_count) + " != 1");
+            static void ValidateCounts(const std::string &_arg_name_or_alias, const std::vector<uint32_t> &_arg_counts) {
+                for (uint32_t i = 0u; i < _arg_counts.size(); ++i) {
+                    SVKFW_ASSERT(_arg_counts[i] != 0 || i+1 == _arg_counts.size(), std::invalid_argument, "ArgParser :: ArgDescription :: ValidateCounts",
+                                    "Parameter (" + _arg_name_or_alias + " :: " + std::to_string(i) + "): unspecified length of a vector is not at the end (" + std::to_string(_arg_counts.size()) + ")");
                 }
             }
-            static std::string getTypesDescription(const std::vector<ArgType> &_arg_types) {
-                std::string __res;
 
-                for (const ArgType &arg : _arg_types) {
-                    switch (arg.arg_type) {
-                        case ARG_UNDEFINED:
-                            __res += "<ERR_TYPE_UNDEFINED> "; break;
-                        case ARG_INT:
-                            __res += "<INT> "; break;
-                        case ARG_FLOAT:
-                            __res += "<FLOAT> "; break;
-                        case ARG_STR:
-                            __res += "<STR> "; break;
-                        case ARG_CUSTOM:
-                            __res += "<CUSTOM> "; break;
-                        case ARG_ENUM:
-                            __res += "<ENUM: '" + arg.enum_name + "'> "; break;
-                        default:
-                            __res += "<ERR_UNKNOWN> "; break;
-                    }
-                }
-                return __res;
-            }
 
-            ArgDescription(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<ArgType> &_arg_types, Parser::Parser *_custom_parser = nullptr)
-                            : arg_name{_arg_name}, arg_alias{_arg_alias}, arg_types{_arg_types}, custom_arg_parser{_custom_parser} {
-                ValidateName (arg_name );
+            ArgDescription() {}
+            ArgDescription(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts)
+                            : arg_name{_arg_name}, arg_alias{_arg_alias}, arg_counts{arg_counts}, arg_description{} {
+                ValidateName(arg_name);
                 ValidateAlias(arg_alias);
-                ValidateTypes(arg_types);
+                ValidateCounts(arg_name, arg_counts);
             }
-            ArgDescription(const std::string &_arg_name, const std::vector<ArgType> &_arg_types, Parser::Parser *_custom_parser = nullptr)
-                            : ArgDescription{_arg_name, "", _arg_types, _custom_parser} {}
+            ArgDescription(const std::string &_arg_name, const std::vector<uint32_t> &_arg_counts)
+                            : ArgDescription{_arg_name, "", _arg_counts} {}
             ArgDescription(const ArgDescription &_arg) = default;
+
 
             bool checkArgName (char *_arg) const { return ("--" + arg_name) == _arg; }
             bool checkArgAlias(char *_arg) const { return !arg_alias.empty() && ('-' + arg_alias) == _arg; }
 
-            void setDescription(const std::string &_descr_str) { arg_description = _descr_str; }
-            std::vector<std::string> getDescriptionFull() const {
+            void setDescription(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts, const std::string &_arg_descr = "") {
+                ValidateName(_arg_name);
+                ValidateAlias(_arg_alias);
+                ValidateCounts(_arg_name, _arg_counts);
+
+                arg_name = _arg_name;
+                arg_alias = _arg_alias;
+                arg_counts = _arg_counts;
+                arg_description = _arg_descr;
+            }
+
+            std::string getArgNamePrint() const { return "--" + arg_name + (arg_alias.empty() ? std::string("") : (" (-" + arg_alias + ")")); }
+
+            std::vector<std::string> getFullDescription() const {
                 std::vector<std::string> __res;
-                __res.push_back("--" + arg_name + (arg_alias.empty() ? std::string("") : (" (-" + arg_alias + ")")) +
-                                                  getTypesDescription(arg_types));
+
+                __res.push_back(getArgNamePrint());
+                for (uint32_t i = 0u; i < arg_counts.size(); ++i)
+                    __res.back() += " - " + std::to_string(arg_counts[i]);
+
                 if (!arg_description.empty())
                     __res.push_back("  Description: " + arg_description);
                 return __res;
@@ -788,10 +764,12 @@ namespace Simple {
                 _namespace.nested_args.clear();
                 _namespace.arguments.clear();
             }
-            virtual ~ArgNamespace() {}
+           ~ArgNamespace() {}
 
-            void addArgument(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<ArgType> &_arg_types) {
-                ArgDescription __new_arg{_arg_name, _arg_alias, _arg_types};
+            void addArgument(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts) {
+                ArgParser::ArgDescription __new_arg;
+                __new_arg.setDescription(_arg_name, _arg_alias, _arg_counts);
+
                 for (uint32_t i = 0u; i < arguments.size(); ++i) {
                     if (arguments[i].arg_name  == _arg_name)
                         throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgNamespace :: addArgument", "Argument name '"  + _arg_name  + "' is already used"));
@@ -800,8 +778,8 @@ namespace Simple {
                 }
                 arguments.push_back(__new_arg);
             }
-            inline void addArgument(const std::string &_arg_name, const std::vector<ArgType> &_arg_types) {
-                addArgument(_arg_name, "", _arg_types);
+            void addArgument(const std::string &_arg_name, const std::vector<uint32_t> &_arg_counts) {
+                addArgument(_arg_name, "", _arg_counts);
             }
             void createNestedNamespace(const std::string &_namespace_name) {
                 nested_args.emplace_back(_namespace_name);
@@ -829,104 +807,191 @@ namespace Simple {
                 return __res;
             }
 
-            static std::vector<ArgValue> ParseArgument(const ArgDescription &_parsed_arg, int _sub_argc, char **_sub_argv) {
-                std::vector<ArgValue> __res;
+            static std::string ParseSingleArgument(std::string _res) {
+                if (!_res.empty() && _res.back() == ',') _res.erase(_res.end()-1);
+                if (!_res.empty() && _res[0]     == ',') _res.erase(_res.begin());
+                return _res;
+            }
+            static std::vector<std::vector<std::string>> ParseArgument(const ArgDescription &_parsed_arg, int _sub_argc, char **_sub_argv) {
+                std::vector<std::vector<std::string>> __res(_parsed_arg.arg_counts.size(), std::vector<std::string>{});
 
-                int    __expected_size = 0u;
-                std::vector<uint32_t> __argv_indices;
-                for (uint32_t i = 0u; i < _parsed_arg.arg_types.size(); ++i) {
-                    // TODO
+                uint32_t __arg_index = 0u;
+                std::string __arg_tmp_storage;
+                for (uint32_t i = 0u; i < _parsed_arg.arg_counts.size(); ++i) {
+                    for (uint32_t j = 0u; j < _parsed_arg.arg_counts[i]; ++j) {
+                        __arg_tmp_storage.clear();
+                        while (__arg_tmp_storage.empty()) {
+                            SVKFW_ASSERT(__arg_index < _sub_argc, std::runtime_error, "ArgParser::ArgNamespace :: ParseArgument",
+                                            "argument count mismatch: argument " + _parsed_arg.getArgNamePrint() + ", state (" + std::to_string(i) + "/" + std::to_string(_parsed_arg.arg_counts.size()) + ", " + std::to_string(j) + ":" + std::to_string(_parsed_arg.arg_counts[i]) + "); argc " + std::to_string(_sub_argc));
+                            __arg_tmp_storage = ParseSingleArgument(_sub_argv[__arg_index++]);
+                        }
+                        __res[i].push_back(__arg_tmp_storage);
+                    }
+                    if (_parsed_arg.arg_counts[i] == 0u && i+1 == _parsed_arg.arg_counts.size()) {
+                        for (__arg_index; __arg_index < _sub_argc; ++__arg_index) {
+                            __arg_tmp_storage = ParseSingleArgument(_sub_argv[__arg_index]);
+                            if (!__arg_tmp_storage.empty())
+                                __res[i].push_back(__arg_tmp_storage);
+                        }
+                    }
                 }
-
-                // if ( _sub_argc == 0) {
-                //     if (_parsed_arg.arg_type == ARG_UNDEFINED) return {};
-                //     throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgParser :: ParseArgument", "Argument '" + _parsed_arg.arg_name + "' "
-                //                                                                             + (_parsed_arg.arg_alias.empty() ? std::string("") : ("(alias '" + _parsed_arg.arg_alias + "') "))
-                //                                                                             + "expects a parameter"));
-                // }
-                // if (_parsed_arg.arg_type == ARG_UNDEFINED)
-                //     throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgParser :: ParseArgument", "Argument '" + _parsed_arg.arg_name + "' "
-                //                                                                             + (_parsed_arg.arg_alias.empty() ? std::string("") : ("(alias '" + _parsed_arg.arg_alias + "') "))
-                //                                                                             + "doesn't expect a parameter"));
-                // if (_sub_argc >  1 && _parsed_arg.arg_type < ARG_VEC_INT) {
-                //     throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgParser :: ParseArgument", "Argument '" + _parsed_arg.arg_name + "' "
-                //                                                                             + (_parsed_arg.arg_alias.empty()   ? std::string("") : ("(alias '" + _parsed_arg.arg_alias + "') "))
-                //                                                                             + "expects a scalar parameter"
-                //                                                                             + (_parsed_arg.arg_type != ARG_STR ? "" : ". Please, use quotes for a string argument")));
-                // }
-
-                // __res.curr_type = _parsed_arg.arg_type;
-                // switch (_parsed_arg.arg_type) {
-                //     case ARG_INT: {
-                //         __res.val_int = atoi(_sub_argv[0]);
-                //         break;
-                //     }
-                //     case ARG_FLOAT: {
-                //         __res.val_flt = atof(_sub_argv[0]);
-                //         break;
-                //     }
-                //     case ARG_STR: {
-                //         __res.val_str = _sub_argv[0];
-                //         break;
-                //     }
-                //     case ARG_VEC_INT: {
-                //         for (int i  = 0; i < _sub_argc; ++i) {
-                //             __res.val_int_vec.push_back(atoi(_sub_argv[i]));
-                //         }
-                //         break;
-                //     }
-                //     case ARG_VEC_FLOAT: {
-                //         for (int i  = 0; i < _sub_argc; ++i) {
-                //             __res.val_flt_vec.push_back(atof(_sub_argv[i]));
-                //         }
-                //         break;
-                //     }
-                //     case ARG_VEC_STR: {
-                //         for (int i  = 0; i < _sub_argc; ++i) {
-                //             __res.val_str_vec.push_back(_sub_argv[i]);
-                //         }
-                //         break;
-                //     }
-                // }
                 return __res;
             }
         }; // ArgNamespace END
 
-        struct ArgParser : ArgNamespace {
-            int argc = 0;
-            char **argv = nullptr;
-            std::vector<std::pair<uint32_t, std::vector<ArgValue>>> argument_values;
 
-            ArgParser() : ArgNamespace{"Global"} {}
-            ArgParser(int _prog_argc, char** _prog_argv) : argc{_prog_argc}, argv{_prog_argv}, ArgNamespace{"Global"} {}
+        Util::EnumCollector    enum_collector;
+        // std::vector<ArgNamespace> nested_args;
+        std::vector<ArgDescription> arguments;
+        std::vector<std::pair<uint32_t, std::vector<std::vector<std::string>>>> argument_values;
+        int argc = 0;
+        char **argv = nullptr;
 
-            void setArgumentSource(int _argc, char** _argv) { argc = _argc; argv = _argv; }
+        ArgParser() {}
+        ArgParser(int _prog_argc, char** _prog_argv) : argc{_prog_argc}, argv{_prog_argv} {}
 
-            void parseAllArguments() {
-                std::vector<std::pair<int,int>> __arg_indices;
-                for (int i = 1; i < argc; ++i) {
-                    if (argv[i][0] == '-') {
-                        bool __check_name  = argv[i][1] == '-' && isalpha(argv[i][2]);
-                        bool __check_alias = isalpha(argv[i][1]);
+        void setArgumentSource(int _argc, char** _argv) { argc = _argc; argv = _argv; }
 
-                        if (__check_name || __check_alias) {
-                            for (uint32_t j = 0u; j < arguments.size(); ++j) {
-                                if (__check_name ? arguments[j].checkArgName(argv[i])
-                                                : arguments[j].checkArgAlias(argv[i]))
-                                    __arg_indices.push_back({i,j});
-                            }
+        const ArgDescription* getArgDescriptionByName(const std::string &_arg_name) const {
+            for (uint32_t i = 0u; i < arguments.size(); ++i)
+                if (arguments[i].arg_name == _arg_name) return arguments.data() + i;
+            return nullptr;
+        }
+
+        uint32_t getArgDescriptionIdByName(const std::string &_arg_name) const {
+            for (uint32_t i = 0u; i < arguments.size(); ++i)
+                if (arguments[i].arg_name == _arg_name) return i;
+            return UINT32_MAX;
+        }
+
+        std::vector<uint32_t> getArgParseIdsByName(const std::string &_arg_name) const {
+            std::vector<uint32_t> __res;
+
+            uint32_t __arg_id = getArgDescriptionIdByName(_arg_name);
+            if (__arg_id == UINT32_MAX) return __res;
+
+            for (uint32_t i = 0u; i < argument_values.size(); ++i)
+                if (argument_values[i].first == __arg_id) __res.push_back(i);
+            return __res;
+        }
+
+
+        void addArgument(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts) {
+            ArgDescription __new_arg;
+            __new_arg.setDescription(_arg_name, _arg_alias, _arg_counts);
+
+            for (uint32_t i = 0u; i < arguments.size(); ++i) {
+                if (arguments[i].arg_name  == _arg_name)
+                    throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: addArgument", "Argument name '"  + _arg_name  + "' is already used"));
+                if (arguments[i].arg_alias == _arg_alias)
+                    throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: addArgument", "Argument alias '" + _arg_alias + "' is already used"));
+            }
+            arguments.push_back(__new_arg);
+        }
+
+        void addArgument(const std::string &_arg_name, const std::vector<uint32_t> &_arg_counts) {
+            addArgument(_arg_name, "", _arg_counts);
+        }
+
+        void parseAllArguments() {
+            std::vector<std::pair<int,int>> __arg_indices;
+            for (int i = 1; i < argc; ++i) {
+                if (argv[i][0] == '-') {
+                    bool __check_name  = argv[i][1] == '-' && isalpha(argv[i][2]);
+                    bool __check_alias = isalpha(argv[i][1]);
+
+                    if (__check_name || __check_alias) {
+                        for (uint32_t j = 0u; j < arguments.size(); ++j) {
+                            if (__check_name ? arguments[j].checkArgName (argv[i])
+                                             : arguments[j].checkArgAlias(argv[i]))
+                                __arg_indices.push_back({i,j});
                         }
                     }
                 }
-                __arg_indices.push_back({argc, -1});
-
-                for (uint32_t i = 0u; i < __arg_indices.size()-1; ++i) {
-                    argument_values.push_back({ __arg_indices[i].second, ParseArgument(arguments[__arg_indices[i].second],
-                                                                                 __arg_indices[i+1].first - (__arg_indices[i].first+1),
-                                                                                (__arg_indices[i].first+1) < argc ? argv + (__arg_indices[i].first+1) : nullptr) });
-                }
             }
-        }; // ArgParser END
+            __arg_indices.push_back({argc, -1});
+
+            for (uint32_t i = 0u; i < __arg_indices.size()-1; ++i) {
+                argument_values.push_back({ __arg_indices[i].second,
+                                            ArgNamespace::ParseArgument(arguments[__arg_indices[i].second],
+                                                      __arg_indices[i+1].first - (__arg_indices[i].first+1),
+                                                     (__arg_indices[i  ].first+1) < argc ? argv + (__arg_indices[i].first+1) : nullptr) });
+            }
+        }
+
+        template <typename T>
+        T castArgument(const std::string &_arg_name, uint32_t _arg_value_id = 0u) const {
+            T __res = -1;
+
+            uint32_t __arg_descr = getArgDescriptionIdByName(_arg_name);
+            if (__arg_descr != UINT32_MAX && arguments[__arg_descr].arg_counts.size() > _arg_value_id) {
+                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 1u, std::runtime_error, "Simple::ArgParser :: castArgument(scalar)",
+                                "trying to cast scalar from a vector argument value");
+                std::vector<uint32_t> __arg_first_parse = getArgParseIdsByName(_arg_name);
+
+                SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(scalar)",
+                                "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
+                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0]);
+            }
+            return __res;
+        }
+
+        template <typename T>
+        Vec2Base<T> castArgument2(const std::string &_arg_name, uint32_t _arg_value_id) const {
+            Vec2Base<T> __res;
+
+            uint32_t __arg_descr = getArgDescriptionIdByName(_arg_name);
+            if (__arg_descr != UINT32_MAX && arguments[__arg_descr].arg_counts.size() > _arg_value_id) {
+                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 2u, std::runtime_error, "Simple::ArgParser :: castArgument(vector2)",
+                                "vector2/argument value mismatch");
+                std::vector<uint32_t> __arg_first_parse = getArgParseIdsByName(_arg_name);
+
+                SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector2)",
+                                "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
+                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1]);
+            }
+            return __res;
+        }
+
+        template <typename T>
+        Vec3Base<T> castArgument3(const std::string &_arg_name, uint32_t _arg_value_id) const {
+            Vec3Base<T> __res;
+
+            uint32_t __arg_descr = getArgDescriptionIdByName(_arg_name);
+            if (__arg_descr != UINT32_MAX && arguments[__arg_descr].arg_counts.size() > _arg_value_id) {
+                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 2u, std::runtime_error, "Simple::ArgParser :: castArgument(vector3)",
+                                "vector3/argument value mismatch");
+                std::vector<uint32_t> __arg_first_parse = getArgParseIdsByName(_arg_name);
+
+                SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector3)",
+                                "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
+                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][2]);
+            }
+            return __res;
+        }
+
+        template <typename T>
+        Vec4Base<T> castArgument4(const std::string &_arg_name, uint32_t _arg_value_id) const {
+            Vec4Base<T> __res;
+
+            uint32_t __arg_descr = getArgDescriptionIdByName(_arg_name);
+            if (__arg_descr != UINT32_MAX && arguments[__arg_descr].arg_counts.size() > _arg_value_id) {
+                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 4u, std::runtime_error, "Simple::ArgParser :: castArgument(vector4)",
+                                "vector4/argument value mismatch");
+                std::vector<uint32_t> __arg_first_parse = getArgParseIdsByName(_arg_name);
+
+                SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector4)",
+                                "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
+                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][2],
+                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][3]);
+            }
+            return __res;
+        }
     }; // ArgParser END
 }; // Simple END
 
