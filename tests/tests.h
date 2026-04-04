@@ -121,19 +121,45 @@ namespace Simple {
                 return __res;
             }
 
+            vec2u getTestNumber(const std::string &_test_name) {
+                vec2u __res{UINT32_MAX};
+
+                std::vector<std::pair<std::string, uint32_t>> __test_groups;
+                for (const auto& test : tests) {
+                    bool __is_new_test_group = true;
+                    for (uint32_t group_id = 0u; group_id < __test_groups.size(); ++group_id) {
+                        if (__test_groups[group_id].first == test->group()) {
+                            __is_new_test_group = false;
+                            __res.x = group_id;
+                            break;
+                        }
+                    }
+                    if (__is_new_test_group) {
+                        __res.x = __test_groups.size();
+                        __test_groups.emplace_back(test->group(), 0u);
+                    }
+                    if (_test_name == test->name()) {
+                        __res.y = __test_groups[__res.x].second;
+                        break;
+                    }
+                    __test_groups[__res.x].second += 1;
+                }
+                return __res + 1;
+            }
+
             void printHeader(const std::vector<std::string> &_test_names) {
                 printf("\n");
                 terminal_h.print_wcent(TSTYLE_BOLD, "SimpleVKFW Test System", '=');
                 terminal_h.print_w();
 
                 terminal_h.print_wcent("", '-');
-                terminal_h.print_wcent({terminal_h.encloseWithStyle(TSTYLE_INFO, "Running tests"), TermCtrl::StylizedString{": " + std::to_string(_test_names.size())}});
+                terminal_h.print_wcent({terminal_h.encloseWithStyle(TSTYLE_BOLD, "Running tests"), TermCtrl::StylizedString{": " + std::to_string(_test_names.size())}});
                 terminal_h.print_wcent("", '-');
                 terminal_h.print_w();
 
-                uint32_t __test_index = 0u;
                 for (uint32_t i = 0u; i < _test_names.size(); ++i) {
-                    terminal_h.print_w({{"   " + std::to_string(i) + ". "}, terminal_h.encloseWithStyle(TSTYLE_INFO, tests[findTestIdByName(_test_names[i])]->name())});
+                    vec2u __test_number = getTestNumber(_test_names[i]);
+                    terminal_h.print_w({{"   " + std::to_string(__test_number.x) + "." + std::to_string(__test_number.y) + ". "}, terminal_h.encloseWithStyle(TSTYLE_INFO, tests[findTestIdByName(_test_names[i])]->group()), {"."}, terminal_h.encloseWithStyle(TSTYLE_INFO, tests[findTestIdByName(_test_names[i])]->name())});
                     terminal_h.print_w();
                 }
                 terminal_h.print_w();
@@ -190,6 +216,14 @@ namespace Simple {
             void printEnd() {
                 terminal_h.print_wcent(TSTYLE_BOLD, "SimpleVKFW Test System End", '=');
                 printf("\n");
+            }
+
+            void printTestList() {
+                std::vector<std::string> __run_tests(tests.size(), "");
+                for (uint32_t i = 0u; i < tests.size(); ++i)
+                    __run_tests[i] = tests[i]->name();
+
+                printHeader(__run_tests);
             }
 
 

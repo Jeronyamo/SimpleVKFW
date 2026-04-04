@@ -478,26 +478,26 @@ int main(int argc, char **argv) {
     //            --tests TestName1 [, TestName2, ...] --test_groups TestGroupName1 [, TestGroupName2, ...]
     // Note: If no tests specified, run all
 
-    printf("out-1\n");
-    fflush(stdout);
     Simple::ArgParser tests_argparser{argc, argv};
-    printf("out0\n");
-    fflush(stdout);
-    tests_argparser.addArgument("tests",       "t",  {0u});
-    tests_argparser.addArgument("test_groups", "tg", {0u});
-    printf("out1\n");
-    fflush(stdout);
+    tests_argparser.addArgument("list",        "l",  {  }); // empty counts list  -> it is a flag, no values expected
+    tests_argparser.addArgument("tests",       "t",  {0u}); // counts list with 0 -> expected a vector with >=0 parameters
+    tests_argparser.addArgument("test_groups", "tg", {0u}); // counts list with 0 -> expected a vector with >=0 parameters
     tests_argparser.parseAllArguments();
 
-    std::vector<std::string> called_tests, called_test_groups;
-    std::vector<uint32_t> parsed_tests       = tests_argparser.getArgParseIdsByName("tests"      );
-    std::vector<uint32_t> parsed_test_groups = tests_argparser.getArgParseIdsByName("test_groups");
+    if (tests_argparser.hasArgumentParsed("list")) {
+        Simple::Test::test_system.printTestList();
+    }
+    else {
+        std::vector<std::string> called_tests, called_test_groups;
+        std::vector<uint32_t> parsed_tests       = tests_argparser.getArgParseIdsByName("tests"      );
+        std::vector<uint32_t> parsed_test_groups = tests_argparser.getArgParseIdsByName("test_groups");
 
-    if (!parsed_tests.empty())
-        called_tests       = tests_argparser.argument_values[parsed_tests[0]      ].second[0];
-    if (!parsed_test_groups.empty())
-        called_test_groups = tests_argparser.argument_values[parsed_test_groups[0]].second[0];
+        if (!parsed_tests.empty())
+            called_tests       = tests_argparser.argument_values[parsed_tests[0]      ].second[0];
+        if (!parsed_test_groups.empty())
+            called_test_groups = tests_argparser.argument_values[parsed_test_groups[0]].second[0];
 
-    Simple::Test::test_system.run(called_tests, called_test_groups);
+        Simple::Test::test_system.run(called_tests, called_test_groups);
+    }
     return 0;
 }

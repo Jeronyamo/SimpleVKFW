@@ -875,6 +875,15 @@ namespace Simple {
             return __res;
         }
 
+        bool hasArgumentParsed(const std::string &_arg_name) const {
+            uint32_t __arg_id = getArgDescriptionIdByName(_arg_name);
+            if (__arg_id == UINT32_MAX) return false;
+
+            for (uint32_t i = 0u; i < argument_values.size(); ++i)
+                if (argument_values[i].first == __arg_id) return true;
+            return false;
+        }
+
 
         void addArgument(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts) {
             ArgDescription __new_arg;
