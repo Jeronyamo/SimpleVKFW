@@ -6,1443 +6,1607 @@
 
 namespace Simple {
     namespace VKFW {
-// Common
 
-        typedef uint32_t ContextIndex;
-
-        typedef enum PipelineStateBits {
-            VKFW_PIPELINE_VERTEX_INPUT_STATE_BIT   = 0x00000001,
-            VKFW_PIPELINE_INPUT_ASSEMBLY_STATE_BIT = 0x00000002,
-            VKFW_PIPELINE_TESSELLATION_STATE_BIT   = 0x00000004,
-            VKFW_PIPELINE_VIEWPORT_STATE_BIT       = 0x00000008,
-            VKFW_PIPELINE_RASTERIZATION_STATE_BIT  = 0x00000010,
-            VKFW_PIPELINE_MULTISAMPLE_STATE_BIT    = 0x00000020,
-            VKFW_PIPELINE_DEPTH_STENCIL_STATE_BIT  = 0x00000040,
-            VKFW_PIPELINE_COLOR_BLEND_STATE_BIT    = 0x00000080,
-            VKFW_PIPELINE_DYNAMIC_STATE_BIT        = 0x00000100,
-            VKFW_PIPELINE_STATE_BITS_MAX_ENUM      = 0x7FFFFFFF
-        } PipelineStateBits;
-        typedef uint32_t PipelineStateFlags;
-
-// Result handler
-
-        class VulkanContextFactory;
-
-        struct ResultHandler {
-            VkResult result = VK_RESULT_MAX_ENUM;
-            ResultHandler(VkResult _result = VK_RESULT_MAX_ENUM) : result{_result} {}
-
-            void handle(VkResult _result, VulkanContextFactory *_vk_factory = nullptr);
-        }; // ResultHandler END
-
-
-// Swapchain
-
-    // Context
-
-        struct SwapchainContext {
-            VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-            std::vector<VkImageView> image_views;
-            std::vector <VkFramebuffer> framebuffers;
-
-            GLFWwindow *window = nullptr;
-        }; // SwapchainContext END
-
-        void destroySwapchainContext(VkDevice _device, const SwapchainContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            for (uint32_t i = 0u; i < _context.framebuffers.size(); ++i)
-                vkDestroyFramebuffer(_device, _context.framebuffers[i], _destroy_callback);
-            for (uint32_t i = 0u; i < _context.image_views.size(); ++i)
-                vkDestroyImageView(_device, _context.image_views[i], _destroy_callback);
-            if (_context.swapchain != VK_NULL_HANDLE)
-                vkDestroySwapchainKHR(_device, _context.swapchain, _destroy_callback);
-        }
-
-
-    // Factory
-
-        struct SwapchainContextFactory {
-            SwapchainContext *swapchain_context = nullptr;
-
-            SwapchainKHR::Builder  b_swapchain;
-            ImageView::Builder    b_image_view;
-            Framebuffer::Builder b_framebuffer;
-
-            SwapchainContextFactory(SwapchainContext *_swapchain_context = nullptr) : swapchain_context{_swapchain_context} {}
-            ~SwapchainContextFactory() {
-                swapchain_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(SwapchainContext *_swapchain_context) {
-                swapchain_context = _swapchain_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (swapchain_context != nullptr) {
-                    destroySwapchainContext(_device, *swapchain_context, _destroy_callback);
-                    *swapchain_context = SwapchainContext{};
-                }
-            }
-
-        // Create objects
-
-            void createSwapchain(VkDevice _device, VkSurfaceKHR _surface, void *_p_next = nullptr,
-                                 VkSwapchainCreateFlagsKHR _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                swapchain_context->swapchain = b_swapchain.createObject(_device, _surface, _p_next, _flags, _create_cb);
-            }
-
-            void createImageViews(VkDevice _device) {
-                std::vector<VkImage> __swapchain_images{Func::getSwapchainImagesKHR(_device, swapchain_context->swapchain)};
-
-                swapchain_context->image_views.resize(__swapchain_images.size());
-                for (uint32_t i = 0u; i < __swapchain_images.size(); ++i)
-                    swapchain_context->image_views[i] = b_image_view.createObject(_device, __swapchain_images[i]);
-            }
-
-            void createFramebuffers(VkDevice _device, VkRenderPass _render_pass) {
-                swapchain_context->framebuffers.resize(swapchain_context->image_views.size());
-
-                for (uint32_t i = 0u; i < swapchain_context->image_views.size(); ++i) {
-                    b_framebuffer.setAttachments({swapchain_context->image_views[i]});
-                    swapchain_context->framebuffers[i] = b_framebuffer.createObject(_device, _render_pass);
-                }
-            }
-
-        // Scenarios
-
-            void setWindowCurrentExtent(const Window &_window = nullptr) {
-                if (_window.window != nullptr)
-                    swapchain_context->window = _window.window;
-                b_swapchain.chooseCurrentExtent(swapchain_context->window);
-
-                setFramebufferSwapchainBufferSize();
-            }
-
-            void setImageViewSwapchainFormat() {
-                b_image_view.setFormat(b_swapchain.image_info.format);
-            }
-
-            void setFramebufferSwapchainBufferSize() {
-                b_framebuffer.setBufferSize(b_swapchain.image_info.extent);
-            }
-
-            const SwapchainKHR::Builder::ImageInfo& getImageInfo() const { return b_swapchain.image_info; }
-
-            // All neccessary Builder fields are assumed to be updated before calling this function
-            void recreate(VkDevice _device, VkRenderPass _render_pass, VkSurfaceKHR _surface, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                destroyObjects(_device, _destroy_callback);
-
-                setWindowCurrentExtent();
-                swapchain_context->swapchain = b_swapchain.createObject(_device, _surface);
-
-                createImageViews(_device);
-                createFramebuffers(_device, _render_pass);
-            }
-        }; // SwapchainContextFactory END
-
-
-// Descriptor
-
-    // Context
-        struct DescriptorContext {
-            std::vector<VkDescriptorSetLayout> layouts;
-            std::vector<VkDescriptorPool> pools;
-            std::vector<VkDescriptorSet> sets;
-            std::vector<ContextIndex> ci_set_to_pool; // returns ci_pool for ci_set
-        }; // DescriptorContext END
-
-        void destroyDescriptorContext(VkDevice _device, const DescriptorContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            for (uint32_t i = 0u; i < _context.pools.size(); ++i)
-                vkDestroyDescriptorPool(_device, _context.pools[i], _destroy_callback);
-
-            for (uint32_t i = 0u; i < _context.layouts.size(); ++i)
-                vkDestroyDescriptorSetLayout(_device, _context.layouts[i], _destroy_callback);
-        }
-
-
-    // Factory
-
-        struct DescriptorContextFactory {
-            DescriptorContext *descriptor_context = nullptr;
-
-            DescriptorSetLayout::Builder b_layout;
-
-            DescriptorContextFactory(DescriptorContext *_descriptor_context = nullptr) : descriptor_context{_descriptor_context} {}
-            ~DescriptorContextFactory() {
-                descriptor_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(DescriptorContext *_descriptor_context) {
-                descriptor_context = _descriptor_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (descriptor_context != nullptr) {
-                    destroyDescriptorContext(_device, *descriptor_context, _destroy_callback);
-                    *descriptor_context = DescriptorContext{};
-                }
-            }
-
-        // Create objects
-
-            ContextIndex createLayout(VkDevice _device, const void *_p_next = nullptr,
-                                      VkDescriptorSetLayoutCreateFlags _flags = 0u,
-                                      const VkAllocationCallbacks *_create_cb = nullptr) {
-                descriptor_context->layouts.push_back(b_layout.createObject(_device, _p_next, _flags, _create_cb));
-                return descriptor_context->layouts.size() - 1;
-            }
-
-            ContextIndex createDescriptorPool(VkDevice _device, uint32_t _max_sets, const std::vector<VkDescriptorPoolSize> &_pool_sizes = {},
-                                              const void *_p_next = nullptr, VkDescriptorPoolCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                descriptor_context->pools.push_back(DescriptorPool::CreateObject(_device, _max_sets, _pool_sizes, _p_next, _flags, _create_cb));
-                return descriptor_context->pools.size() - 1;
-            }
-            // If successful, returns ci_set and guarantees that [ ci_set, ci_set + ci_layouts.size() ) are correct descriptor set context indices.
-            ContextIndex createDescriptorSets(VkDevice _device, ContextIndex _ci_pool, const std::vector<ContextIndex> &_ci_layouts, void *_p_next = nullptr) {
-                VkDescriptorSetAllocateInfo __info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-                __info.pNext = _p_next;
-                __info.descriptorPool = descriptor_context->pools[_ci_pool];
-
-                std::vector<VkDescriptorSetLayout> __layouts(_ci_layouts.size());
-                for (uint32_t i = 0u; i < _ci_layouts.size(); ++i)
-                    __layouts[i] = descriptor_context->layouts[_ci_layouts[i]];
-                __info.descriptorSetCount = (uint32_t) __layouts.size();
-                __info.pSetLayouts = __layouts.data();
-
-                ContextIndex __res_ci_set = descriptor_context->sets.size();
-                descriptor_context->sets.resize(__res_ci_set + __layouts.size(), VK_NULL_HANDLE);
-
-                if (vkAllocateDescriptorSets(_device, &__info, descriptor_context->sets.data() + __res_ci_set) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("DescriptorContextFactory :: createDescriptorSets", "could not allocate descriptor sets"));
-                descriptor_context->ci_set_to_pool.resize(descriptor_context->ci_set_to_pool.size() + __layouts.size(), _ci_pool);
-                return __res_ci_set;
-            }
-        }; // DescriptorContextFactory END
-
-
-// Pipeline
-
-    // Context
-
-        struct PipelineContext {
-            VkPipeline pipeline = VK_NULL_HANDLE;
-            VkPipelineLayout layout = VK_NULL_HANDLE;
-            VkPipelineCache cache = VK_NULL_HANDLE;
-            VkPipelineBindPoint pipeline_type = VkPipelineBindPoint(-1);
-        }; // PipelineContext END
-
-        void destroyPipelineContext(VkDevice _device, const PipelineContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            if (_context.pipeline != VK_NULL_HANDLE)
-                vkDestroyPipeline(_device, _context.pipeline, _destroy_callback);
-            if (_context.cache != VK_NULL_HANDLE)
-                vkDestroyPipelineCache(_device, _context.cache, _destroy_callback);
-            if (_context.layout != VK_NULL_HANDLE)
-                vkDestroyPipelineLayout(_device, _context.layout, _destroy_callback);
-        }
-
-
-    // Factory (Graphics)
-
-        struct PipelineGraphicsContextFactory {
-            PipelineContext *pipeline_context = nullptr;
-
-            Pipeline::Graphics::Builder b_pipeline;
-            Pipeline::Cache::Builder b_cache;
-            Pipeline::VertexInputState::StructBuilder     b_vertex_input_state;
-            Pipeline::InputAssemblyState::StructBuilder b_input_assembly_state;
-            Pipeline::TessellationState::StructBuilder    b_tessellation_state;
-            Pipeline::ViewportState::StructBuilder            b_viewport_state;
-            Pipeline::RasterizationState::StructBuilder  b_rasterization_state;
-            Pipeline::MultisampleState::StructBuilder      b_multisample_state;
-            Pipeline::DepthStencilState::StructBuilder   b_depth_stencil_state;
-            Pipeline::ColorBlendState::StructBuilder       b_color_blend_state;
-            Pipeline::DynamicState::StructBuilder              b_dynamic_state;
-            Pipeline::ShaderStage::StructBuilder                b_shader_stage;
-
-            std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
-
-            PipelineGraphicsContextFactory(PipelineContext *_pipeline_context = nullptr) : pipeline_context{_pipeline_context} {}
-            ~PipelineGraphicsContextFactory() {
-                deleteAndClearShaderStages();
-                pipeline_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(PipelineContext *_pipeline_context) {
-                pipeline_context = _pipeline_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (pipeline_context != nullptr) {
-                    destroyPipelineContext(_device, *pipeline_context, _destroy_callback);
-                    *pipeline_context = PipelineContext{};
-                }
-            }
-
-        // Create objects
-
-            void createPipeline(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass, bool _use_pipeline_cache,
-                                PipelineStateFlags _state_flags = 0x000001ff, void *_p_next = nullptr,
-                                VkPipelineCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkPipelineVertexInputStateCreateInfo __vertex_input_state;
-                VkPipelineInputAssemblyStateCreateInfo __input_assembly_state;
-                VkPipelineTessellationStateCreateInfo __tessellation_state;
-                VkPipelineViewportStateCreateInfo __viewport_state;
-                VkPipelineRasterizationStateCreateInfo __rasterization_state;
-                VkPipelineMultisampleStateCreateInfo __multisample_state;
-                VkPipelineDepthStencilStateCreateInfo __depth_stencil_state;
-                VkPipelineColorBlendStateCreateInfo __color_blend_state;
-                VkPipelineDynamicStateCreateInfo __dynamic_state;
-
-                if ((_state_flags | VKFW_PIPELINE_VERTEX_INPUT_STATE_BIT)) {
-                    __vertex_input_state = b_vertex_input_state.getVkStructView();
-                    b_pipeline.setVertexInputState(&__vertex_input_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_INPUT_ASSEMBLY_STATE_BIT)) {
-                    __input_assembly_state = b_input_assembly_state.getVkStruct();
-                    b_pipeline.setInputAssemblyState(&__input_assembly_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_TESSELLATION_STATE_BIT)) {
-                    __tessellation_state = b_tessellation_state.getVkStruct();
-                    b_pipeline.setTessellationState(&__tessellation_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_VIEWPORT_STATE_BIT)) {
-                    __viewport_state = b_viewport_state.getVkStructView();
-                    b_pipeline.setViewportState(&__viewport_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_RASTERIZATION_STATE_BIT)) {
-                    __rasterization_state = b_rasterization_state.getVkStruct();
-                    b_pipeline.setRasterizationState(&__rasterization_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_MULTISAMPLE_STATE_BIT)) {
-                    __multisample_state = b_multisample_state.getVkStructView();
-                    b_pipeline.setMultisampleState(&__multisample_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_DEPTH_STENCIL_STATE_BIT)) {
-                    __depth_stencil_state = b_depth_stencil_state.getVkStruct();
-                    b_pipeline.setDepthStencilState(&__depth_stencil_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_COLOR_BLEND_STATE_BIT)) {
-                    __color_blend_state = b_color_blend_state.getVkStructView();
-                    b_pipeline.setColorBlendState(&__color_blend_state);
-                }
-                if ((_state_flags | VKFW_PIPELINE_DYNAMIC_STATE_BIT)) {
-                    __dynamic_state = b_dynamic_state.getVkStructView();
-                    b_pipeline.setDynamicState(&__dynamic_state);
-                }
-
-                if (_use_pipeline_cache && pipeline_context == nullptr)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: PipelineGraphicsContextFactory :: createPipeline", "cannot use pipeline cache: is not set"));
-
-                b_pipeline.setPipelineLayout(pipeline_context->layout);
-                b_pipeline.setShaderStages(shader_stages);
-                pipeline_context->pipeline = b_pipeline.createObject(_device, _render_pass, _subpass, _use_pipeline_cache ? pipeline_context->cache : VK_NULL_HANDLE, _p_next, _flags, _create_cb);
-                pipeline_context->pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            }
-            void createLayout(VkDevice _device, const std::vector<VkPushConstantRange> &_constants = {},
-                              const std::vector<VkDescriptorSetLayout> &_layouts = {}, void *_p_next = nullptr,
-                              VkPipelineLayoutCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                pipeline_context->layout = Pipeline::Layout::CreateObject(_device, _constants, _layouts, _p_next, _flags, _create_cb);
-            }
-            void createCache(VkDevice _device, void *_p_next = nullptr, VkPipelineCacheCreateFlags _flags = 0u,
-                             const VkAllocationCallbacks * _create_cb = nullptr) {
-                pipeline_context->cache = b_cache.createObject(_device, _p_next, _flags, _create_cb);
-            }
-
-        // Scenarios
-
-            ContextIndex addShaderStage(void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
-                shader_stages.push_back(b_shader_stage.getVkStructDCopy(_p_next, _flags));
-                return shader_stages.size() - 1;
-            }
-
-            bool updateShaderStage(ContextIndex _ci_shader_stage, void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
-                if (deleteShaderStage(_ci_shader_stage)) {
-                    shader_stages[_ci_shader_stage] = b_shader_stage.getVkStructDCopy(_p_next, _flags);
-                    return true;
-                }
-                return false;
-            }
-
-            bool deleteShaderStage(ContextIndex _ci_shader_stage) {
-                bool __res = _ci_shader_stage < shader_stages.size();
-                if (__res)
-                    Deleters::deleteStructPtrs(shader_stages[_ci_shader_stage]);
-                return __res;
-            }
-
-            void deleteAndClearShaderStages() {
-                // TODO: used to check whether 'pipeline' pointer wasn't null, now it isn't a pointer. So, does it break anything?
-                for (uint32_t i = 0u; i < shader_stages.size(); ++i)
-                    Deleters::deleteStructPtrs(shader_stages[i]);
-                shader_stages.clear();
-            }
-        }; // PipelineGraphicsContextFactory END
-
-
-    // Factory (Compute)
-
-        struct PipelineComputeContextFactory {
-            PipelineContext *pipeline_context = nullptr;
-
-            Pipeline::Compute::Builder pipeline;
-            Pipeline::Cache::Builder cache;
-            Pipeline::ShaderStage::StructBuilder b_shader_stage;
-
-            PipelineComputeContextFactory(PipelineContext *_pipeline_context = nullptr) : pipeline_context{_pipeline_context} {}
-            ~PipelineComputeContextFactory() {
-                pipeline_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(PipelineContext *_pipeline_context) {
-                pipeline_context = _pipeline_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (pipeline_context != nullptr) {
-                    destroyPipelineContext(_device, *pipeline_context, _destroy_callback);
-                    *pipeline_context = PipelineContext{};
-                }
-            }
-
-        // Create objects
-
-            void createPipeline(VkDevice _device, bool _use_pipeline_cache, void *_p_next = nullptr,
-                                VkPipelineCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                if (_use_pipeline_cache && pipeline_context == nullptr)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: PipelineComputeContextFactory :: createPipeline", "cannot use pipeline cache: not set"));
-
-                pipeline.setPipelineLayout(pipeline_context->layout);
-                pipeline.setShaderStage(b_shader_stage.getVkStructView());
-                pipeline_context->pipeline = pipeline.createObject(_device, _use_pipeline_cache ? pipeline_context->cache : VK_NULL_HANDLE, _p_next, _flags, _create_cb);
-                pipeline_context->pipeline_type = VK_PIPELINE_BIND_POINT_COMPUTE;
-            }
-            void createLayout(VkDevice _device, const std::vector<VkPushConstantRange> &_constants = {},
-                              const std::vector<VkDescriptorSetLayout> &_layouts = {}, void *_p_next = nullptr,
-                              VkPipelineLayoutCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                pipeline_context->layout = Pipeline::Layout::CreateObject(_device, _constants, _layouts, _p_next, _flags, _create_cb);
-            }
-            void createCache(VkDevice _device, void *_p_next = nullptr, VkPipelineCacheCreateFlags _flags = 0u,
-                             const VkAllocationCallbacks * _create_cb = nullptr) {
-                pipeline_context->cache = cache.createObject(_device, _p_next, _flags, _create_cb);
-            }
-
-        // Scenarios
-
-            void setShaderStage(VkShaderModule _shader_module, const char *_name) {
-                b_shader_stage.setShaderInfo(_shader_module, VK_SHADER_STAGE_COMPUTE_BIT, _name);
-            }
-
-            // uint32_t addShaderStage(void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
-            //     shader_stages.push_back(shader_stage->getVkStructDCopy(_p_next, _flags));
-            //     return shader_stages.size() - 1;
-            // }
-
-            // bool updateShaderStage(uint32_t _index, void *_p_next = nullptr, VkPipelineShaderStageCreateFlags _flags = 0u) {
-            //     if (deleteShaderStage(_index)) {
-            //         shader_stages[_index] = shader_stage->getVkStructDCopy(_p_next, _flags);
-            //         return true;
-            //     }
-            //     return false;
-            // }
-        }; // PipelineComputeContextFactory END
-
-
-// Command pool/buffer
-// TODO: if there's no new functionality to implement, delete command context and add its contents directly to VulkanContext
-
-    // Context
-
-        struct CommandContext {
-            std::vector<VkCommandPool> pools;
-            std::vector<VkCommandBuffer> buffers;
-            std::vector<uint32_t> buffer_ci_pools;
-        }; // CommandContext END
-
-        void destroyCommandContext(VkDevice _device, const CommandContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            // Note: command buffers are freed automatically on command pool destruction
-            for (uint32_t i = 0u; i < _context.pools.size(); ++i)
-                vkDestroyCommandPool(_device, _context.pools[i], _destroy_callback);
-        }
-
-
-    // Factory
-
-        struct CommandContextFactory {
-            CommandContext *command_context = nullptr;
-
-            CommandContextFactory(CommandContext *_command_context = nullptr) : command_context{_command_context} {}
-            ~CommandContextFactory() {
-                command_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(CommandContext *_command_context) {
-                command_context = _command_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (command_context != nullptr) {
-                    destroyCommandContext(_device, *command_context, _destroy_callback);
-                    *command_context = CommandContext{};
-                }
-            }
-
-        // Create objects
-
-            ContextIndex createCommandPool(VkDevice _device, uint32_t _queue_family, void *_p_next = nullptr,
-                                           VkCommandPoolCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                command_context->pools.push_back(CommandPool::CreateObject(_device, _queue_family, _p_next, _flags, _create_cb));
-                return command_context->pools.size() - 1;
-            }
-            // Returns context index of the first buffer from created range. Indices [res_first, res_first + buffer_count) are correct.
-            ContextIndex createCommandBuffers(VkDevice _device, ContextIndex _ci_pool, VkCommandBufferLevel _level, uint32_t _buffer_count,
-                                              void *_p_next = nullptr, VkFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkCommandBuffer> __new_buffers{CommandBuffer::CreateObjects(_device, command_context->pools[_ci_pool], _level, _buffer_count, _p_next, _flags, _create_cb)};
-                uint32_t __res_first = command_context->buffers.size();
-
-                command_context->buffers.insert(command_context->buffers.end(), __new_buffers.begin(), __new_buffers.end());
-                command_context->buffer_ci_pools.resize(command_context->buffer_ci_pools.size() + _buffer_count, _ci_pool);
-                return __res_first;
-            }
-        }; // CommandContextFactory END
-
-
-// Device memory
-
-    // Context
-        // Contains device memory and all device-memory-dependant objects (VkBuffer, VkImage)
-        // Note: a good practice is to use one VkBuffer for as many arrays as possible
-        //       (i.e. same one for indices, vertices and uniforms)
-        struct DeviceMemoryContext {
-            std::vector<VkDeviceMemory> memory;
-            std::vector<VkBuffer>      buffers;
-            std::vector<VkImage>        images;
-
-            // Info about where objects are bound (TODO: move to Factory?)
-            struct BindInfo {
-                ContextIndex ci_memory;
-                ContextIndex ci_object; // buffer/image index, depends on IMAGE_FLAG
-                VkDeviceSize    offset;
-                VkDeviceSize      size; // actual buffer size, the size from memoryRequirements isn't stored
-
-                static const uint32_t LASTBIT_FLAG = UINT32_MAX ^ (UINT32_MAX >> 1);
-
-                bool             isInUse() const { return ci_memory &  LASTBIT_FLAG; }
-                bool             isImage() const { return ci_object &  LASTBIT_FLAG; }
-                ContextIndex getMemoryCI() const { return ci_memory & ~LASTBIT_FLAG; }
-                ContextIndex getObjectCI() const { return ci_object & ~LASTBIT_FLAG; }
-            }; // BindInfo END
-
-            std::vector<BindInfo> memory_mapping;
-            // TODO: info about device memory properties? Add info about alignment! Save memoryType/memoryHeap indices?
-        }; // DeviceMemoryContext END
-
-        void destroyDeviceMemoryContext(VkDevice _device, const DeviceMemoryContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            for (uint32_t i = 0u; i < _context.buffers.size(); ++i)
-                vkDestroyBuffer(_device, _context.buffers[i], _destroy_callback);
-            for (uint32_t i = 0u; i < _context.images.size(); ++i)
-                vkDestroyImage(_device, _context.images[i], _destroy_callback);
-            for (uint32_t i = 0u; i < _context.memory.size(); ++i)
-                vkFreeMemory(_device, _context.memory[i], _destroy_callback);
-        }
-
-
-    // Factory
-
-        struct DeviceMemoryContextFactory {
-            DeviceMemoryContext *device_memory_context = nullptr;
-
-            DeviceMemoryContextFactory(DeviceMemoryContext *_device_memory_context = nullptr) : device_memory_context{_device_memory_context} {}
-            ~DeviceMemoryContextFactory() {
-                device_memory_context = nullptr;
-            }
-
-        // Set context
-
-            void setContext(DeviceMemoryContext *_device_memory_context) {
-                device_memory_context = _device_memory_context;
-            }
-
-        // Destroy context objects
-
-            void destroyObjects(VkDevice _device, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-                if (device_memory_context != nullptr) {
-                    destroyDeviceMemoryContext(_device, *device_memory_context, _destroy_callback);
-                    *device_memory_context = DeviceMemoryContext{};
-                }
-            }
-
-        // Create objects
-
-            ContextIndex createBuffer(VkDevice _device, const std::vector<uint32_t> &_queue_families, VkSharingMode _sharing_mode,
-                                      VkDeviceSize _size_bytes, VkBufferUsageFlags _usage_flags, const void *_p_next = nullptr,
-                                      VkBufferCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkBuffer __buffer = Buffer::CreateObject(_device, _queue_families, _sharing_mode, _size_bytes, _usage_flags, _p_next, _flags, _create_cb);
-                device_memory_context->buffers.push_back(__buffer);
-                ContextIndex __ci_buffer = device_memory_context->buffers.size() - 1;
-
-                DeviceMemoryContext::BindInfo __memory_mapping{ .ci_memory = UINT32_MAX, .ci_object = __ci_buffer, .offset = 0ul, .size = _size_bytes };
-                device_memory_context->memory_mapping.push_back(__memory_mapping);
-
-                return __ci_buffer;
-            }
-            // For one memory buffer
-            ContextIndex createDeviceMemory(VkPhysicalDevice _phys_device, VkDevice _device, ContextIndex _ci_buffer, VkMemoryPropertyFlags _req_memory_properties,
-                                            void *_p_next = nullptr, const VkAllocationCallbacks * _create_cb = nullptr) {
-                VkMemoryRequirements __mem_requirements;
-                vkGetBufferMemoryRequirements(_device, device_memory_context->buffers[_ci_buffer], &__mem_requirements);
-
-                VkMemoryAllocateInfo __info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-                __info.pNext = _p_next;
-                __info.allocationSize = __mem_requirements.size;
-                __info.memoryTypeIndex = Util::checkPhysicalDeviceMemoryProperties(_phys_device, __mem_requirements.memoryTypeBits, _req_memory_properties);
-
-                if (__info.memoryTypeIndex == UINT32_MAX)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: DeviceMemoryContextFactory :: createDeviceMemory", "Could not find suitable memory type"));
-
-                ContextIndex __ci_memory = (ContextIndex)device_memory_context->memory.size();
-
-                VkDeviceMemory __memory;
-                vkAllocateMemory(_device, &__info, _create_cb, &__memory);
-                device_memory_context->memory.push_back(__memory);
-
-                for (uint32_t i = device_memory_context->memory_mapping.size(); i > 0u; --i) {
-                    if (device_memory_context->memory_mapping[i-1].ci_object == _ci_buffer) {
-                        device_memory_context->memory_mapping[i-1].ci_memory = __ci_memory;
-                        // TODO: this function is only called once and there is no vkUnbindBufferMemory, but if for some reason there's a need to prevent calling it now, add bool flag
-                        vkBindBufferMemory(_device, device_memory_context->buffers[_ci_buffer], __memory, device_memory_context->memory_mapping[i-1].offset);
-                        break;
-                    }
-                }
-
-                return __ci_memory;
-            }
-
-        // Scenarios
-
-            void bMemoryFillBase(VkDevice _device, ContextIndex _ci_buffer, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0ul, VkMemoryMapFlags _flags = 0u) {
-                void* __device_memory_ptr = nullptr;
-                DeviceMemoryContext::BindInfo __info = bBufferGetBindInfo(_ci_buffer);
-                if (_size == 0ul)
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: DeviceMemoryContextFactory :: bMemoryFillBase", "'size' must be greater than 0"));
-
-                if (_offset + _size > __info.size)
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW :: DeviceMemoryContextFactory :: bMemoryFillBase", "data size + offset are out of bounds for current object's memory. \
-                                                                                                               It will overwrite other object's memory or result in memory mapping error."));
-
-                VkDeviceMemory __memory_handle = device_memory_context->memory[__info.getMemoryCI()];
-                vkMapMemory(_device, __memory_handle, __info.offset, __info.size, _flags, &__device_memory_ptr);
-
-                memcpy((char*)__device_memory_ptr + _offset, _data, _size);
-
-                vkUnmapMemory(_device, __memory_handle);
-            }
-
-            // 'size' and 'offset' are for this buffer specifically (from the beginning of this buffer's memory at 'BindInfo::offset')
-            // 'size' is THE SIZE OF 'data' IN BYTES. The function always maps all of the buffer's memory.
-            void bBufferMemoryFill(VkDevice _device, ContextIndex _ci_buffer, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0ul, VkMemoryMapFlags _flags = 0u) {
-                bMemoryFillBase(_device, _ci_buffer, _data, _size, _offset, _flags);
-            }
-
-            // 'size' and 'offset' are for this image specifically (from the beginning of this image's memory at 'BindInfo::offset')
-            // 'size' is THE SIZE OF 'data' IN BYTES. The function always maps all of the image's memory.
-            void bImageMemoryFill(VkDevice _device, ContextIndex _ci_image, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0ul, VkMemoryMapFlags _flags = 0u) {
-                _ci_image |= DeviceMemoryContext::BindInfo::LASTBIT_FLAG;
-                bMemoryFillBase(_device, _ci_image, _data, _size, _offset, _flags);
-            }
-
-            DeviceMemoryContext::BindInfo bBufferGetBindInfo(ContextIndex _ci_buffer) {
-                DeviceMemoryContext::BindInfo __res{};
-
-                for (uint32_t i = 0u; i < device_memory_context->memory_mapping.size(); ++i) {
-                    if (device_memory_context->memory_mapping[i].ci_object == _ci_buffer) {
-                        __res = device_memory_context->memory_mapping[i];
-                        break;
-                    }
-                }
-                return __res;
-            }
-
-            DeviceMemoryContext::BindInfo bImageGetBindInfo(ContextIndex _ci_image) {
-                // This hack is due to how data is stored inside BindInfo
-                return bBufferGetBindInfo(_ci_image | DeviceMemoryContext::BindInfo::LASTBIT_FLAG);
-            }
-        }; // DeviceMemoryContextFactory END
-
-
-// Vulkan
-// TODO: Think about moving Instance, PhysicalDevice and Devices (std::vector) to a small InstanceContext.
-
-    // Context
+//  == === ==== ====================== ==== === ==  \\
+                    Vulkan Context
+//  == === ==== ====================== ==== === ==  \\
 
         struct VulkanContext {
-            VkInstance instance = VK_NULL_HANDLE;
-            VkDevice device = VK_NULL_HANDLE;
-            VkPhysicalDevice phys_device = VK_NULL_HANDLE;
-            std::vector<uint32_t> queue_families;
-            std::vector<VkQueue> queues;
+            struct ContextDebug {
+                VulkanContext *cxt_ptr = nullptr;
 
-            // std::vector<VkImageView> image_views;
-
-            VkSurfaceKHR surface = VK_NULL_HANDLE;
-            SwapchainContext swapchain_context;
-
-            VkRenderPass render_pass = VK_NULL_HANDLE;
-            std::vector<VkShaderModule> shader_modules;
-
-            PipelineContext pipeline_context;
-            CommandContext command_context;
-            DeviceMemoryContext device_memory_context;
-            DescriptorContext descriptor_context;
-
-            std::vector<VkSemaphore> semaphores;
-            std::vector<VkFence> fences;
-
-            VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
-
-        // Get objects
-
-            VkFence getObjectFence(ContextIndex _ci_fence) const {
-                return fences[_ci_fence];
-            }
-            VkSemaphore getObjectSemaphore(ContextIndex _ci_semaphore) const {
-                return semaphores[_ci_semaphore];
-            }
-            VkCommandPool getObjectCommandPool(ContextIndex _ci_pool) const {
-                return command_context.pools[_ci_pool];
-            }
-            VkCommandBuffer getObjectCommandBuffer(ContextIndex _ci_command_buffer) const {
-                return command_context.buffers[_ci_command_buffer];
-            }
-            VkFramebuffer getObjectFramebuffer(ContextIndex _ci_framebuffer) const {
-                return swapchain_context.framebuffers[_ci_framebuffer];
-            }
-            VkQueue getObjectQueue(ContextIndex _ci_queue) const {
-                return queues[_ci_queue];
-            }
-            uint32_t getObjectQueueFamily(ContextIndex _ci_qfamily) const {
-                return queue_families[_ci_qfamily];
-            }
-            VkBuffer getObjectBuffer(ContextIndex _ci_buffer) const {
-                return device_memory_context.buffers[_ci_buffer];
-            }
-            VkImage getObjectImage(ContextIndex _ci_image) const {
-                return device_memory_context.images[_ci_image];
-            }
-            VkDeviceMemory getObjectDeviceMemory(ContextIndex _ci_device_memory) const {
-                return device_memory_context.memory[_ci_device_memory];
-            }
-            VkDescriptorSetLayout getObjectDescriptorSetLayout(ContextIndex _ci_layout) {
-                return descriptor_context.layouts[_ci_layout];
-            }
-            VkDescriptorPool getObjectDescriptorPool(ContextIndex _ci_pool) {
-                return descriptor_context.pools[_ci_pool];
-            }
-            VkDescriptorSet getObjectDescriptorSet(ContextIndex _ci_set) {
-                return descriptor_context.sets[_ci_set];
-            }
-
-            std::vector<VkFence> getObjectVecFence(const std::vector<ContextIndex> &_ci_fences) const {
-                std::vector<VkFence> __res;
-                __res.resize(_ci_fences.size());
-                for (uint32_t i = 0u; i < _ci_fences.size(); ++i)
-                    __res[i] = fences[_ci_fences[i]];
-                return __res;
-            }
-            std::vector<VkSemaphore> getObjectVecSemaphore(const std::vector<ContextIndex> &_ci_semaphores) const {
-                std::vector<VkSemaphore> __res;
-                __res.resize(_ci_semaphores.size());
-                for (uint32_t i = 0u; i < _ci_semaphores.size(); ++i)
-                    __res[i] = semaphores[_ci_semaphores[i]];
-                return __res;
-            }
-            std::vector<VkCommandBuffer> getObjectVecCommandBuffer(const std::vector<ContextIndex> &_ci_command_buffers) const {
-                std::vector<VkCommandBuffer> __res;
-                __res.resize(_ci_command_buffers.size());
-                for (uint32_t i = 0u; i < _ci_command_buffers.size(); ++i)
-                    __res[i] = command_context.buffers[_ci_command_buffers[i]];
-                return __res;
-            }
-            std::vector<VkFramebuffer> getObjectVecFramebuffer(const std::vector<ContextIndex> &_ci_framebuffers) const {
-                std::vector<VkFramebuffer> __res;
-                __res.resize(_ci_framebuffers.size());
-                for (uint32_t i = 0u; i < _ci_framebuffers.size(); ++i)
-                    __res[i] = swapchain_context.framebuffers[_ci_framebuffers[i]];
-                return __res;
-            }
-            std::vector<VkQueue> getObjectVecQueue(const std::vector<ContextIndex> &_ci_queues) const {
-                std::vector<VkQueue> __res;
-                __res.resize(_ci_queues.size());
-                for (uint32_t i = 0u; i < _ci_queues.size(); ++i)
-                    __res[i] = queues[_ci_queues[i]];
-                return __res;
-            }
-            std::vector<uint32_t> getObjectVecQueueFamily(const std::vector<ContextIndex> &_ci_qfamilies) const {
-                std::vector<uint32_t> __res;
-                __res.resize(_ci_qfamilies.size());
-                for (uint32_t i = 0u; i < _ci_qfamilies.size(); ++i)
-                    __res[i] = queue_families[_ci_qfamilies[i]];
-                return __res;
-            }
-            std::vector<VkBuffer> getObjectVecBuffer(const std::vector<ContextIndex> &_ci_buffers) const {
-                std::vector<VkBuffer> __res;
-                __res.resize(_ci_buffers.size());
-                for (uint32_t i = 0u; i < _ci_buffers.size(); ++i)
-                    __res[i] = device_memory_context.buffers[_ci_buffers[i]];
-                return __res;
-            }
-            std::vector<VkDeviceMemory> getObjectVecDeviceMemory(const std::vector<ContextIndex> &_ci_device_memory) const {
-                std::vector<VkDeviceMemory> __res;
-                __res.resize(_ci_device_memory.size());
-                for (uint32_t i = 0u; i < _ci_device_memory.size(); ++i)
-                    __res[i] = device_memory_context.memory[_ci_device_memory[i]];
-                return __res;
-            }
-            std::vector<VkDescriptorSetLayout> getObjectVecDescriptorSetLayout(const std::vector<ContextIndex> &_ci_layout) const {
-                std::vector<VkDescriptorSetLayout> __res;
-                __res.resize(_ci_layout.size());
-                for (uint32_t i = 0u; i < _ci_layout.size(); ++i)
-                    __res[i] = descriptor_context.layouts[_ci_layout[i]];
-                return __res;
-            }
-            std::vector<VkDescriptorPool> getObjectVecDescriptorPool(const std::vector<ContextIndex> &_ci_pool) const {
-                std::vector<VkDescriptorPool> __res;
-                __res.resize(_ci_pool.size());
-                for (uint32_t i = 0u; i < _ci_pool.size(); ++i)
-                    __res[i] = descriptor_context.pools[_ci_pool[i]];
-                return __res;
-            }
-            std::vector<VkDescriptorSet> getObjectVecDescriptorSet(const std::vector<ContextIndex> &_ci_set) const {
-                std::vector<VkDescriptorSet> __res;
-                __res.resize(_ci_set.size());
-                for (uint32_t i = 0u; i < _ci_set.size(); ++i)
-                    __res[i] = descriptor_context.sets[_ci_set[i]];
-                return __res;
-            }
-        } Vulkan_global_context; // VulkanContext END
-
-        void destroyVulkanContext(const VulkanContext &_context, const VkAllocationCallbacks *_destroy_callback = nullptr) {
-            vkDeviceWaitIdle(_context.device);
-
-            destroyCommandContext(_context.device, _context.command_context, _destroy_callback);
-            destroyPipelineContext(_context.device, _context.pipeline_context, _destroy_callback);
-            destroySwapchainContext(_context.device, _context.swapchain_context, _destroy_callback);
-            destroyDescriptorContext(_context.device, _context.descriptor_context, _destroy_callback);
-            destroyDeviceMemoryContext(_context.device, _context.device_memory_context, _destroy_callback);
-
-            for (uint32_t i = 0u; i < _context.semaphores.size(); ++i)
-                vkDestroySemaphore(_context.device, _context.semaphores[i], _destroy_callback);
-            for (uint32_t i = 0u; i < _context.fences.size(); ++i)
-                vkDestroyFence(_context.device, _context.fences[i], _destroy_callback);
-            if (_context.render_pass != VK_NULL_HANDLE)
-                vkDestroyRenderPass(_context.device, _context.render_pass, _destroy_callback);
-            for (uint32_t i = 0u; i < _context.shader_modules.size(); ++i)
-                vkDestroyShaderModule(_context.device, _context.shader_modules[i], _destroy_callback);
-            if (_context.surface != nullptr)
-                vkDestroySurfaceKHR(_context.instance, _context.surface, _destroy_callback);
-            // no need/impossible to destroy queues, queue families, physical devices
-            if (_context.device != VK_NULL_HANDLE)
-                vkDestroyDevice(_context.device, _destroy_callback);
-            if (_context.messenger != VK_NULL_HANDLE)
-                vkDestroyDebugUtilsMessengerEXT(_context.instance, _context.messenger, _destroy_callback);
-            if (_context.instance != VK_NULL_HANDLE)
-                vkDestroyInstance(_context.instance, _destroy_callback);
-        }
+                Object::DebugUtilsMessengerEXT debug_messenger;
 
 
-    // Factory
+                ContextDebug(VulkanContext* _cxt_ptr) : cxt_ptr{_cxt_ptr} {}
+               ~ContextDebug() {}
 
-        struct VulkanContextFactory {
-            VulkanContext *vk_context = nullptr;
+               ContextDebug& operator=(VkResult _vk_func_result) { /* TODO: */ return *this; }
+            }; // ContextDebug END
 
-            Instance::Builder                b_instance;
-            Device::Builder                  b_device;
-            PhysicalDevice::Manager          m_phys_device;
-            QueueFamily::Manager             m_queue_family;
-            Queue::Builder                   b_queue;
+            struct ContextCore {
+                Object::Instance instance;
+                Object::PhysicalDevice phys_device;
+                Object::Device device; // TODO: Explore DeviceGroup for multiple GPUs support
+                std::vector<Object::QueueFamily> queue_families; // TODO: USE ONE QUEUE_FAMILY WRAP! DATA IS DUPLICATED
+                std::vector<Object::Queue>       queues;
+                Object::RenderPass render_pass;
 
-            ImageView::Builder               b_image_view;
+                Struct::StructWrap<VkAllocationCallbacks> alloc_cb;
+                ContextDebug cxt_debug;
 
-            RenderPass::Builder              b_render_pass;
-            ShaderModule::Builder            b_shader_module;
-
-            PipelineGraphicsContextFactory   c_graphics_pipeline;
-            PipelineComputeContextFactory    c_compute_pipeline;
-            // PipelineRayTracingContextFactory c_raytracing_pipeline;
-            SwapchainContextFactory          c_swapchain;
-            DeviceMemoryContextFactory       c_device_memory;
-            CommandContextFactory            c_command;
-            DescriptorContextFactory         c_descriptor;
-
-            DebugUtilsMessengerEXT::Builder  b_messenger;
-
-            VkAllocationCallbacks *alloc_callback = nullptr;
-
-        public:
-            VulkanContextFactory(bool _volk_init = true, VulkanContext *_vk_context = nullptr) : vk_context{_vk_context} {
-                if (_volk_init) {
-                    if (volkInitialize() != VK_SUCCESS)
-                        throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFactory", "could not initialize Volk"));
+                ContextCore(VulkanContext* _cxt_ptr) : cxt_debug{_cxt_ptr} {
+                    SVKFW_ASSERT(volkInitialize() == VK_SUCCESS, std::runtime_error, "VKFW::VulkanContext :: ContextCore constructor",
+                                    "volk initialization failed");
                 }
-            }
-            ~VulkanContextFactory() {
-                deleteContextCommand();
-                deleteContextPipelineGraphics();
-                deleteContextPipelineCompute();
-                deleteContextSwapchain();
-                deleteContextDescriptor();
-                deleteBuilderRenderPass();
-                deleteBuilderDevice();
-            }
+               ~ContextCore() { destroyContext(); }
 
-        // Set context
-
-            void setContext(VulkanContext *_vk_context) {
-                vk_context = _vk_context;
-                c_swapchain.setContext(&_vk_context->swapchain_context);
-                c_graphics_pipeline.setContext(&_vk_context->pipeline_context);
-                c_command.setContext(&_vk_context->command_context);
-                c_device_memory.setContext(&_vk_context->device_memory_context);
-                c_descriptor.setContext(&vk_context->descriptor_context);
-            }
-
-        // Deallocate builder
-
-            void deleteBuilderDevice() {
-                for (uint32_t i = 0u; i < b_device.queue_info.size(); ++i)
-                    Deleters::deleteStructPtrs(b_device.queue_info[i]);
-                b_device.queue_info.clear();
-            }
-            void deleteBuilderRenderPass() {
-                for (uint32_t i = 0u; i < b_render_pass.subpasses.size(); ++i)
-                    Deleters::deleteStructPtrs(b_render_pass.subpasses[i]);
-            }
-            void deleteContextSwapchain() {
-                c_swapchain.~SwapchainContextFactory();
-            }
-            void deleteContextPipelineGraphics() {
-                c_graphics_pipeline.~PipelineGraphicsContextFactory();
-            }
-            void deleteContextPipelineCompute() {
-                c_compute_pipeline.~PipelineComputeContextFactory();
-            }
-            void deleteContextCommand() {
-                c_command.~CommandContextFactory();
-            }
-            void deleteContextDescriptor() {
-                c_descriptor.~DescriptorContextFactory();
-            }
-
-        // Create objects
-
-            void createInstance(void *_p_next = nullptr, VkInstanceCreateFlags _flags = 0u) {
-                vk_context->instance = b_instance.createObject(_p_next, _flags, alloc_callback);
-            }
-            void pickPhysicalDevice(Simple::VKFW::PhysicalDevice::Suitability::TestFunc _test_func) {
-                vk_context->phys_device = PhysicalDevice::Manager{vk_context->instance}.testPickOne(_test_func);
-            }
-            void createDevice(void *_p_next = nullptr, VkDeviceCreateFlags _flags = 0u) {
-                vk_context->device = b_device.createObject(vk_context->phys_device, _p_next, _flags, alloc_callback);
-            }
-            // Returns "Queue family index"'s index in 'vk_context->queue_families' or -1 on error (could not find queue family)
-            // Indices of Context vector members are called (that type's) "context indices".
-            ContextIndex pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::TestFunc _test_func) {
-                uint32_t __res = QueueFamily::Manager{vk_context->instance, vk_context->phys_device}.testPickOne(_test_func);
-                if (__res != -1) {
-                    vk_context->queue_families.push_back(__res);
-                    __res = vk_context->queue_families.size() - 1;
+                void destroyContext() {
+                    destroyRenderPass();
+                    destroyDevice();
+                    destroyPhysicalDevice();
+                    destroyDebugUtilsMessenger();
+                    destroyInstance();
                 }
-                return __res;
-            }
-            // Returns "Queue family index"'s index in 'vk_context->queue_families' or -1 on error (could not find queue family)
-            // Indices of Context vector members are called (that type's) "context indices".
-            ContextIndex pickQueueFamily(Simple::VKFW::QueueFamily::Suitability::RankFunc _test_func) {
-                uint32_t __res = QueueFamily::Manager{vk_context->instance, vk_context->phys_device}.rankPickOne(_test_func);
-                if (__res != -1) {
-                    vk_context->queue_families.push_back(__res);
-                    __res = vk_context->queue_families.size() - 1;
+
+            // Manage Objects
+                // Automatically adds a queue vector handler of the added queue family
+                ContextIndex addQueueFamily() { queue_families.emplace_back(); queues.emplace_back(); return queue_families.size()-1; }
+
+                void createInstance() {
+                    instance.create_info.updateWrap();
+                    instance.createObject(alloc_cb.wrap);
                 }
-                return __res;
-            }
-            // Returns queue context index of the first added queue
-            ContextIndex addFamilyQueues(ContextIndex _ci_qfamily, uint32_t _queue_count) {
-                uint32_t __queue_family_index = vk_context->queue_families[_ci_qfamily];
-                uint32_t __offset = vk_context->queues.size();
+                void createDebugUtilsMessenger() {
+                    cxt_debug.debug_messenger.create_info.updateWrap();
+                    cxt_debug.debug_messenger.createObject(instance.handle, alloc_cb.wrap);
+                }
+                void loadPhysicalDeviceInfo() {
+                    phys_device.select_info.loadInfo(instance.handle);
+                }
+                void findPhysicalDevice() {
+                    phys_device.createObject();
+                }
+                // TODO: USE ONE QUEUE_FAMILY WRAP! DATA IS DUPLICATED
+                void loadQueueFamiliesInfo() {
+                    for (auto &qfam : queue_families)
+                        qfam.select_info.loadInfo(instance.handle, phys_device.handle);
+                }
+                void findQueueFamilies() {
+                    for (ContextIndex i = 0u; i < queue_families.size(); ++i)
+                        queue_families[i].createObject();
+                }
+                void createDevice() {
+                    device.create_info.updateWrap();
+                    device.createObject(phys_device.handle, alloc_cb.wrap);
+                }
+                void acquireQueues() {
+                    for (ContextIndex i = 0u; i < queues.size(); ++i)
+                        // queues[i].create_info.updateWrap(); // not needed; queues are acquired from the device
+                        queues[i].createObject(device.handle);
+                }
+                void createRenderPass() {
+                    render_pass.create_info.updateWrap();
+                    render_pass.createObject(device.handle, alloc_cb.wrap);
+                }
 
-                for (uint32_t i = 0u; i < _queue_count; ++i)
-                    vk_context->queues.push_back(Queue::CreateObject(vk_context->device, __queue_family_index, i));
 
-                return __offset;
-            }
+                void destroyInstance() {
+                    instance.destroyObject(alloc_cb.wrap);
+                }
+                void destroyDebugUtilsMessenger() {
+                    cxt_debug.debug_messenger.destroyObject(instance.handle, alloc_cb.wrap);
+                }
+                void destroyPhysicalDevice() {
+                    phys_device.destroyObject();
+                }
+                void destroyDevice() {
+                    device.destroyObject(alloc_cb.wrap);
+                }
+                void destroyRenderPass() {
+                    render_pass.destroyObject(device.handle, alloc_cb.wrap);
+                }
 
-            // Returns shader module context index
-            ContextIndex createShaderModuleFromFile(const std::string &_fpath, void *_p_next = nullptr, VkShaderModuleCreateFlags _flags = 0u,
-                                                    const VkAllocationCallbacks * _create_cb = nullptr) {
-                b_shader_module.fromFile(_fpath.c_str());
-                vk_context->shader_modules.push_back(b_shader_module.createObject(vk_context->device, _p_next, _flags, alloc_callback));
-                return vk_context->shader_modules.size() - 1;
-            }
-            // Returns shader module context index
-            ContextIndex createShaderModuleFromString(const std::string &_shader, void *_p_next = nullptr, VkShaderModuleCreateFlags _flags = 0u,
-                                                      const VkAllocationCallbacks * _create_cb = nullptr) {
-                b_shader_module.fromString(_shader);
-                vk_context->shader_modules.push_back(b_shader_module.createObject(vk_context->device, _p_next, _flags, alloc_callback));
-                return vk_context->shader_modules.size() - 1;
-            }
+            // Scenarios
 
-            void createSurface(Window &_glfw_window) {
-                vk_context->surface = SurfaceKHR::CreateObject(vk_context->instance, _glfw_window, alloc_callback);
-            }
+                ContextIndex addSctRenderPassAttachment        () { return render_pass.create_info.addAttachment        (); }
+                ContextIndex addSctRenderPassSubpassDescription() { return render_pass.create_info.addSubpassDescription(); }
+                ContextIndex addSctRenderPassSubpassDependency () { return render_pass.create_info.addSubpassDependency (); }
 
-            void createSwapchain(void *_p_next = nullptr, VkSwapchainCreateFlagsKHR _flags = 0u) {
-                c_swapchain.createSwapchain(vk_context->device, vk_context->surface, _p_next, _flags, alloc_callback);
-            }
-            void createSwapchainImageViews() {
-                c_swapchain.createImageViews(vk_context->device);
-            }
-            void createSwapchainFramebuffers() {
-                c_swapchain.createFramebuffers(vk_context->device, vk_context->render_pass);
-            }
+                void setDefaultApplicationInfo() {
+                    instance.create_info.app_info_wrap.setWholeStruct();
+                }
 
-            void createRenderPass(void *_p_next = nullptr, VkRenderPassCreateFlags _flags = 0u) {
-                vk_context->render_pass = b_render_pass.createObject(vk_context->device, _p_next, _flags, alloc_callback);
-            }
+                void activateDebug() {
+                    instance.create_info.addExtDebugUtils();
+                    instance.create_info.addValidationLayer();
+                    if (VulkanAPIVersion::join(instance.create_info.app_info_wrap.api_version["xyz"],
+                                               instance.create_info.app_info_wrap.api_version.w) <= VK_API_VERSION_1_0)
+                        device.create_info.addValidationLayer(); // physical device isn't found at this point
+                }
 
-            void createPipelineGraphics(uint32_t _subpass, bool _use_pipeline_cache,
-                                        PipelineStateFlags _state_flags = 0x000001ff, void *_p_next = nullptr,
-                                        VkPipelineCreateFlags _flags = 0u) {
-                c_graphics_pipeline.createPipeline(vk_context->device, vk_context->render_pass, _subpass, _use_pipeline_cache, _state_flags, _p_next, _flags, alloc_callback);
-            }
-            void createPipelineGraphicsCache(void *_p_next = nullptr, VkPipelineCacheCreateFlags _flags = 0u) {
-                c_graphics_pipeline.createCache(vk_context->device, _p_next, _flags, alloc_callback);
-            }
-            void createPipelineGraphicsLayout(const std::vector<VkPushConstantRange> &_constants = {},
-                                              const std::vector<ContextIndex> &_ci_layouts = {},
-                                              void *_p_next = nullptr, VkPipelineLayoutCreateFlags _flags = 0u) {
-                c_graphics_pipeline.createLayout(vk_context->device, _constants, vk_context->getObjectVecDescriptorSetLayout(_ci_layouts), _p_next, _flags, alloc_callback);
-            }
+                void setQueueFamilyQueueCount(const ContextIndex& _ci_queue_family, uint32_t _queue_count, const std::vector<float> &_priorities = {1.0f}) {
+                    queues[_ci_queue_family].create_info.queue_family = queue_families[_ci_queue_family].handle;
+                    queues[_ci_queue_family].create_info.setQueueCount(_queue_count, _priorities);
+                    queues[_ci_queue_family].create_info.updateWrap();
+                }
 
-            ContextIndex createCommandPool(ContextIndex _ci_qfamily, void *_p_next = nullptr, VkCommandPoolCreateFlags _flags = 0u) {
-                return c_command.createCommandPool(vk_context->device, vk_context->queue_families[_ci_qfamily], _p_next, _flags, alloc_callback);
-            }
-            ContextIndex createCommandBuffers(ContextIndex _ci_pool, VkCommandBufferLevel _level, uint32_t _buffer_count, void *_p_next = nullptr, VkFlags _flags = 0u) {
-                return c_command.createCommandBuffers(vk_context->device, _ci_pool, _level, _buffer_count, _p_next, _flags, alloc_callback);
-            }
+                void setDeviceQueueInfo() {
+                    device.create_info.queue_info.resize(queue_families.size());
+                    for (ContextIndex i = 0u; i < queue_families.size(); ++i)
+                        device.create_info.queue_info[i] = queues[i].create_info.wrap;
+                }
+            } cxt_core; // ContextCore END
 
-            ContextIndex createBuffer(const std::vector<ContextIndex> &_ci_qfamilies, VkSharingMode _sharing_mode, VkDeviceSize _size_bytes,
-                                  VkBufferUsageFlags _usage_flags, const void *_p_next = nullptr, VkBufferCreateFlags _flags = 0u) {
-                return c_device_memory.createBuffer(vk_context->device, vk_context->getObjectVecQueueFamily(_ci_qfamilies), _sharing_mode, _size_bytes, _usage_flags, _p_next, _flags, alloc_callback);
-            }
+            struct ContextSwapchain {
+                Object::SwapchainKHR swapchain;
+                Object::  SurfaceKHR   surface;
+                std::vector<VkImageView> image_views;
+                std::vector<VkFramebuffer> framebuffers;
+                GLFWwindow *window = nullptr;
 
-            ContextIndex createSemaphore(void *_p_next = nullptr, VkSemaphoreCreateFlags _flags = 0u) {
-                vk_context->semaphores.push_back(Semaphore::CreateObject(vk_context->device, _p_next, _flags, alloc_callback));
-                return vk_context->semaphores.size() - 1;
-            }
+                Struct::StructWrap<  VkImageViewCreateInfo>  image_view_wrap;
+                Struct::StructWrap<VkFramebufferCreateInfo> framebuffer_wrap;
 
-            ContextIndex createFence(void *_p_next = nullptr, VkFenceCreateFlags _flags = 0u) {
-                vk_context->fences.push_back(Fence::CreateObject(vk_context->device, _p_next, _flags, alloc_callback));
-                return vk_context->fences.size() - 1;
-            }
+                ContextCore *cxt_core = nullptr;
 
-            ContextIndex createDeviceMemory(ContextIndex _ci_buffer, VkMemoryPropertyFlags _req_memory_properties, void *_p_next = nullptr) {
-                return c_device_memory.createDeviceMemory(vk_context->phys_device, vk_context->device, _ci_buffer, _req_memory_properties, _p_next, alloc_callback);
-            }
+                ContextSwapchain(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextSwapchain() { destroyContext(); }
 
-            ContextIndex createDescriptorSetLayout(const void *_p_next = nullptr, VkDescriptorSetLayoutCreateFlags _flags = 0u) {
-                return c_descriptor.createLayout(vk_context->device, _p_next, _flags, alloc_callback);
-            }
+                void destroyContext() {
+                    destroySwapchainWithDependencies();
+                    destroySurface();
+                }
 
-            ContextIndex createDescriptorPool(uint32_t _max_sets, const std::vector<VkDescriptorPoolSize> &_pool_sizes = {},
-                                              const void *_p_next = (const void *)nullptr, VkDescriptorPoolCreateFlags _flags = 0u) {
-                return c_descriptor.createDescriptorPool(vk_context->device, _max_sets, _pool_sizes, _p_next, _flags, alloc_callback);
-            }
+            // Manage Objects
 
-            ContextIndex createDescriptorSets(ContextIndex _ci_pool, const std::vector<ContextIndex> &_ci_layouts, void *_p_next = nullptr) {
-                return c_descriptor.createDescriptorSets(vk_context->device, _ci_pool, _ci_layouts, _p_next);
-            }
+                void createSurface() {
+                    surface.createObject(cxt_core->instance.handle, window, cxt_core->alloc_cb.wrap);
+                }
 
-            void createMessenger(void *_p_next = nullptr, VkDebugUtilsMessengerCreateFlagsEXT _flags = 0u) {
-                vk_context->messenger = b_messenger.createObject(vk_context->instance, _p_next, _flags, alloc_callback);
+                void createSwapchain() {
+                    swapchain.create_info.updateWrap();
+                    swapchain.create_info.wrap.surface = surface.handle;
+                    swapchain.createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    image_view_wrap.wrap.format = swapchain.create_info.wrap.imageFormat;
+                    framebuffer_wrap.setBufferSize(swapchain.create_info.wrap.imageExtent);
+                }
+                void createImageViews() {
+                    std::vector<VkImage> __swapchain_images{Func::GetSwapchainImagesKHR(cxt_core->device.handle, swapchain.handle)};
+
+                    image_views.resize(__swapchain_images.size());
+                    for (ContextIndex ci = 0u; ci < __swapchain_images.size(); ++ci) {
+                        image_view_wrap.wrap.image = __swapchain_images[ci];
+                        image_views[ci] = Func::CreateImageView(&image_view_wrap.wrap, cxt_core->device.handle, __swapchain_images[ci], cxt_core->alloc_cb.wrap);
+                    }
+                }
+                void createFramebuffers() {
+                    framebuffers.resize(image_views.size());
+                    framebuffer_wrap.wrap.renderPass = cxt_core->render_pass.handle;
+
+                    for (ContextIndex ci = 0u; ci < framebuffers.size(); ++ci) {
+                        framebuffer_wrap.attachments = {image_views[ci]};
+                        framebuffer_wrap.updateWrap();
+                        framebuffers[ci] = Func::CreateFramebuffer(&framebuffer_wrap.wrap, cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                }
+
+
+                void destroySurface() {
+                    surface.destroyObject(cxt_core->instance.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroySwapchain() {
+                    swapchain.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroyImageViews() {
+                    for (auto    img_view :  image_views)
+                        vkDestroyImageView(cxt_core->device.handle, img_view, cxt_core->alloc_cb.wrap);
+                }
+                void destroyFramebuffers() {
+                    for (auto framebuffer : framebuffers)
+                        vkDestroyFramebuffer(cxt_core->device.handle, framebuffer, cxt_core->alloc_cb.wrap);
+                }
+
+            // Scenarios
+
+                void setWindow(const Window &_window) {
+                    window = _window.window;
+                }
+
+                void  createSwapchainWithDependencies() {
+                    createSwapchain();
+                    createImageViews();
+                    createFramebuffers();
+                }
+
+                void destroySwapchainWithDependencies() {
+                    destroyFramebuffers();
+                    destroyImageViews();
+                    destroySwapchain();
+                }
+
+                void pickSwapchainImageFormat(const Util::SurfaceFormatTestFunc _test_func = Util::SelectSurfaceFormat::DefaultFormatTest) {
+                    swapchain.create_info.pickFormat(cxt_core->phys_device.handle, surface.handle, _test_func);
+                }
+
+                void setSwapchainExtentFromWindow() {
+                    swapchain.create_info.chooseCurrentExtent(window);
+                }
+
+                void setSwapchainSurfaceCapabilities() {
+                    swapchain.create_info.setSurfaceCapabilities(cxt_core->phys_device.handle, surface.handle);
+                }
+
+                void setRenderPassAttachmentImageFormat(ContextIndex _attachment_ci) {
+                    cxt_core->render_pass.create_info.attachments_wrap[_attachment_ci].wrap.format = swapchain.create_info.wrap.imageFormat;
+                }
+
+                void recreate() {
+                    destroySwapchainWithDependencies();
+                    setSwapchainSurfaceCapabilities();
+                    while (swapchain.create_info.capabilities.currentExtent.width  == 0 ||
+                           swapchain.create_info.capabilities.currentExtent.height == 0) {
+                        glfwWaitEvents();
+                        setSwapchainSurfaceCapabilities();
+                    }
+                    setSwapchainExtentFromWindow();
+                    createSwapchainWithDependencies();
+                }
+            } cxt_swapchain; // ContextSwapchain END
+
+            struct ContextDescriptor {
+                std::vector<Object::DescriptorSetLayout> layouts;
+                std::vector<Object::DescriptorPool>        pools;
+                std::vector<Object::DescriptorSet>          sets;
+                // Note: '1' Pool AND 'N' Layouts --> 'N' Sets
+
+                ContextCore *cxt_core = nullptr;
+
+                ContextDescriptor(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextDescriptor() { destroyContext(); }
+
+                // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
+                void  createContext() {}
+
+                void destroyContext() {
+                    // Note: sets can be ignored, they are freed when layouts are destroyed
+                    for (ContextIndex ci = 0u; ci < pools.size(); ++ci)
+                        pools  [ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    for (ContextIndex ci = 0u; ci < layouts.size(); ++ci)
+                        layouts[ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+            // Manage Objects
+
+                ContextIndex addLayout() { layouts.emplace_back(); return layouts.size()-1; }
+                ContextIndex addPool  () {   pools.emplace_back(); return   pools.size()-1; }
+                ContextIndex addSet   () {    sets.emplace_back(); return    sets.size()-1; }
+
+                void createLayout(ContextIndex _layout_ci) {
+                    layouts[_layout_ci].create_info.updateWrap();
+                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void createPool(ContextIndex _pool_ci) {
+                    pools[_pool_ci].create_info.updateWrap();
+                    pools[_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void createSets(ContextIndex _set_ci) {
+                    sets[_set_ci].alloc_info.updateWrap();
+                    sets[_set_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+
+                void destroyLayout(ContextIndex _layout_ci) {
+                    layouts[_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroyPool(ContextIndex _pool_ci) {
+                    pools[_pool_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroySets(ContextIndex _set_ci) {
+                    sets[_set_ci].destroyObject(cxt_core->device.handle);
+                }
+
+            // Scenarios
+
+                ContextIndex2 addSctLayoutBinding(ContextIndex _layout_ci) { return {_layout_ci, layouts[_layout_ci].create_info.addBinding()}; }
+
+                void setAllForSet(ContextIndex _set_ci, ContextIndex _pool_ci, const std::vector<ContextIndex> &_layout_cis) {
+                    std::vector<VkDescriptorSetLayout> __layouts(_layout_cis.size());
+                    for (ContextIndex ci = 0u; ci < _layout_cis.size(); ++ci)
+                        __layouts[ci] = layouts[_layout_cis[ci]].handle;
+
+                    sets[_set_ci].alloc_info.setWholeStruct(pools[_pool_ci].handle, __layouts);
+                }
+
+                void setPoolForSet(ContextIndex _set_ci, ContextIndex _pool_ci) {
+                    sets[_set_ci].alloc_info.wrap.descriptorPool = pools[_pool_ci].handle;
+                }
+
+                void setLayoutsForSet(ContextIndex _set_ci, const std::vector<ContextIndex> &_layout_cis) {
+                    std::vector<VkDescriptorSetLayout> __layouts(_layout_cis.size());
+                    for (ContextIndex ci = 0u; ci < _layout_cis.size(); ++ci)
+                        __layouts[ci] = layouts[_layout_cis[ci]].handle;
+
+                    sets[_set_ci].alloc_info.set_layouts = __layouts;
+                    sets[_set_ci].alloc_info.updateWrap();
+                }
+            } cxt_descriptor; // ContextDescriptors END
+
+            struct ContextPipeline {
+                std::vector<Object::Pipeline>     pipelines;
+                std::vector<Object::PipelineLayout> layouts;
+                std::vector<Object::PipelineCache>   caches;
+                std::vector<Object::ShaderModule>   shaders;
+
+                ContextCore *cxt_core = nullptr;
+
+                ContextPipeline(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextPipeline() { destroyContext(); }
+
+                // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
+                void  createContext() {}
+
+                void destroyContext() {
+                    for (auto& pipeline : pipelines)
+                        pipeline.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    for (auto& layout   :   layouts)
+                        layout  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    for (auto& cache    :    caches)
+                        cache   .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    for (auto& shader   :   shaders)
+                        shader  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+            // Manage Objects
+
+                ContextIndex addPipeline() { pipelines.emplace_back(); return pipelines.size() - 1; }
+                ContextIndex addShader  () {   shaders.emplace_back(); return   shaders.size() - 1; }
+                ContextIndex addLayout  () {   layouts.emplace_back(); return   layouts.size() - 1; }
+                ContextIndex addCache   () {    caches.emplace_back(); return    caches.size() - 1; }
+
+                void createPipeline(ContextIndex _pipeline_ci, uint32_t _subpass, ContextIndex _layout_ci, ContextIndex _cache_ci = VKFW_CI_IGNORE,
+                                    VkDeferredOperationKHR _deferred_op = VK_NULL_HANDLE) {
+                    switch (pipelines[_pipeline_ci].pipeline_type) {
+                        case VKFW_PIPELINE_TYPE_GRAPHICS:
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.renderPass = cxt_core->render_pass.handle;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.updateWrap(); break;
+                        case VKFW_PIPELINE_TYPE_COMPUTE:
+                            pipelines[_pipeline_ci].   compute_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
+                            pipelines[_pipeline_ci].   compute_create_info_wrap.updateWrap(); break;
+                        case VKFW_PIPELINE_TYPE_RAY_TRACING:
+                            pipelines[_pipeline_ci].raytracing_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
+                            pipelines[_pipeline_ci].raytracing_create_info_wrap.updateWrap(); break;
+                    }
+                    VkPipelineCache __pipeline_cache = _cache_ci != VKFW_CI_IGNORE ? caches[_cache_ci].handle : VK_NULL_HANDLE;
+                    pipelines[_pipeline_ci].createObject(cxt_core->device.handle, cxt_core->render_pass.handle, _subpass,
+                                                         _deferred_op, __pipeline_cache, cxt_core->alloc_cb.wrap);
+                }
+                void createCache (ContextIndex _cache_ci) {
+                    caches [ _cache_ci].create_info.updateWrap();
+                    caches [ _cache_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void createLayout(ContextIndex _layout_ci) {
+                    layouts[_layout_ci].create_info.updateWrap();
+                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void createShader(ContextIndex _ci_shader) {
+                    shaders[_ci_shader].create_info.updateWrap();
+                    shaders[_ci_shader].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+
+                void destroyPipeline(ContextIndex _pipeline_ci) {
+                    pipelines[_pipeline_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroyCache   (ContextIndex    _cache_ci) {
+                    caches      [_cache_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroyLayout  (ContextIndex   _layout_ci) {
+                    layouts    [_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void destroyShader  (ContextIndex   _ci_shader) {
+                    shaders    [_ci_shader].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+            // Scenarios
+
+                void setLayoutDescriptorSetLayouts(ContextIndex _ci_layout, const std::vector<ContextIndex> &_ci_descr_set_layouts) {
+                    layouts[_ci_layout].create_info.layouts.resize(_ci_descr_set_layouts.size(), VK_NULL_HANDLE);
+                    for (uint32_t i = 0u; i < _ci_descr_set_layouts.size(); ++i)
+                        layouts[_ci_layout].create_info.layouts[i] = cxt_core->cxt_debug.cxt_ptr->cxt_descriptor.layouts[_ci_descr_set_layouts[0]].handle;
+                }
+
+                void addLayoutPushConstant(ContextIndex _ci_layout, VkShaderStageFlags _stage_flags, uint32_t _offset, uint32_t _size) {
+                    layouts[_ci_layout].create_info.constants.push_back(VkPushConstantRange{_stage_flags, _offset, _size});
+                }
+
+                ContextIndex2 addShaderStage(ContextIndex _ci_pipeline) {
+                    return { _ci_pipeline, pipelines[_ci_pipeline].addShaderStage() };
+                }
+            } cxt_pipeline; // ContextPipeline END
+
+            struct ContextCommand {
+                std::vector<Object::CommandPool>   cmd_pools;
+                std::vector<Object::CommandBuffer> cmd_buffers;
+
+                ContextCore *cxt_core = nullptr;
+
+                ContextCommand(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextCommand() { destroyContext(); }
+
+                // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
+                void  createContext() {}
+
+                void destroyContext() {
+                    for (auto& cmd_buff : cmd_buffers)
+                        cmd_buff.destroyObject(cxt_core->device.handle);
+                    for (auto& cmd_pool :   cmd_pools)
+                        cmd_pool.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+            // Manage Objects
+
+                ContextIndex addCmdPool  () {   cmd_pools.emplace_back(); return   cmd_pools.size() - 1; }
+                ContextIndex addCmdBuffer() { cmd_buffers.emplace_back(); return cmd_buffers.size() - 1; }
+
+                void createCmdPool(ContextIndex _cmd_pool_ci) {
+                    cmd_pools[_cmd_pool_ci].create_info.updateWrap();
+                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+                void createCmdBuffers(ContextIndex _cmd_buffer_ci) {
+                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
+                    cmd_buffers[_cmd_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                }
+
+            // Scenarios
+
+                void createCmdPool(ContextIndex _cmd_pool_ci, ContextIndex _queue_family_ci, VkCommandPoolCreateFlags _flags = 0u) {
+                    cmd_pools[_cmd_pool_ci].create_info.updateWrap();
+                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->queue_families[_queue_family_ci].handle, _flags, cxt_core->alloc_cb.wrap);
+                }
+
+                void createCmdBuffersPrimary(ContextIndex _cmd_buffer_ci, ContextIndex _cmd_pool_ci, uint32_t _cmd_buffers_count) {
+                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
+                    cmd_buffers[_cmd_buffer_ci].createPrimary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.wrap);
+                }
+                void createCmdBuffersSecondary(ContextIndex _cmd_buffer_ci, ContextIndex _cmd_pool_ci, uint32_t _cmd_buffers_count) {
+                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
+                    cmd_buffers[_cmd_buffer_ci].createSecondary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.wrap);
+                }
+            } cxt_command; // ContextCommand END
+
+            struct ContextMemory {
+                struct MemoryMapping {
+                    VkDeviceSize offset; // offset in the allocated device memory
+                    VkDeviceSize  range; // required device memory size in bytes
+                };
+
+                struct MemoryChunk {
+                    Object::DeviceMemory memory;
+                    std::vector<Object::Buffer> buffers;
+                    std::vector<Object::Image>   images;
+                    std::vector<Object::BufferView> buffer_views; // Note: Only used in vkUpdateDescriptorSets()
+                    std::vector<Object::ImageView>   image_views;
+
+                    VkMemoryPropertyFlags required_flags; // Flags required by user for this memory chunk
+                    std::vector<MemoryMapping> buffer_maps;
+                    std::vector<MemoryMapping>  image_maps;
+                    // 48 bytes left (2 vectors) for 256 bytes per chunk
+
+                    ContextCore *cxt_core = nullptr;
+
+                    MemoryChunk(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+                   ~MemoryChunk() {}
+
+                    void destroyChunk() {
+                        for (auto& buf_view : buffer_views)
+                            buf_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        for (auto& img_view :  image_views)
+                            img_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        for (auto& buf : buffers)
+                            buf.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        for (auto& img :  images)
+                            img.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+
+                        memory.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+
+                    void allocateChunkMemory(VkPhysicalDeviceMemoryProperties &_allowed_size) {
+                        VkMemoryRequirements __mem_req{ 0u, 0u, UINT32_MAX }, __mem_req_i{};
+
+                        // Compute all buffer offsets
+                        for (uint32_t ci = 0u; ci < buffers.size(); ++ci) {
+                            __mem_req_i = Func::GetBufferMemoryRequirements(cxt_core->device.handle, buffers[ci].handle);
+                            SVKFW_ASSERT(__mem_req.memoryTypeBits & __mem_req_i.memoryTypeBits, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
+                                            "No suitable memory type left for buffer " + std::to_string(ci));
+
+                            // printf("Buffer %d alignment: %d, CPU size: %d, GPU size: %d\n", ci, __mem_req_i.alignment, buffer_maps[ci].range, __mem_req_i.size);
+                            __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
+                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += __additional_offset;
+                            buffer_maps[ci].offset = __mem_req.size;
+
+                            // Note: from VkMemoryRequirements description, I believe this offset is always 0
+                            // __additional_offset = (__mem_req_i.alignment - (buffer_maps[ci].range % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += buffer_maps[ci].range;
+                        }
+                        // Align last buffer
+                        if (!buffers.empty()) {
+                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += __additional_offset;
+                        }
+
+                        // Compute all image offsets
+                        for (uint32_t ci = 0u; ci <  images.size(); ++ci) {
+                            __mem_req_i = Func::GetImageMemoryRequirements(cxt_core->device.handle, images[ci].handle);
+                            SVKFW_ASSERT(__mem_req.memoryTypeBits & __mem_req_i.memoryTypeBits, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
+                                            "No suitable memory type left for image " + std::to_string(ci));
+
+                            __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
+                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += __additional_offset;
+                            image_maps[ci].offset = __mem_req.size;
+
+                            // Note: from VkMemoryRequirements description, I believe this offset is always 0
+                            // __additional_offset = (__mem_req_i.alignment - (image_maps[ci].range % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += buffer_maps[ci].range;
+                        }
+                        // Align last image
+                        if (!images.empty()) {
+                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            __mem_req.size += __additional_offset;
+                        }
+
+                        uint32_t __supported_mem_type_index = VK_MAX_MEMORY_TYPES;
+                        for (uint32_t i = 0u; i < _allowed_size.memoryTypeCount; ++i) {
+                            bool __use_memtype = true;
+                            __use_memtype &= (__mem_req.memoryTypeBits & (1 << i)) != 0u; // can represent
+                            __use_memtype &= (_allowed_size.memoryTypes[i].propertyFlags & required_flags) == required_flags; // complies the user requirements
+                            __use_memtype &= __mem_req.size <= _allowed_size.memoryHeaps[_allowed_size.memoryTypes[i].heapIndex].size; // can fit
+
+                            if (__use_memtype) {
+                                __supported_mem_type_index = i;
+                                break;
+                            }
+                        }
+
+                        SVKFW_ASSERT(__supported_mem_type_index < VK_MAX_MEMORY_TYPES, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
+                                        "No device memory types to represent and fit buffers/images");
+
+                        _allowed_size.memoryHeaps[_allowed_size.memoryTypes[__supported_mem_type_index].heapIndex].size -= __mem_req.size;
+                        memory.allocate_info.wrap.memoryTypeIndex = __supported_mem_type_index;
+                        memory.allocate_info.wrap.allocationSize  = __mem_req.size;
+                        memory.createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+
+                        // Bind all buffers to created memory
+                        VkResult __func_res = VK_SUCCESS;
+                        for (ContextIndex ci = 0u; ci < buffers.size(); ++ci) {
+                            __func_res = vkBindBufferMemory(cxt_core->device.handle, buffers[ci].handle, memory.handle, buffer_maps[ci].offset);
+                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind buffer error, code %d" + std::to_string(__func_res));
+                        }
+
+                        // Bind all images to created memory
+                        for (ContextIndex ci = 0u; ci < images.size(); ++ci) {
+                            __func_res = vkBindImageMemory(cxt_core->device.handle, images[ci].handle, memory.handle, image_maps[ci].offset);
+                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind image error, code %d" + std::to_string(__func_res));
+                        }
+                    }
+
+                // Manage Objects
+
+                    ContextIndex addBuffer(uint32_t _buf_size = 0u) { buffers.emplace_back(); buffer_maps.push_back(MemoryMapping{0u, _buf_size}); return buffers.size() - 1; }
+                    ContextIndex addImage (uint32_t _img_size = 0u) {  images.emplace_back();  image_maps.push_back(MemoryMapping{0u, _img_size}); return  images.size() - 1; }
+                    ContextIndex addBufferView() { buffer_views.emplace_back(); return buffer_views.size() - 1; }
+                    ContextIndex addImageView () {  image_views.emplace_back(); return  image_views.size() - 1; }
+
+                    void createBuffer(ContextIndex _buffer_ci) {
+                        buffers[_buffer_ci].create_info.updateWrap();
+                        buffers[_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void createImage (ContextIndex _image_ci) {
+                        images [ _image_ci].create_info.updateWrap();
+                        images [ _image_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void createBufferView(ContextIndex _buffer_view_ci, ContextIndex _buffer_ci) {
+                        buffer_views[_buffer_view_ci].create_info.updateWrap();
+                        buffer_views[_buffer_view_ci].createObject(cxt_core->device.handle, buffers[_buffer_ci].handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void createImageView (ContextIndex  _image_view_ci, ContextIndex  _image_ci) {
+                        image_views [ _image_view_ci].create_info.updateWrap();
+                        image_views [ _image_view_ci].createObject(cxt_core->device.handle,  images[ _image_ci].handle, cxt_core->alloc_cb.wrap);
+                    }
+
+                    void destroyBuffer(ContextIndex _buffer_ci) {
+                        buffers[_buffer_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void destroyImage (ContextIndex _image_ci) {
+                        images [ _image_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void destroyBufferView(ContextIndex _buffer_view_ci) {
+                        buffer_views[_buffer_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                    void destroyImageView (ContextIndex  _image_view_ci) {
+                        image_views [ _image_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    }
+                }; // MemoryChunk END
+                std::vector<MemoryChunk> memory_chunks;
+
+                Struct::StructWrap<VkPhysicalDeviceMemoryProperties2> memory_properties;
+
+                ContextCore *cxt_core = nullptr;
+
+                ContextMemory(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextMemory() { destroyContext(); }
+
+                void initContext() {
+                    memory_properties.loadForPhysicalDevice(cxt_core->phys_device.handle);
+                }
+
+                void destroyContext() {
+                    for (auto& chunk : memory_chunks)
+                        chunk.destroyChunk();
+                }
+
+            // Manage objects
+
+                // Returns DeviceMemory context index (one per MemoryChunk, so it's used to access both)
+                ContextIndex addMemoryChunk(VkMemoryPropertyFlags _required_flags) {
+                    memory_chunks.emplace_back(cxt_core);
+                    memory_chunks.back().required_flags = _required_flags;
+                    return memory_chunks.size() - 1;
+                }
+
+                void allocateChunkMemory(ContextIndex _memory_ci) {
+                    memory_chunks[_memory_ci].allocateChunkMemory(memory_properties.wrap.memoryProperties);
+                }
+
+                ContextIndex2 addChunkBuffer(ContextIndex _ci_memory, uint32_t _buf_size = 0u) { return { _ci_memory, memory_chunks[_ci_memory].addBuffer(_buf_size) }; }
+                ContextIndex2 addChunkImage (ContextIndex _ci_memory, uint32_t _img_size = 0u) { return { _ci_memory, memory_chunks[_ci_memory].addImage (_img_size) }; }
+                ContextIndex2 addChunkBufferView(ContextIndex _ci_memory) { return { _ci_memory, memory_chunks[_ci_memory].addBufferView() }; }
+                ContextIndex2 addChunkImageView (ContextIndex _ci_memory) { return { _ci_memory, memory_chunks[_ci_memory].addImageView () }; }
+
+                void createChunkBuffer(ContextIndex2 _ci2_buffer) { memory_chunks[_ci2_buffer.first].createBuffer(_ci2_buffer.second); }
+                void createChunkImage (ContextIndex2 _ci2_image ) { memory_chunks[_ci2_image .first].createImage (_ci2_image .second); }
+                void createChunkBufferView(ContextIndex2 _ci2_buf_view) { memory_chunks[_ci2_buf_view.first].createBuffer(_ci2_buf_view.second); }
+                void createChunkImageView (ContextIndex2 _ci2_img_view) { memory_chunks[_ci2_img_view.first].createImage (_ci2_img_view.second); }
+
+            // Scenarios
+
+                void setWholeBufferCreateInfoStruct(ContextIndex2 _ci2_buffer, const std::vector<ContextIndex> &_ci_qfamilies,
+                                                    VkSharingMode _sharing_mode, VkBufferUsageFlags _usage_flags, VkDeviceSize _size_bytes = 0u) {
+                    if (_size_bytes > 0u)
+                        memory_chunks[_ci2_buffer.first].buffer_maps[_ci2_buffer.second].range = _size_bytes;
+
+                    std::vector<VkfwQueueFamily> __qfamilies((size_t)_ci_qfamilies.size());
+                    for (uint32_t i = 0u; i < _ci_qfamilies.size(); ++i)
+                        __qfamilies[i] = cxt_core->queue_families[i].handle;
+                    memory_chunks[_ci2_buffer.first].buffers[_ci2_buffer.second].create_info.setWholeStruct(__qfamilies, _sharing_mode, _usage_flags, memory_chunks[_ci2_buffer.first].buffer_maps[_ci2_buffer.second].range);
+                }
+            } cxt_memory; // ContextMemory END
+
+            struct ContextBarrier {
+                std::vector<VkSemaphore> semaphores;
+                std::vector<VkFence>         fences;
+                std::vector<VkEvent>         events;
+
+                Struct::StructWrap<VkSemaphoreCreateInfo> semaphore_wrap;
+                Struct::StructWrap<VkFenceCreateInfo>         fence_wrap;
+                Struct::StructWrap<VkEventCreateInfo>         event_wrap;
+
+                ContextCore *cxt_core = nullptr;
+
+                ContextBarrier(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+               ~ContextBarrier() { destroyContext(); }
+
+                void createContext() {}
+
+                void destroyContext() {
+                    for (ContextIndex ci = 0u; ci < semaphores.size(); ++ci)
+                        destroySemaphore(ci);
+                    for (ContextIndex ci = 0u; ci < fences.size(); ++ci)
+                        destroyFence(ci);
+                    for (ContextIndex ci = 0u; ci < events.size(); ++ci)
+                        destroyEvent(ci);
+                }
+
+            // Manage Objects
+
+                ContextIndex addSemaphore() {
+                    ContextIndex __res_semaphore_ci = semaphores.size();
+                    for (ContextIndex ci = 0u; ci < semaphores.size(); ++ci)
+                        if (semaphores[ci] == VK_NULL_HANDLE) { __res_semaphore_ci = ci; break; }
+                    if (__res_semaphore_ci >= semaphores.size()) semaphores.emplace_back();
+
+                    vkCreateSemaphore(cxt_core->device.handle, &semaphore_wrap.wrap, cxt_core->alloc_cb.wrap, &semaphores[__res_semaphore_ci]);
+                    return __res_semaphore_ci;
+                }
+                ContextIndex addFence(bool _is_signaled) {
+                    ContextIndex __res_fence_ci = fences.size();
+                    for (ContextIndex ci = 0u; ci < fences.size(); ++ci)
+                        if (fences[ci] == VK_NULL_HANDLE) { __res_fence_ci = ci; break; }
+                    if (__res_fence_ci >= fences.size()) fences.emplace_back();
+
+                    fence_wrap.setWholeStruct(_is_signaled);
+                    vkCreateFence(cxt_core->device.handle, &fence_wrap.wrap, cxt_core->alloc_cb.wrap, &fences[__res_fence_ci]);
+                    return __res_fence_ci;
+                }
+                ContextIndex addEvent(bool _is_signaled) {
+                    ContextIndex __res_event_ci = events.size();
+                    for (ContextIndex ci = 0u; ci < events.size(); ++ci)
+                        if (events[ci] == VK_NULL_HANDLE) { __res_event_ci = ci; break; }
+                    if (__res_event_ci >= events.size()) events.emplace_back();
+
+                    event_wrap.setWholeStruct(_is_signaled);
+                    vkCreateEvent(cxt_core->device.handle, &event_wrap.wrap, cxt_core->alloc_cb.wrap, &events[__res_event_ci]);
+                    return __res_event_ci;
+                }
+
+                void destroySemaphore(ContextIndex _semaphore_ci) {
+                    if (semaphores[_semaphore_ci] != VK_NULL_HANDLE)
+                        vkDestroySemaphore(cxt_core->device.handle, semaphores[_semaphore_ci], cxt_core->alloc_cb.wrap);
+                    semaphores[_semaphore_ci] = VK_NULL_HANDLE;
+                }
+                void destroyFence(ContextIndex _fence_ci) {
+                    if (fences[_fence_ci] != VK_NULL_HANDLE)
+                        vkDestroyFence(cxt_core->device.handle, fences[_fence_ci], cxt_core->alloc_cb.wrap);
+                    fences[_fence_ci] = VK_NULL_HANDLE;
+                }
+                void destroyEvent(ContextIndex _event_ci) {
+                    if (events[_event_ci] != VK_NULL_HANDLE)
+                        vkDestroyEvent(cxt_core->device.handle, events[_event_ci], cxt_core->alloc_cb.wrap);
+                    events[_event_ci] = VK_NULL_HANDLE;
+                }
+            } cxt_barrier; // ContextBarrier END
+
+
+            VulkanContext() : cxt_core{this},
+                              cxt_swapchain{&cxt_core}, cxt_descriptor{&cxt_core}, cxt_pipeline{&cxt_core},
+                              cxt_command  {&cxt_core}, cxt_memory    {&cxt_core}, cxt_barrier {&cxt_core} {}
+           ~VulkanContext() { /* destroyContext();  */ }
+
+            void destroyContext() {
+                cxt_barrier.destroyContext();
+                cxt_memory.destroyContext();
+                cxt_command.destroyContext();
+                cxt_pipeline.destroyContext();
+                cxt_swapchain.destroyContext();
+                cxt_descriptor.destroyContext();
+                cxt_core.destroyContext();
             }
 
         // Scenarios
 
-            // Note: prefixes: c* - if context-related, b* - if builder-related, o* - if object has neither context nor builder
-
-            void bDeviceIncludeValLayersLegacy() {
-                if (Simple::VKFW::VulkanAPIVersion::available() <= VK_API_VERSION_1_0)
-                    b_device.addValLayers(vk_context->phys_device);
+            void initNoncoreContexts() {
+                cxt_memory.initContext();
             }
 
-            void bDeviceAddQueueInfo(uint32_t _qfamily_context_index, const std::vector<float> _priorities,
-                                     void *_p_next = nullptr, VkDeviceQueueCreateFlags _flags = 0u) {
-                b_device.addQueueInfo({Queue::GetVkStructDCopy(vk_context->queue_families[_qfamily_context_index], _priorities, _p_next, _flags)});
+            void handleResult(VkResult _result) {
+                // TODO: handle VkResult
+            }
+        } cxt_vkfw; // VulkanContext END
+
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Vulkan Additional Handlers
+//  == === ==== ================================== ==== === ==  \\
+
+    // Note: Handlers with an access to VulkanContext
+
+//  == === ==== >   VKFW Object Getter Handler
+
+        struct ObjGetterHandler {
+            VKFW::VulkanContext *cxt_ptr = nullptr;
+
+            ObjGetterHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_ptr{_cxt_ptr} {}
+
+        // Single object getters
+
+        // Getters (Core)
+
+            VkInstance               getObjInstance()                        const { return cxt_ptr->cxt_core.instance.handle; }
+            VkDebugUtilsMessengerEXT getObjDebugUtilsMessengerEXT()          const { return cxt_ptr->cxt_core.cxt_debug.debug_messenger.handle;}
+            VkPhysicalDevice         getObjPhysicalDevice()                  const { return cxt_ptr->cxt_core.phys_device.handle; }
+            VkDevice                 getObjDevice()                          const { return cxt_ptr->cxt_core.device.handle; }
+            VkfwQueueFamily          getObjQueueFamily(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci ) ? UINT32_MAX     : cxt_ptr->cxt_core.queue_families[_obj_ci].handle; }
+            VkQueue                  getObjQueue(ContextIndex2 _obj_ci2)     const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_core.queues[_obj_ci2.first].handles[_obj_ci2.second]; }
+            VkRenderPass             getObjRenderPass()                      const { return cxt_ptr->cxt_core.render_pass.handle; }
+            VkAllocationCallbacks*   getSctAllocationCallbacks()                   { return cxt_ptr->cxt_core.alloc_cb.wrap; }
+
+            ContextEntity<Object::QueueFamily> shortcutObjQueueFamily(ContextIndex  _obj_ci ) { return {cxt_ptr->cxt_core.queue_families.data() + _obj_ci       , _obj_ci       }; }
+            ContextEntity<Object::Queue      > shortcutObjQueue      (ContextIndex2 _obj_ci2) { return {cxt_ptr->cxt_core.queues        .data() + _obj_ci2.first, _obj_ci2.first}; }
+
+            ContextEntity<Struct::StructWrap<VkAttachmentDescription>> shortcutSctRenderPassAttachment        (ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutAttachment        (_sct_ci); }
+            ContextEntity<Struct::StructWrap<   VkSubpassDescription>> shortcutSctRenderPassSubpassDescription(ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutSubpassDescription(_sct_ci); }
+            ContextEntity<Struct::StructWrap<    VkSubpassDependency>> shortcutSctRenderPassSubpassDependency (ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutSubpassDependency (_sct_ci); }
+
+        // Getters (Swapchain)
+
+            VkSwapchainKHR getObjSwapchainKHR() const { return cxt_ptr->cxt_swapchain.swapchain.handle; }
+            VkSurfaceKHR   getObjSurfaceKHR()   const { return cxt_ptr->cxt_swapchain.surface  .handle; }
+            VkImageView    getObjSwapchainImageView  (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_swapchain.image_views [_obj_ci]; }
+            VkFramebuffer  getObjSwapchainFramebuffer(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_swapchain.framebuffers[_obj_ci]; }
+
+        // Getters (Descriptor)
+
+            VkDescriptorSetLayout getObjDescriptorSetLayout(ContextIndex  _obj_ci ) const { return shouldIgnoreCI(_obj_ci ) ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.layouts[_obj_ci].handle                      ; }
+            VkDescriptorPool      getObjDescriptorPool     (ContextIndex  _obj_ci ) const { return shouldIgnoreCI(_obj_ci ) ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.pools  [_obj_ci].handle                      ; }
+            VkDescriptorSet       getObjDescriptorSet      (ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.sets[_obj_ci2.first].handles[_obj_ci2.second]; }
+
+            ContextEntity<Object::DescriptorSetLayout> shortcutObjDescriptorSetLayout(ContextIndex _obj_ci) { return {cxt_ptr->cxt_descriptor.layouts.data() + _obj_ci, _obj_ci}; }
+            ContextEntity<Object::DescriptorPool     > shortcutObjDescriptorPool     (ContextIndex _obj_ci) { return {cxt_ptr->cxt_descriptor.  pools.data() + _obj_ci, _obj_ci}; }
+            ContextEntity<Object::DescriptorSet      > shortcutObjDescriptorSet      (ContextIndex _obj_ci) { return {cxt_ptr->cxt_descriptor.   sets.data() + _obj_ci, _obj_ci}; }
+
+            ContextEntity<Struct::StructWrap<VkDescriptorSetLayoutBinding>> shortcutSctDescriptorSetLayoutBinding(ContextIndex2 _sct_ci2) {
+                auto __ce_sct_binding = cxt_ptr->cxt_descriptor.layouts[_sct_ci2.first].create_info.shortcutBinding(_sct_ci2.second);
+                __ce_sct_binding.first = _sct_ci2.first;
+                return __ce_sct_binding;
             }
 
-            void bDeviceAddQueueInfo(uint32_t _qfamily_context_index, uint32_t _queue_count, float _eq_priorities_val = 1.0f,
-                                     void *_p_next = nullptr, VkDeviceQueueCreateFlags _flags = 0u) {
-                b_device.addQueueInfo({Queue::GetVkStructDCopy(vk_context->queue_families[_qfamily_context_index], _queue_count, _eq_priorities_val, _p_next, _flags)});
+        // Getters (Pipeline)
+
+            VkPipeline       getObjPipeline      (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.pipelines[_obj_ci].handle; }
+            VkPipelineLayout getObjPipelineLayout(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.layouts  [_obj_ci].handle; }
+            VkPipelineCache  getObjPipelineCache (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.caches   [_obj_ci].handle; }
+            VkShaderModule   getObjShaderModule  (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.shaders  [_obj_ci].handle; }
+
+            ContextEntity<Object::Pipeline      > shortcutObjPipeline      (ContextIndex _obj_ci) { return {cxt_ptr->cxt_pipeline.pipelines.data() + _obj_ci, _obj_ci }; }
+            ContextEntity<Object::PipelineLayout> shortcutObjPipelineLayout(ContextIndex _obj_ci) { return {cxt_ptr->cxt_pipeline.layouts  .data() + _obj_ci, _obj_ci }; }
+            ContextEntity<Object::PipelineCache > shortcutObjPipelineCache (ContextIndex _obj_ci) { return {cxt_ptr->cxt_pipeline.caches   .data() + _obj_ci, _obj_ci }; }
+            ContextEntity<Object::ShaderModule  > shortcutObjShaderModule  (ContextIndex _obj_ci) { return {cxt_ptr->cxt_pipeline.shaders  .data() + _obj_ci, _obj_ci }; }
+
+            ContextEntity<Struct::StructWrap<VkPipelineShaderStageCreateInfo>> shortcutSctShaderStage(ContextIndex2 _sct_ci2) { return { cxt_ptr->cxt_pipeline.pipelines[_sct_ci2.first].shortcutShaderStage(_sct_ci2.second), _sct_ci2 }; }
+
+        // Getters (Command)
+
+            VkCommandPool   getObjCommandPool  (ContextIndex  _obj_ci ) const { return shouldIgnoreCI(_obj_ci ) ? VK_NULL_HANDLE : cxt_ptr->cxt_command.cmd_pools[_obj_ci].handle                           ; }
+            VkCommandBuffer getObjCommandBuffer(ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_command.cmd_buffers[_obj_ci2.first].handles[_obj_ci2.second]; }
+
+            ContextEntity<Object::CommandPool  > shortcutObjCommandPool  (ContextIndex  _obj_ci ) { return {cxt_ptr->cxt_command.cmd_pools  .data() + _obj_ci       , _obj_ci       }; }
+            ContextEntity<Object::CommandBuffer> shortcutObjCommandBuffer(ContextIndex  _obj_ci ) { return {cxt_ptr->cxt_command.cmd_buffers.data() + _obj_ci       , _obj_ci       }; }
+            ContextEntity<Object::CommandBuffer> shortcutObjCommandBuffer(ContextIndex2 _obj_ci2) { return {cxt_ptr->cxt_command.cmd_buffers.data() + _obj_ci2.first, _obj_ci2.first}; }
+
+        // Getters (Device Memory)
+        
+            VkDeviceMemory getObjDeviceMemory(ContextIndex  _obj_ci ) const { return shouldIgnoreCI(_obj_ci ) ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.memory_chunks[_obj_ci].memory.handle                              ; }
+            VkBuffer       getObjBuffer      (ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].buffers     [_obj_ci2.second].handle; }
+            VkImage        getObjImage       (ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].images      [_obj_ci2.second].handle; }
+            VkBufferView   getObjBufferView  (ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].buffer_views[_obj_ci2.second].handle; }
+            VkImageView    getObjImageView   (ContextIndex2 _obj_ci2) const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].image_views [_obj_ci2.second].handle; }
+
+            VKFW::VulkanContext::ContextMemory::MemoryMapping getSctMemoryMapping(ContextIndex2 _obj_ci2) { return shouldIgnoreCI(_obj_ci2) ? VKFW::VulkanContext::ContextMemory::MemoryMapping{ VK_WHOLE_SIZE, VK_WHOLE_SIZE } : cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].buffer_maps[_obj_ci2.second]; }
+
+            ContextEntity<VulkanContext::ContextMemory::MemoryChunk> shortcutSctMemoryChunk(ContextIndex  _obj_ci ) { return { cxt_ptr->cxt_memory.memory_chunks.data() + _obj_ci, _obj_ci}; }
+            ContextEntity<Object::DeviceMemory> shortcutObjDeviceMemory(ContextIndex  _obj_ci ) { return {&cxt_ptr->cxt_memory.memory_chunks[_obj_ci       ].memory, _obj_ci}; }
+            ContextEntity<Object::Buffer      > shortcutObjBuffer      (ContextIndex2 _obj_ci2) { return { cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].buffers     .data() + _obj_ci2.second, _obj_ci2}; }
+            ContextEntity<Object::Image       > shortcutObjImage       (ContextIndex2 _obj_ci2) { return { cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].images      .data() + _obj_ci2.second, _obj_ci2}; }
+            ContextEntity<Object::BufferView  > shortcutObjBufferView  (ContextIndex2 _obj_ci2) { return { cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].buffer_views.data() + _obj_ci2.second, _obj_ci2}; }
+            ContextEntity<Object::ImageView   > shortcutObjImageView   (ContextIndex2 _obj_ci2) { return { cxt_ptr->cxt_memory.memory_chunks[_obj_ci2.first].image_views .data() + _obj_ci2.second, _obj_ci2}; }
+
+        // Getters (Barrier)
+
+            VkSemaphore getObjSemaphore(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.semaphores[_obj_ci]; }
+            VkFence     getObjFence    (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.fences    [_obj_ci]; }
+            VkEvent     getObjEvent    (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.events    [_obj_ci]; }
+
+        // Multiple object getters
+
+        // Getters (Core)
+
+            std::vector<VkfwQueueFamily> getObjsQueueFamily(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkfwQueueFamily> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queue_families[_objs_ci[ci]].handle;
+                return __res;
             }
 
-            void cSwapchainSetCapabilities() {
-                c_swapchain.b_swapchain.setSurfaceCapabilities(vk_context->phys_device, vk_context->surface);
+            std::vector<VkQueue> getObjsQueue(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkQueue> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queues[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
+                return __res;
             }
-            void cSwapchainSetPresentationMode(VkPresentModeKHR _pres_mode) {
-                c_swapchain.b_swapchain.checkSetPresentationMode(vk_context->phys_device, vk_context->surface, _pres_mode);
+            std::vector<VkQueue> getObjsQueue(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkQueue> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queues[_objs_ci1].handles[_objs_ci2[ci]];
+                return __res;
             }
-            void cSwapchainPickFormat(const Simple::VKFW::SwapchainKHR::Suitability::FormatTestFunc _test_func) {
-                c_swapchain.b_swapchain.pickFormat(vk_context->phys_device, vk_context->surface, _test_func);
-            }
-            void cSwapchainPickFormat(const Simple::VKFW::SwapchainKHR::Suitability::FormatRankFunc _rank_func) {
-                c_swapchain.b_swapchain.pickFormat(vk_context->phys_device, vk_context->surface, _rank_func);
-            }
-            const SwapchainKHR::Builder::ImageInfo& cSwapchainGetImageInfo() const { return c_swapchain.getImageInfo(); }
 
-            void cSwapchainRecreate(Window &_glfw_window) {
-                int width = 0, height = 0;
+        // Getters (Swapchain)
 
-                glfwGetFramebufferSize(_glfw_window.window, &width, &height);
-                while (width == 0 || height == 0) {
-                    glfwGetFramebufferSize(_glfw_window.window, &width, &height);
-                    glfwWaitEvents();
+            std::vector<VkImageView> getObjsSwapchainImageView(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkImageView> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.image_views[_objs_ci[ci]];
+                return __res;
+            }
+
+            std::vector<VkFramebuffer> getObjsSwapchainFramebuffer(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkFramebuffer> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.framebuffers[_objs_ci[ci]];
+                return __res;
+            }
+
+        // Getters (Descriptor)
+
+            std::vector<VkDescriptorSetLayout> getObjsDescriptorSetLayout(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkDescriptorSetLayout> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.layouts[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkDescriptorPool> getObjsDescriptorPool(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkDescriptorPool> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.pools[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkDescriptorSet> getObjsDescriptorSet(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkDescriptorSet> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.sets[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
+                return __res;
+            }
+            std::vector<VkDescriptorSet> getObjsDescriptorSet(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkDescriptorSet> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.sets[_objs_ci1].handles[_objs_ci2[ci]];
+                return __res;
+            }
+
+        // Getters (Pipeline)
+
+            std::vector<VkPipeline> getObjsPipeline(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkPipeline> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.pipelines[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkPipelineCache> getObjsPipelineCache(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkPipelineCache> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.caches[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkPipelineLayout> getObjsPipelineLayout(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkPipelineLayout> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.layouts[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+        // Getters (Command)
+
+            std::vector<VkCommandPool> getObjsCommandPool(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkCommandPool> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_pools[_objs_ci[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkCommandBuffer> getObjsCommandBuffer(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkCommandBuffer> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_buffers[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
+                return __res;
+            }
+            std::vector<VkCommandBuffer> getObjsCommandBuffer(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkCommandBuffer> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_buffers[_objs_ci1].handles[_objs_ci2[ci]];
+                return __res;
+            }
+
+        // Getters (Device Memory)
+
+            std::vector<VkDeviceMemory> getObjsDeviceMemory(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkDeviceMemory> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci[ci]].memory.handle;
+                return __res;
+            }
+
+            std::vector<VkBuffer> getObjsBuffer(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkBuffer> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].buffers[_objs_ci2[ci].second].handle;
+                return __res;
+            }
+            std::vector<VkBuffer> getObjsBuffer(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkBuffer> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].buffers[_objs_ci2[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkImage> getObjsImage(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkImage> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].images[_objs_ci2[ci].second].handle;
+                return __res;
+            }
+            std::vector<VkImage> getObjsImage(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkImage> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].images[_objs_ci2[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkBufferView> getObjsBufferView(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkBufferView> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].buffer_views[_objs_ci2[ci].second].handle;
+                return __res;
+            }
+            std::vector<VkBufferView> getObjsBufferView(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkBufferView> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].buffer_views[_objs_ci2[ci]].handle;
+                return __res;
+            }
+
+            std::vector<VkImageView> getObjsImageView(const std::vector<ContextIndex2> &_objs_ci2) const {
+                std::vector<VkImageView> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].image_views[_objs_ci2[ci].second].handle;
+                return __res;
+            }
+            std::vector<VkImageView> getObjsImageView(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+                std::vector<VkImageView> __res(_objs_ci2.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].image_views[_objs_ci2[ci]].handle;
+                return __res;
+            }
+
+        // Getters (Barrier)
+
+            std::vector<VkSemaphore> getObjsSemaphore(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkSemaphore> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.semaphores[_objs_ci[ci]];
+                return __res;
+            }
+
+            std::vector<VkFence> getObjsFence(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkFence> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.fences[_objs_ci[ci]];
+                return __res;
+            }
+
+            std::vector<VkEvent> getObjsEvent(const std::vector<ContextIndex> &_objs_ci) const {
+                std::vector<VkEvent> __res(_objs_ci.size(), 0u);
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.events[_objs_ci[ci]];
+                return __res;
+            }
+        }; // ObjGetterHandler END
+
+
+//  == === ==== >   VKFW Barrier Handler
+
+        struct BarrierHandler {
+            ObjGetterHandler cxt_handler;
+
+            BarrierHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
+
+        // Functions
+
+            void WaitForFences(const std::vector<ContextIndex> &_fences_ci, VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
+                std::vector<VkFence> __fences = cxt_handler.getObjsFence(_fences_ci);
+                Func::WaitForFences(cxt_handler.getObjDevice(), __fences, _wait_all, _wait_time);
+            }
+
+            void ResetFences(const std::vector<ContextIndex> &_fences_ci) {
+                std::vector<VkFence> __fences = cxt_handler.getObjsFence(_fences_ci);
+                Func::ResetFences(cxt_handler.getObjDevice(), __fences);
+            }
+        }; // BarrierHandler END
+
+
+//  == === ==== >   VKFW Device Memory Map Handler
+
+        struct MemoryMapHandler {
+            std::pair<void *, ContextIndex> mem_handle{nullptr, VKFW_CI_IGNORE};
+            std::vector<std::pair<ContextIndex2, VulkanContext::ContextMemory::MemoryMapping>> buf_maps, img_maps;
+
+            ObjGetterHandler cxt_handler;
+
+            MemoryMapHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
+           ~MemoryMapHandler() {
+                if (cxt_handler.getObjDevice() != VK_NULL_HANDLE) UnmapMemory();
+                clear();
+            }
+
+            void MapMemory(ContextIndex _ci_memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
+                mem_handle = { Func::MapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(_ci_memory), _offset, _size), _ci_memory };
+            }
+
+            void UnmapMemory() {
+                if (mem_handle.second != VKFW_CI_IGNORE)
+                    Func::UnmapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(mem_handle.second));
+            }
+
+            void clear() {
+                mem_handle = {nullptr, VKFW_CI_IGNORE};
+                buf_maps.clear();
+                img_maps.clear();
+            }
+
+        // Memory Functions
+
+            void FlushMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size(), VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE});
+                for (uint32_t i = 0u; i < __mem_ranges.size(); ++i) {
+                    __mem_ranges[i].memory =  cxt_handler.getObjDeviceMemory(mem_handle.second);
+                    __mem_ranges[i].offset = _mem_ranges[i].offset;
+                    __mem_ranges[i].size   = _mem_ranges[i].range;
                 }
 
-                cSwapchainSetCapabilities();
-                vkDeviceWaitIdle(vk_context->device);
-                c_swapchain.recreate(vk_context->device, vk_context->render_pass, vk_context->surface, alloc_callback);
+                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), __mem_ranges);
             }
 
-            // Returns graphics_pipeline shader_stage context index
-            ContextIndex cPipelineGraphicsAddShaderStage(ContextIndex _ci_shader_module, VkShaderStageFlagBits _stage, const char *_name, const VkSpecializationInfo &_spec_info = {}) {
-                c_graphics_pipeline.b_shader_stage.setShaderInfo(vk_context->shader_modules[_ci_shader_module], _stage, _name);
-                c_graphics_pipeline.b_shader_stage.setSpecializationInfo(_spec_info);
-                return c_graphics_pipeline.addShaderStage(); 
+            void InvalidateMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size(), VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE});
+                for (uint32_t i = 0u; i < __mem_ranges.size(); ++i) {
+                    __mem_ranges[i].memory =  cxt_handler.getObjDeviceMemory(mem_handle.second);
+                    __mem_ranges[i].offset = _mem_ranges[i].offset;
+                    __mem_ranges[i].size   = _mem_ranges[i].range;
+                }
+
+                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), __mem_ranges);
             }
 
-            // TODO: Returns compute_pipeline shader_stage context index
-            ContextIndex cPipelineComputeAddShaderStage(ContextIndex _ci_shader_module, const char *_name, const VkSpecializationInfo &_spec_info = {}) {
-                c_compute_pipeline.setShaderStage(vk_context->shader_modules[_ci_shader_module], _name);
-                c_compute_pipeline.b_shader_stage.setSpecializationInfo(_spec_info);
-                return 0u;
+        // Scenarios
+        
+            void mapMemoryFromBuffer(ContextIndex2 _buffer_ci, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
+                auto __buffer_mapping = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_buffer_ci.first].buffer_maps[_buffer_ci.second];
+                SVKFW_ASSERT(_offset         < __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer",          "'offset' is out of buffer range: " + std::to_string(_offset        ) + " < " + std::to_string(__buffer_mapping.range));
+                if (_size != VK_WHOLE_SIZE)
+                    SVKFW_ASSERT(_offset + _size < __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer", "'size' + 'offset' is out of buffer range: " + std::to_string(_offset + _size) + " < " + std::to_string(__buffer_mapping.range));
+
+                __buffer_mapping.offset += _offset;
+                __buffer_mapping.range   =   _size;
+
+                MapMemory(_buffer_ci.first, __buffer_mapping.offset, __buffer_mapping.range);
             }
 
-            // TODO: This function must not replace the functionality of mapping/unmapping VkDeviceMemory by its context index
-            //       So, wrap vkMapMemory/vkUnmapMemory.
-            void cBufferMemoryFill(ContextIndex _ci_buffer, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0ul, VkMemoryMapFlags _flags = 0u) {
-                c_device_memory.bBufferMemoryFill(vk_context->device, _ci_buffer, _data, _size, _offset, _flags);
+            void mapMemoryFromImage(ContextIndex2 _image_ci, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
+                auto __image_mapping = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_image_ci.first].image_maps[_image_ci.second];
+                SVKFW_ASSERT(_offset         < __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage",          "'offset' is out of image range: " + std::to_string(_offset        ) + " < " + std::to_string(__image_mapping.range));
+                if (_size != VK_WHOLE_SIZE)
+                    SVKFW_ASSERT(_offset + _size < __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage", "'size' + 'offset' is out of image range: " + std::to_string(_offset + _size) + " < " + std::to_string(__image_mapping.range));
+
+                __image_mapping.offset += _offset;
+                __image_mapping.range   =   _size;
+
+                MapMemory(_image_ci.first, __image_mapping.offset, __image_mapping.range);
             }
 
-            void cImageMemoryFill(ContextIndex _ci_image, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0ul, VkMemoryMapFlags _flags = 0u) {
-                c_device_memory.bImageMemoryFill(vk_context->device, _ci_image, _data, _size, _offset, _flags);
+            void mapMemoryFromResources(const std::vector<ContextIndex2> &_ci_bufs, const std::vector<ContextIndex2> &_ci_imgs) {
+                SVKFW_ASSERT(!_ci_bufs.empty() || !_ci_imgs.empty(), std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
+                                "Both buffer and image arrays are empty");
+
+                vec2u __mapping_loc{~0u, 0u};
+                ContextIndex __ci_device_mem = VKFW_CI_IGNORE;
+                if (!_ci_bufs.empty()) __ci_device_mem = _ci_bufs[0].first;
+                if (!_ci_imgs.empty()) __ci_device_mem = _ci_imgs[0].first;
+
+                buf_maps.resize(_ci_bufs.size());
+                for (uint32_t i = 0u; i < _ci_bufs.size(); ++i) {
+                    SVKFW_ASSERT(_ci_bufs[i].first == __ci_device_mem, std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
+                                    "buffer memory chunk mismatch: " + std::to_string(_ci_bufs[i].first) + " and " + std::to_string(__ci_device_mem));
+                    buf_maps[i].first  = _ci_bufs[i];
+                    buf_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_ci_bufs[i].first].buffer_maps[_ci_bufs[i].second];
+                    __mapping_loc.x = std::min(__mapping_loc.x, uint32_t(buf_maps[i].second.offset));
+                    __mapping_loc.y = std::max(__mapping_loc.y, uint32_t(buf_maps[i].second.offset + buf_maps[i].second.range));
+                }
+
+                img_maps.resize(_ci_imgs.size());
+                for (uint32_t i = 0u; i < _ci_imgs.size(); ++i) {
+                    SVKFW_ASSERT(_ci_imgs[i].first == __ci_device_mem, std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
+                                    "image memory chunk mismatch: " + std::to_string(_ci_imgs[i].first) + " and " + std::to_string(__ci_device_mem) + (_ci_bufs.empty() ? " (image)" : " (buffer)"));
+                    img_maps[i].first  = _ci_imgs[i];
+                    img_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_ci_imgs[i].first].image_maps[_ci_imgs[i].second];
+                    __mapping_loc.x = std::min(__mapping_loc.x, uint32_t(img_maps[i].second.offset));
+                    __mapping_loc.y = std::max(__mapping_loc.y, uint32_t(img_maps[i].second.offset + img_maps[i].second.range));
+                }
+
+                for (auto& buf_map : buf_maps)
+                    buf_map.second.offset -= __mapping_loc.x;
+                for (auto& img_map : img_maps)
+                    img_map.second.offset -= __mapping_loc.x;
+                __mapping_loc.y -= __mapping_loc.x;
+
+                MapMemory(__ci_device_mem, __mapping_loc.x, __mapping_loc.y);
             }
-        } Vulkan_global_context_factory; // VulkanContextFactory END
 
-
-// Context-based wrapper for function calls
-
-        struct VulkanContextFunc {
-            VulkanContext *vk_context = nullptr;
-            VulkanContextFactory *vk_factory = nullptr;
-
-            Cmd::BeginRenderPass::Builder       b_begin_render_pass;
-            Func::UpdateDescriptorSets::Builder b_update_descriptor_sets;
-
-            VulkanContextFunc(VulkanContext *_vk_context = nullptr,
-                              VulkanContextFactory *_vk_factory = nullptr) : vk_context{_vk_context}, vk_factory{_vk_factory} {}
-
-        // Set context/factory
-
-            void setContext(VulkanContext *_vk_context) {
-                vk_context = _vk_context;
+            void copyToBufferMap(ContextIndex2 _ci_buf, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                bool __success = false;
+                for (const auto &buf_map : buf_maps) {
+                    if (buf_map.first == _ci_buf) {
+                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = buf_map.second.range;
+                        // printf("Copying %ld bytes to mapped buffer: [%d, %d)\n", _mem_size, buf_map.second.offset, buf_map.second.offset + buf_map.second.range);
+                        memcpy((uint8_t*)mem_handle.first + buf_map.second.offset + _mem_offset, _data_ptr, _mem_size);
+                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                            FlushMappedMemoryRanges({ {buf_map.second.offset + _mem_offset, _mem_size} });
+                        __success = true;
+                        break;
+                    }
+                }
             }
-            void setFactory(VulkanContextFactory *_vk_factory) {
-                vk_factory = _vk_factory;
+
+            void copyToImageMap(ContextIndex2 _ci_img, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                bool __success = false;
+                for (const auto &img_map : img_maps) {
+                    if (img_map.first == _ci_img) {
+                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = img_map.second.range;
+                        memcpy((uint8_t*)mem_handle.first + img_map.second.offset + _mem_offset, _data_ptr, _mem_size);
+                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                            FlushMappedMemoryRanges({ {img_map.second.offset + _mem_offset, _mem_size} });
+                        __success = true;
+                        break;
+                    }
+                }
             }
-            void setFactoryContext(VulkanContext *_vk_context, VulkanContextFactory *_vk_factory) {
-                vk_context = _vk_context;
-                vk_factory = _vk_factory;
+
+            void copyFromBufferMap(ContextIndex2 _ci_buf, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                bool __success = false;
+                for (const auto &buf_map : buf_maps) {
+                    if (buf_map.first == _ci_buf) {
+                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                            InvalidateMappedMemoryRanges({ {buf_map.second.offset + _mem_offset, _mem_size} });
+                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + buf_map.second.offset + _mem_offset, _mem_size);
+                        __success = true;
+                    }
+                }
+            }
+
+            void copyFromImageMap(ContextIndex2 _ci_img, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                bool __success = false;
+                for (const auto &img_map : img_maps) {
+                    if (img_map.first == _ci_img) {
+                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                            InvalidateMappedMemoryRanges({ {img_map.second.offset + _mem_offset, _mem_size} });
+                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + img_map.second.offset + _mem_offset, _mem_size);
+                        __success = true;
+                    }
+                }
+            }
+        }; // MemoryMapHandler END
+
+
+//  == === ==== >   VKFW Command Buffer Handler
+
+        struct CommandHandler {
+            VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
+
+            Callable::CmdBeginRenderPass begin_render_pass_wrap;
+            Callable::BeginCommandBuffer  begin_cmd_buffer_wrap;
+
+            ObjGetterHandler cxt_handler;
+
+            CommandHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} { setBeginRenderPassRenderPass(); }
+           ~CommandHandler() { clear(); }
+
+            void setCmdBuffer(ContextIndex2 _cmd_buffer_ci2) {
+                cmd_buffer = cxt_handler.getObjCommandBuffer(_cmd_buffer_ci2);
+            }
+
+            void clear() {
+                cmd_buffer = VK_NULL_HANDLE;
+            }
+
+        // CmdBuffer-related
+
+            void BeginCommandBuffer() {
+                begin_cmd_buffer_wrap.callFunction(cmd_buffer);
+            }
+
+            void EndCommandBuffer() {
+                vkEndCommandBuffer(cmd_buffer);
+            }
+
+            void ResetCommandBuffer(bool _set_release_resources_bit = false) {
+                vkResetCommandBuffer(cmd_buffer, _set_release_resources_bit ? VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT : VkCommandBufferResetFlags(0u));
+            }
+
+        // Commands
+
+            void CmdBeginRenderPass(VkSubpassContents _contents) {
+                begin_render_pass_wrap.updateWrap();
+                begin_render_pass_wrap.callFunction(cmd_buffer, _contents);
+            }
+
+            void CmdEndRenderPass() {
+                vkCmdEndRenderPass(cmd_buffer);
+            }
+
+            void CmdBindDescriptorSets(ContextIndex _ci_pip_layout, VkPipelineBindPoint _pip_bind_pt, const std::vector<ContextIndex2> &_ci2_descr_sets, const std::vector<uint32_t> &_dynamic_descr = {}) {
+                auto __obj_descr_sets = cxt_handler.getObjsDescriptorSet(_ci2_descr_sets);
+                vkCmdBindDescriptorSets(cmd_buffer, _pip_bind_pt, cxt_handler.getObjPipelineLayout(_ci_pip_layout), 0u, __obj_descr_sets.size(), __obj_descr_sets.data(), _dynamic_descr.size(), _dynamic_descr.data());
+            }
+
+            void CmdBindIndexBuffer(ContextIndex2 _index_buffer_ci2, VkDeviceSize _offset = 0u, VkIndexType _index_type = VK_INDEX_TYPE_UINT32) {
+                vkCmdBindIndexBuffer(cmd_buffer, cxt_handler.getObjBuffer(_index_buffer_ci2), _offset, _index_type);
+            }
+
+            void CmdBindPipeline(ContextIndex _pipeline_ci) {
+                VkPipelineBindPoint __pipeline_type;
+                switch (cxt_handler.cxt_ptr->cxt_pipeline.pipelines[_pipeline_ci].pipeline_type) {
+                    case VKFW_PIPELINE_TYPE_GRAPHICS   : __pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS       ; break;
+                    case VKFW_PIPELINE_TYPE_COMPUTE    : __pipeline_type = VK_PIPELINE_BIND_POINT_COMPUTE        ; break;
+                    case VKFW_PIPELINE_TYPE_RAY_TRACING: __pipeline_type = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
+                }
+                vkCmdBindPipeline(cmd_buffer, __pipeline_type, cxt_handler.getObjPipeline(_pipeline_ci));
+            }
+
+            void CmdBindVertexBuffers(const std::vector<ContextIndex2> &_ci_buffers, std::vector<VkDeviceSize> &&_offsets = {}) {
+                std::vector<VkBuffer> __obj_buffers = cxt_handler.getObjsBuffer(_ci_buffers);
+                _offsets.resize(_ci_buffers.size(), 0u);
+
+                vkCmdBindVertexBuffers(cmd_buffer, 0u, __obj_buffers.size(), __obj_buffers.data(), _offsets.empty() ? nullptr : _offsets.data());
+            }
+
+            void CmdClearAttachments() {
+                VkClearAttachment attach{};
+                attach.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                attach.clearValue.color = {1.f, 0.f, 1.f, 1.f};
+                attach.colorAttachment = 0u;
+                VkClearRect rect{};
+                rect.rect.offset = {0, 0};
+                rect.rect.extent = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent;
+                rect.baseArrayLayer = 0;
+                rect.layerCount = 1;
+
+                vkCmdClearAttachments(cmd_buffer, 1, &attach, 1, &rect);
+            }
+
+            // void CmdClearColorImage() {
+            //     vkCmdClearColorImage()
+            // }
+
+            void CmdCopyBuffer(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_buffer_ci2, const std::vector<VkBufferCopy> &_copy_regions) {
+                VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_ci2);
+                VkBuffer __dst_buffer = cxt_handler.getObjBuffer(_dst_buffer_ci2);
+
+                vkCmdCopyBuffer(cmd_buffer, __src_buffer, __dst_buffer, (uint32_t) _copy_regions.size(), _copy_regions.data());
+            }
+
+            void CmdCopyImage(ContextIndex2 _src_image_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout1, VkImageLayout _layout2, const std::vector<VkImageCopy> &_copy_regions) {
+                VkImage __src_image = cxt_handler.getObjImage(_src_image_ci2);
+                VkImage __dst_image = cxt_handler.getObjImage(_dst_image_ci2);
+
+                vkCmdCopyImage(cmd_buffer, __src_image, _layout1, __dst_image, _layout2, (uint32_t) _copy_regions.size(), _copy_regions.data());
+            }
+
+            void CmdCopyBufferToImage(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout, const std::vector<VkBufferImageCopy> &_copy_regions) {
+                VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_ci2);
+                VkImage  __dst_image  = cxt_handler.getObjImage ( _dst_image_ci2);
+
+                vkCmdCopyBufferToImage(cmd_buffer, __src_buffer, __dst_image, _layout, (uint32_t) _copy_regions.size(), _copy_regions.data());
+            }
+
+            void CmdDraw(uint32_t _vert_count, uint32_t _inst_count, uint32_t _first_vert = 0u, uint32_t _first_inst = 0u) {
+                vkCmdDraw(cmd_buffer, _vert_count, _inst_count, _first_vert, _first_inst);
+            }
+            // Note: each index is 'index + vert_offset'
+            void CmdDrawIndexed(uint32_t _ind_count, uint32_t _inst_count, int32_t _vert_offset = 0, uint32_t _first_ind = 0u, uint32_t _first_inst = 0u) {
+                vkCmdDrawIndexed(cmd_buffer, _ind_count, _inst_count, _first_ind, _vert_offset, _first_inst);
+            }
+
+            void CmdPipelineBarrier() {
+                // VkMemoryBarrier;
+                // VkImageMemoryBarrier;
+                // VkBufferMemoryBarrier;
+                // vkCmdPipelineBarrier(cmd_buffer, );
+            }
+
+            void CmdSetLineWidth(float _line_width) {
+               vkCmdSetLineWidth(cmd_buffer, _line_width); 
+            }
+
+            void CmdSetScissor(const std::vector<VkRect2D> &_scissors) {
+                vkCmdSetScissor(cmd_buffer, 0, _scissors.size(), _scissors.data());
+            }
+
+            void CmdSetViewport(const std::vector<VkViewport> &_viewports) {
+                vkCmdSetViewport(cmd_buffer, 0, _viewports.size(), _viewports.data());
+            }
+
+        // Scenarios
+
+            void setBeginRenderPassRenderPass() {
+                begin_render_pass_wrap.wrap.wrap.renderPass = cxt_handler.getObjRenderPass();
+            }
+
+            void setBeginRenderPassSwapchainRenderArea() {
+                begin_render_pass_wrap.wrap.render_area_wrap.setOffset(vec2i(0));
+                begin_render_pass_wrap.wrap.render_area_wrap.setExtent(cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent);
+            }
+
+            void setBeginRenderPassSwapchainFramebuffer(ContextIndex _ci_framebuffer) {
+                begin_render_pass_wrap.wrap.wrap.framebuffer = cxt_handler.getObjSwapchainFramebuffer(_ci_framebuffer);
+            }
+
+            void cmdSetViewportScissorFromSwapchainExtent() {
+                VkViewport __swapchain_viewport{};
+                VkRect2D   __swapchain_scissor {};
+
+                __swapchain_scissor.extent  = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent;
+                __swapchain_viewport.width  = __swapchain_scissor.extent.width ;
+                __swapchain_viewport.height = __swapchain_scissor.extent.height;
+
+                vkCmdSetViewport(cmd_buffer, 0, 1, &__swapchain_viewport);
+                vkCmdSetScissor (cmd_buffer, 0, 1, &__swapchain_scissor );
+            }
+        }; // CommandHandler END
+
+
+//  == === ==== >   VKFW Function Call Handler
+
+        struct FuncHandler {
+            Callable::UpdateDescriptorSets update_descr_sets;
+            Callable::QueuePresentKHR     queue_present_wrap;
+            Callable::QueueSubmit          queue_submit_wrap;
+
+            std::vector<ContextIndex> wait_fences_for_swapchain; // fences to wait before recreating swapchain
+
+            ObjGetterHandler cxt_handler;
+
+            FuncHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
+           ~FuncHandler() {}
+
+
+            void setFencesToWait(const std::vector<ContextIndex> &_ci_fences) {
+                wait_fences_for_swapchain = _ci_fences;
             }
 
         // Functions
 
-            void waitForFences(const std::vector<ContextIndex> _ci_fences, VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
-                std::vector<VkFence> __fences{vk_context->getObjectVecFence(_ci_fences)};
-                vkWaitForFences(vk_context->device, __fences.size(), __fences.data(), _wait_all, _wait_time);
-            }
-
-            void resetFences(const std::vector<ContextIndex> _ci_fences) {
-                std::vector<VkFence> __fences{vk_context->getObjectVecFence(_ci_fences)};
-                vkResetFences(vk_context->device, __fences.size(), __fences.data());
-            }
-
-            void beginCommandBuffer(ContextIndex _ci_command_buffer, void *_p_next = nullptr, VkCommandBufferUsageFlags _flags = 0u,
-                                    const VkCommandBufferInheritanceInfo *_inheritance_info = nullptr) {
-                Func::beginCommandBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer), _p_next, _flags, _inheritance_info);
-            }
-
-            void resetCommandBuffer(ContextIndex _ci_command_buffer, VkCommandBufferResetFlags _flags = 0u) {
-                vkResetCommandBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer), _flags);
-            }
-
-            void endCommandBuffer(ContextIndex _ci_command_buffer) {
-                vkEndCommandBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer));
-            }
-
-            void queueSubmit(ContextIndex _ci_queue, const std::vector<VkSubmitInfo> &_submits, ContextIndex _ci_fence = UINT32_MAX) {
-                vkQueueSubmit(vk_context->getObjectQueue(_ci_queue), _submits.size(), _submits.data(),
-                              _ci_fence != UINT32_MAX ? vk_context->getObjectFence(_ci_fence) : VK_NULL_HANDLE);
-            }
-            // TODO: might pass more than 1 SubmitInfo, this overload always creates one, previous takes a vector of already created structs
-            void queueSubmit(ContextIndex _ci_queue,
-                             const std::vector<VkPipelineStageFlags> &_wait_stages,
-                             const std::vector<ContextIndex> &_ci_command_buffers,
-                             const std::vector<ContextIndex> &_ci_wait_semaphores,
-                             const std::vector<ContextIndex> &_ci_signal_semaphores,
-                             ContextIndex _ci_fence = UINT32_MAX, void *_p_next = nullptr) {
-                SubmitInfo::StructBuilder __b_info{vk_context->getObjectVecCommandBuffer(_ci_command_buffers),
-                                                   vk_context->getObjectVecSemaphore(_ci_wait_semaphores),
-                                                   vk_context->getObjectVecSemaphore(_ci_signal_semaphores)};
-                __b_info.setWaitStages(_wait_stages);
-
-                VkSubmitInfo __submit_info = __b_info.getVkStructView(_p_next);
-                vkQueueSubmit(vk_context->getObjectQueue(_ci_queue), 1u, &__submit_info,
-                              _ci_fence != UINT32_MAX ? vk_context->getObjectFence(_ci_fence) : VK_NULL_HANDLE);
-            }
-
-            // Returns next framebuffer's context index or UINT32_MAX when swapchain recreation is required (or in case of VK_SUBOPTIMAL_KHR)
-            ContextIndex acquireNextImageKHR(ContextIndex _ci_semaphore = UINT32_MAX, ContextIndex _ci_fence = UINT32_MAX, uint64_t _timeout = UINT64_MAX) {
-                ContextIndex __image_index = 0u;
-                VkResult __func_res = vkAcquireNextImageKHR(vk_context->device, vk_context->swapchain_context.swapchain, _timeout,
-                                                            _ci_semaphore != UINT32_MAX ? vk_context->getObjectSemaphore(_ci_semaphore) : VK_NULL_HANDLE,
-                                                            _ci_fence != UINT32_MAX ? vk_context->getObjectFence(_ci_fence) : VK_NULL_HANDLE, &__image_index);
-                if (__func_res != VK_SUCCESS) {
-                    if ((__func_res == VK_ERROR_OUT_OF_DATE_KHR || __func_res == VK_SUBOPTIMAL_KHR) && vk_factory != nullptr) {
-                        return UINT32_MAX;
-                    }
-                    else throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: acquireNextImageKHR", "unhandled function error"));
+            void QueuePresentKHR(ContextIndex2 _ci2_queue_pres, uint64_t _recreate_wait_fences_timeout = UINT64_MAX) {
+                queue_present_wrap.updateWrap();
+                if (queue_present_wrap.callFunction(cxt_handler.getObjQueue(_ci2_queue_pres)) == UINT32_MAX) {
+                    waitForRequiredFences(_recreate_wait_fences_timeout);
+                    cxt_handler.cxt_ptr->cxt_swapchain.recreate();
                 }
+            }
+
+            inline void QueueSubmit(ContextIndex2 _ci2_queue, const std::vector<ContextIndex2> &_ci2_cmdbuf, const std::vector<uint32_t> &_active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
+                QueueSubmit(cxt_handler.getObjQueue(_ci2_queue), cxt_handler.getObjsCommandBuffer(_ci2_cmdbuf), _active_submits, _fence_ci);
+            }
+            void QueueSubmit(VkQueue _obj_queue, const std::vector<VkCommandBuffer> &_obj_cmdbuf, const std::vector<uint32_t> &_active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
+                for (uint32_t i : _active_submits)
+                    queue_submit_wrap.wraps[i].command_buffers = _obj_cmdbuf;
+
+                queue_submit_wrap.setActiveSubmits(_active_submits);
+                queue_submit_wrap.callFunction(_obj_queue, cxt_handler.getObjFence(_fence_ci));
+            }
+
+            uint32_t AcquireNextImageKHR(ContextIndex _semaphore_ci, ContextIndex _fence_ci = VKFW_CI_IGNORE, uint64_t _timeout = UINT64_MAX) {
+                VkFence __fence = cxt_handler.getObjFence(_fence_ci);
+                uint32_t __image_index = UINT32_MAX;
+
+                VkResult __result = vkAcquireNextImageKHR(cxt_handler.getObjDevice(), cxt_handler.getObjSwapchainKHR(),
+                                                          _timeout, cxt_handler.getObjSemaphore(_semaphore_ci), __fence, &__image_index);
+
+                if (__result == VK_SUBOPTIMAL_KHR || __result == VK_ERROR_OUT_OF_DATE_KHR) {
+                    waitForRequiredFences(_timeout);
+                    cxt_handler.cxt_ptr->cxt_swapchain.recreate();
+                    __image_index = UINT32_MAX;
+                }
+                else if (__result != VK_SUCCESS)
+                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::SwapchainHandler :: AcquireNextImageKHR", "Failed to acquire next swapchain image"));
+
                 return __image_index;
             }
 
-            uint32_t queuePresentKHR(ContextIndex _ci_queue, const std::vector<ContextIndex> &_ci_wait_sem,
-                                         const std::vector<uint32_t> &_image_indices, void *_p_next = nullptr) {
-                std::vector<VkSemaphore> __wait_sem = vk_context->getObjectVecSemaphore(_ci_wait_sem);
-                VkSwapchainKHR __swapchain = vk_context->swapchain_context.swapchain;
-                VkQueue __queue = vk_context->getObjectQueue(_ci_queue);
-                VkResult __result = VK_SUCCESS;
-
-                VkPresentInfoKHR __info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-                __info.pNext = _p_next;
-                __info.waitSemaphoreCount = __wait_sem.size();
-                __info.pWaitSemaphores = __wait_sem.data();
-                __info.swapchainCount = 1u;
-                __info.pSwapchains = &__swapchain;
-                __info.pImageIndices = _image_indices.data();
-                __info.pResults = &__result;
-
-                uint32_t __func_res = vkQueuePresentKHR(__queue, &__info);
-                if (__func_res != VK_SUCCESS) {
-                    if ((__func_res == VK_ERROR_OUT_OF_DATE_KHR || __func_res == VK_SUBOPTIMAL_KHR) && vk_factory != nullptr) {
-                        return UINT32_MAX;
-                    }
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: queuePresentKHR","unhandled function error"));
-                }
-                return 0u;
+            void UpdateDescriptorSets() {
+                update_descr_sets.callFunction(cxt_handler.getObjDevice());
             }
-            uint32_t queuePresentKHR(ContextIndex _ci_queue, VkPresentInfoKHR &_pres_info, ContextIndex _ci_wait_sem) {
-                VkSemaphore __wait_sem = vk_context->getObjectSemaphore(_ci_wait_sem);
-                VkSwapchainKHR __swapchain = vk_context->swapchain_context.swapchain;
-                VkQueue __queue = vk_context->getObjectQueue(_ci_queue);
-
-                _pres_info.pWaitSemaphores = &__wait_sem;
-                _pres_info.pSwapchains = &__swapchain;
-
-                uint32_t __func_res = vkQueuePresentKHR(__queue, &_pres_info);
-                if (__func_res != VK_SUCCESS) {
-                    if ((__func_res == VK_ERROR_OUT_OF_DATE_KHR || __func_res == VK_SUBOPTIMAL_KHR) && vk_factory != nullptr) {
-                        return UINT32_MAX;
-                    }
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: queuePresentKHR (2)","unhandled function error"));
-                }
-                return 0u;
-            }
-            // Buffers are automatically bound after DeviceMemory allocation, so no need to call this function
-            void bindBufferMemory(ContextIndex _ci_buffer) {
-                auto __buffer_bind_info = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer);
-                vkBindBufferMemory(vk_context->device, vk_context->getObjectBuffer(_ci_buffer),
-                                   vk_context->getObjectDeviceMemory(__buffer_bind_info.ci_memory), __buffer_bind_info.offset);
-            }
-            // If 'size' is zero, maps memory from 'offset' to the end of buffer memory.
-            void* mapMemory(ContextIndex _ci_buffer_or_image, bool _is_image, VkDeviceSize _offset = 0ul, VkDeviceSize _size = 0ul, VkMemoryMapFlags _flags = 0u) {
-                if (_is_image)
-                    _ci_buffer_or_image |= Simple::VKFW::DeviceMemoryContext::BindInfo::LASTBIT_FLAG; // Flag used in BindInfo
-                auto __buffer_bind_info = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_or_image);
-                if (_offset + _size > __buffer_bind_info.size)
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: VulkanContextFunc :: mapBufferMemory", "'offset' + 'size' exceed buffer size"));
-                if (_size == 0ul)
-                    _size = __buffer_bind_info.size - _offset;
-                
-                void *__res = nullptr;
-                vkMapMemory(vk_context->device, vk_context->getObjectDeviceMemory(__buffer_bind_info.ci_memory), __buffer_bind_info.offset + _offset, _size, _flags, &__res);
-                return __res;
-            }
-            void unmapMemory(ContextIndex _ci_buffer_or_image, bool _is_image) {
-                _ci_buffer_or_image |= uint32_t(_is_image) * Simple::VKFW::DeviceMemoryContext::BindInfo::LASTBIT_FLAG; // Flag used in BindInfo
-                ContextIndex __ci_memory = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_or_image).ci_memory;
-                vkUnmapMemory(vk_context->device, vk_context->getObjectDeviceMemory(__ci_memory));
-            }
-
-            void updateDescriptorSets(const std::vector<uint32_t> &_write_upd, const std::vector<uint32_t> &_copy_upd, void *_p_next = nullptr) {
-                b_update_descriptor_sets.call(vk_context->device, _write_upd, _copy_upd, _p_next);
-            }
-            void updateDescriptorSets(void *_p_next = nullptr) {
-                b_update_descriptor_sets.call(vk_context->device, _p_next);
-            }
-            void bUpdateDescrSetsWriteSetInfo(ContextIndex _ci_sct_write_set, ContextIndex _ci_descr_set,  VkDescriptorType _descriptor_type, uint32_t _dst_binding, uint32_t _descriptor_count = 0U, uint32_t _dst_arr_element = 0U) {
-                b_update_descriptor_sets.getSetWrite(_ci_sct_write_set).setInfo(vk_context->getObjectDescriptorSet(_ci_descr_set), _descriptor_type, _dst_binding, _descriptor_count, _dst_arr_element);
-            }
-            void bUpdateDescrSetsWriteAddBufferInfo(ContextIndex _ci_sct_write_set, ContextIndex _ci_buffer, VkDeviceSize _offset = 0ul, VkDeviceSize _range = VK_WHOLE_SIZE) {
-                b_update_descriptor_sets.getSetWrite(_ci_sct_write_set).addBufferInfo(vk_context->getObjectBuffer(_ci_buffer), _offset, _range);
-            }
-            // TODO:
-            // void bUpdateDescriptorSetsWriteSetAddImageInfo() {
-
-            // }
-
-
-        // Commands
-
-            void cmdBeginRenderPass(ContextIndex _ci_command_buffer, ContextIndex _ci_framebuffer,
-                                    VkSubpassContents _contents, void *_p_next = nullptr) {
-                b_begin_render_pass.cmdCall(vk_context->getObjectCommandBuffer(_ci_command_buffer), vk_context->render_pass,
-                                            vk_context->getObjectFramebuffer(_ci_framebuffer), _contents, _p_next);
-            }
-
-            void cmdBindPipeline(ContextIndex _ci_command_buffer, VkPipelineBindPoint _bind_point) {
-                vkCmdBindPipeline(vk_context->getObjectCommandBuffer(_ci_command_buffer), _bind_point, vk_context->pipeline_context.pipeline);
-            }
-
-            void cmdBindVertexBuffers(ContextIndex _ci_command_buffer, uint32_t _binding_first, const std::vector<ContextIndex> &_ci_buffers) {
-                std::vector<VkBuffer> __buffers = vk_context->getObjectVecBuffer(_ci_buffers);
-                std::vector<VkDeviceSize> __offsets;
-
-                __offsets.resize(_ci_buffers.size());
-                for (uint32_t i = 0; i < _ci_buffers.size(); ++i)
-                    __offsets[i] = vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffers[i]).offset;
-
-                vkCmdBindVertexBuffers(vk_context->getObjectCommandBuffer(_ci_command_buffer), _binding_first, (uint32_t)__buffers.size(), __buffers.data(), __offsets.data());
-            }
-
-            void cmdBindIndexBuffer(ContextIndex _ci_command_buffer, ContextIndex _ci_buffer, VkIndexType _index_type) {
-                vkCmdBindIndexBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer), vk_context->getObjectBuffer(_ci_buffer),
-                                     vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer).offset, _index_type);
-            }
-
-            void cmdBindDescriptorSets(ContextIndex _ci_command_buffer, VkPipelineBindPoint _pip_bind_point, uint32_t _first_set, const std::vector<ContextIndex> &_ci_descr_set, const std::vector<ContextIndex> &_ci_descr = {}) {
-                std::vector<VkDescriptorSet> __descr_sets{vk_context->getObjectVecDescriptorSet(_ci_descr_set)};
-                vkCmdBindDescriptorSets(vk_context->getObjectCommandBuffer(_ci_command_buffer), _pip_bind_point, vk_context->pipeline_context.layout, _first_set, __descr_sets.size(), __descr_sets.data(), _ci_descr.size(), _ci_descr.data());
-            }
-
-            void cmdSetViewport(ContextIndex _ci_command_buffer, const std::vector<VkViewport> &_viewports,
-                                uint32_t _offset = 0u, uint32_t _count = 0u) {
-                if (_count == 0u)
-                    _count = _viewports.size() - _offset;
-                vkCmdSetViewport(vk_context->getObjectCommandBuffer(_ci_command_buffer), _offset, _count, _viewports.data());
-            }
-            // This overload sets viewport from swapchain_extent
-            void cmdSetViewport(ContextIndex _ci_command_buffer) {
-                Viewport::StructWrap __viewport{vk_factory->c_swapchain.b_swapchain.image_info.extent};
-                vkCmdSetViewport(vk_context->getObjectCommandBuffer(_ci_command_buffer), 0u, 1u, &__viewport.viewport);
-            }
-
-            void cmdSetScissor(ContextIndex _ci_command_buffer, const std::vector<VkRect2D> &_scissors,
-                               uint32_t _offset = 0u, uint32_t _count = 0u) {
-                if (_count == 0u)
-                    _count = _scissors.size() - _offset;
-                vkCmdSetScissor(vk_context->getObjectCommandBuffer(_ci_command_buffer), _offset, _count, _scissors.data());
-            }
-            // This overload sets scissor from swapchain_extent
-            void cmdSetScissor(ContextIndex _ci_command_buffer) {
-                Rect2D::StructWrap __scissor{vk_factory->c_swapchain.b_swapchain.image_info.extent};
-                vkCmdSetScissor(vk_context->getObjectCommandBuffer(_ci_command_buffer), 0u, 1u, &__scissor.rectangle);
-            }
-
-            void cmdDraw(ContextIndex _ci_command_buffer, uint32_t _vert_count, uint32_t _inst_count,
-                             uint32_t _vert_offset  = 0u, uint32_t _inst_offset = 0u) {
-                vkCmdDraw(vk_context->getObjectCommandBuffer(_ci_command_buffer), _vert_count, _inst_count, _vert_offset, _inst_offset);
-            }
-
-            void cmdDrawIndexed(ContextIndex _ci_command_buffer, uint32_t _index_count, uint32_t _inst_count, uint32_t _first_index = 0u, int32_t _vert_offset = 0u, uint32_t _first_inst = 0u) {
-                vkCmdDrawIndexed(vk_context->getObjectCommandBuffer(_ci_command_buffer), _index_count, _inst_count, _first_index, _vert_offset, _first_inst);
-            }
-
-            void cmdEndRenderPass(ContextIndex _ci_command_buffer) {
-                vkCmdEndRenderPass(vk_context->getObjectCommandBuffer(_ci_command_buffer));
-            }
-
-            void cmdCopyBuffer(ContextIndex _ci_command_buffer, ContextIndex _ci_buffer_src, ContextIndex _ci_buffer_dst, const std::vector<VkBufferCopy> &_copy_regions) {
-                vkCmdCopyBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer), vk_context->getObjectBuffer(_ci_buffer_src),
-                                vk_context->getObjectBuffer(_ci_buffer_dst), _copy_regions.size(), _copy_regions.data());                
-            }
-
-            // By default, one region with the size of min(src buffer, dst buffer)
-            // is copied to the beginning of dst buffer. It can be done by passing size=0.
-            void cmdCopyBuffer(ContextIndex _ci_command_buffer, ContextIndex _ci_buffer_src, ContextIndex _ci_buffer_dst, VkDeviceSize _size = 0ul, uint32_t _offset_src = 0u, uint32_t _offset_dst = 0u) {
-                if (_size == 0u) {
-                    _size = std::min(vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
-                                     vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
-                    // printf("Scr buffer size: %d, Dst buffer size: %d\n", vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_src).size,
-                    //                                                      vk_factory->c_device_memory.bBufferGetBindInfo(_ci_buffer_dst).size);
-                }
-                VkBufferCopy __region_info{ _offset_src, _offset_dst, _size };
-                // printf("Region info: offset src: %d, offset dst: %d, size: %d\n", __region_info.srcOffset, __region_info.dstOffset, __region_info.size);
-
-                vkCmdCopyBuffer(vk_context->getObjectCommandBuffer(_ci_command_buffer),
-                                vk_context->getObjectBuffer(_ci_buffer_src),
-                                vk_context->getObjectBuffer(_ci_buffer_dst), 1u, &__region_info);
-            }
-
 
         // Scenarios
 
-            // Sets current swapchain extent (and zero offset) as render area (so that it matches the framebuffer)
-            void bCmdBeginRenderPassSetRenderAreaFull() {
-                b_begin_render_pass.setRenderArea(vk_factory->c_swapchain.b_swapchain.image_info.extent);
+            void waitForRequiredFences(uint64_t _timeout = UINT64_MAX) {
+                auto __obj_fences = cxt_handler.getObjsFence(wait_fences_for_swapchain);
+                if (!__obj_fences.empty())
+                    vkWaitForFences(cxt_handler.getObjDevice(), __obj_fences.size(), __obj_fences.data(), VK_TRUE, _timeout);
             }
-        } Vulkan_global_context_func; // VulkanContextFunc END
 
+            void setWholeQueuePresentStruct(const std::vector<ContextIndex> &_ci_wait_semaphores,
+                                            const std::vector<uint32_t> &_image_indices, bool _use_results = false) {
+                auto __obj_semaphores = cxt_handler.getObjsSemaphore(_ci_wait_semaphores);
+                queue_present_wrap.wrap.setWholeStruct(__obj_semaphores, {cxt_handler.getObjSwapchainKHR()}, _image_indices, _use_results);
+            }
 
-        void initContext(VulkanContext* _vk_context = &Vulkan_global_context, VulkanContextFactory *_vk_factory = &Vulkan_global_context_factory, VulkanContextFunc *_vk_func = &Vulkan_global_context_func) {
-            if (_vk_factory != nullptr)
-                _vk_factory->setContext(_vk_context);
-            if (_vk_func != nullptr)
-                _vk_func->setFactoryContext(_vk_context, _vk_factory);
-        }
+            void writeBufferMemory(CommandHandler &_cmd_handler, ContextIndex2 _ci2_queue_transfer, ContextIndex2 _buffer_ci2, ContextIndex2 _staging_buffer_ci2, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {
+                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_buffer_ci2.first].buffers[_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Buffer with context index"), _buffer_ci2.first, _buffer_ci2.second,
+                                                                            "is not set as transfer operation destination point");
 
+                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffers[_staging_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
+                                                                            "is not set as transfer operation source point");
 
-// ResultHandler::handle definition
+                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
+                                                                            "cannot be mapped to CPU");
 
-        void ResultHandler::handle(VkResult _result, VulkanContextFactory *_vk_factory) {
-            // TODO:
-        }
+                bool   __call_flush = (cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0u;
+                size_t __staging_buffer_map_size = std::min(_copy_size, cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffer_maps[_staging_buffer_ci2.second].range);
+                BarrierHandler      __barrier_h{cxt_handler.cxt_ptr};
+                MemoryMapHandler __buffer_map_h{cxt_handler.cxt_ptr};
+                __buffer_map_h.mapMemoryFromBuffer(_staging_buffer_ci2, 0u, __staging_buffer_map_size);
+
+                ContextIndex  __fence_ci = cxt_handler.cxt_ptr->cxt_barrier.addFence(false);
+                ContextIndex __submit_ci = queue_submit_wrap.wraps.size();
+
+                queue_submit_wrap.wraps.emplace_back();
+                queue_submit_wrap.wraps[__submit_ci].command_buffers = { _cmd_handler.cmd_buffer };
+                queue_submit_wrap.wraps[__submit_ci].wait_stages = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+
+                VkMappedMemoryRange __mem_range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+                __mem_range.memory = cxt_handler.getObjDeviceMemory(_staging_buffer_ci2.first);
+                VkBufferCopy __copy_region{ .dstOffset = _dst_offset };
+
+                while (_copy_size > 0u) {
+                    size_t __curr_copy_size = std::min(__staging_buffer_map_size, _copy_size);
+                    __copy_region.size = __curr_copy_size;
+                    _copy_size -= __curr_copy_size;
+
+                    _cmd_handler.BeginCommandBuffer();
+
+                    memcpy(__buffer_map_h.mem_handle.first, (uint8_t*)_copy_data + (__copy_region.dstOffset - _dst_offset), __curr_copy_size);
+                    if (__call_flush) __buffer_map_h.FlushMappedMemoryRanges({ { 0u, __curr_copy_size } });
+                    _cmd_handler.CmdCopyBuffer(_staging_buffer_ci2, _buffer_ci2, { __copy_region });
+
+                    _cmd_handler.EndCommandBuffer();
+
+                    QueueSubmit(cxt_handler.getObjQueue(_ci2_queue_transfer), {_cmd_handler.cmd_buffer}, {__submit_ci}, __fence_ci);
+                    __barrier_h.WaitForFences({__fence_ci});
+                    __barrier_h.  ResetFences({__fence_ci});
+
+                    _cmd_handler.ResetCommandBuffer();
+                    __copy_region.dstOffset += __curr_copy_size;
+                }
+                cxt_handler.cxt_ptr->cxt_barrier.destroyFence(__fence_ci);
+                queue_submit_wrap.wraps.pop_back();
+            }
+
+            // TODO: writeImageMemory for image types
+
+            // void writeImageMemory(ContextIndex2 _image_ci2, ContextIndex2 _staging_buffer_ci2, VkImageLayout _layout, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {
+            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_image_ci2.first].buffers[_image_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
+            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Image with context index"), _image_ci2.first, _image_ci2.second,
+            //                                                                 "is not set as transfer operation destination point");
+
+            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffers[_staging_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
+            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
+            //                                                                 "is not set as transfer operation source point");
+
+            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0u)
+            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
+            //                                                                 "cannot be mapped to CPU");
+
+            //     bool   __call_flush = (cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0u;
+            //     size_t __staging_buffer_map_size = std::min(_copy_size, cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffer_maps[_staging_buffer_ci2.second].range);
+            //     BarrierHandler      __barrier_h{cxt_handler.cxt_ptr};
+            //     MemoryMapHandler __buffer_map_h{cxt_handler.cxt_ptr};
+            //     __buffer_map_h.setMemoryChunk(_staging_buffer_ci2.first);
+
+            //     ContextIndex __memory_map_ci = __buffer_map_h.mapMemoryFromBuffer(_staging_buffer_ci2.second, 0u, __staging_buffer_map_size);
+            //     ContextIndex      __fence_ci = __barrier_h.cxt_handler.cxt_ptr->cxt_barrier.addFence(false);
+            //     ContextIndex     __submit_ci =   queue_submit_wrap.wraps.size();
+
+            //     queue_submit_wrap.wraps.emplace_back();
+            //     queue_submit_wrap.wraps[__submit_ci].command_buffers = {cmd_buffer};
+            //     queue_submit_wrap.wraps[__submit_ci].wait_stages = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+
+            //     VkMappedMemoryRange __mem_range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+            //     __mem_range.memory = cxt_handler.getObjDeviceMemory(_staging_buffer_ci2.first);
+            //     VkBufferImageCopy __copy_region{};
+            //     __copy_region.dstOffset = _dst_offset;
+
+            //     while (_copy_size > 0u) {
+            //         size_t __curr_copy_size = std::min(__staging_buffer_map_size, _copy_size);
+            //         _copy_size -= __curr_copy_size;
+
+            //         BeginCommandBuffer();
+
+            //         memcpy(__buffer_map_h.handles[__memory_map_ci], _copy_data + (__copy_region.dstOffset - _dst_offset), __curr_copy_size);
+            //         if (__call_flush) __buffer_map_h.FlushMappedMemoryRanges({ { 0u, __curr_copy_size } });
+            //         CmdCopyBufferToImage(_staging_buffer_ci2, _buffer_ci2, { __copy_region });
+
+            //         EndCommandBuffer();
+
+            //         QueueSubmit({__submit_ci}, __fence_ci);
+            //         __barrier_h.WaitForFences({__fence_ci});
+            //         __barrier_h.  ResetFences({__fence_ci});
+
+            //         __copy_region.dstOffset += __curr_copy_size;
+            //     }
+            // }
+        }; // FuncHandler END
     }; // VKFW END
 }; // Simple END
 

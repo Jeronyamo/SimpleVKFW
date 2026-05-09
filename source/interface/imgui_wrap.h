@@ -788,10 +788,12 @@ namespace Simple {
             std::vector<WidgetItf*> widgets; // Main Menu Bar or Window widgets
 
             ImGuiHandler() {
-                SVKFW_WASSERT(IMGUI_CHECKVERSION(), "ImGuiHandler Constructor", "ImGUI version mismatch\n");
+                SVKFW_WASSERT(IMGUI_CHECKVERSION(), "ImGUI::ImGuiHandler Constructor", "ImGUI version mismatch\n");
                 context = ImGui::CreateContext();
             }
-            ~ImGuiHandler() {
+           ~ImGuiHandler() { destroyContext(); }
+
+            void destroyContext() {
                 ImGui_ImplVulkan_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
                 ImGui::DestroyContext(context);
@@ -820,15 +822,15 @@ namespace Simple {
                 ImGui_ImplVulkan_RenderDrawData(__draw_data, _cmd_buffer);
             }
 
-            void initializeContext(VKFW::VulkanContext* _vk_context, VKFW::ContextIndex _ci_qfamily,
-                                VKFW::ContextIndex _ci_graphics_queue, uint32_t _image_count) {
-                imgui_info.Instance = _vk_context->instance;
-                imgui_info.PhysicalDevice = _vk_context->phys_device;
-                imgui_info.Device = _vk_context->device;
-                imgui_info.QueueFamily = _vk_context->queue_families[_ci_qfamily];
-                imgui_info.Queue = _vk_context->queues[_ci_graphics_queue];
-                imgui_info.PipelineInfoMain.RenderPass = _vk_context->render_pass;
-                // imgui_info.DescriptorPool = _vk_context->descriptor_context.pools[_ci_descriptor_pool];
+            void initializeContext(const VKFW::ObjGetterHandler &_vkfw_getter, VKFW::ContextIndex _ci_qfamily,
+                                   VKFW::ContextIndex2 _ci2_graphics_queue, uint32_t _image_count) {
+                imgui_info.Instance                    = _vkfw_getter.getObjInstance();
+                imgui_info.PhysicalDevice              = _vkfw_getter.getObjPhysicalDevice();
+                imgui_info.Device                      = _vkfw_getter.getObjDevice();
+                imgui_info.QueueFamily                 = _vkfw_getter.getObjQueueFamily(_ci_qfamily);
+                imgui_info.Queue                       = _vkfw_getter.getObjQueue(_ci2_graphics_queue);
+                imgui_info.PipelineInfoMain.RenderPass = _vkfw_getter.getObjRenderPass();
+                // imgui_info.DescriptorPool = _vkfw_getter.getObjDescriptorPool(_ci_descr_pool);
                 imgui_info.MinImageCount = getMinImageCount();
                 imgui_info.ImageCount = std::max(_image_count, getMinImageCount());
                 imgui_info.DescriptorPoolSize = getMinPoolSize();

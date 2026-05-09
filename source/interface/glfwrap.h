@@ -123,14 +123,12 @@ namespace Simple {
         Window(Window &&_window) : window{_window.window} {
             _window.window = nullptr;
         }
-        ~Window() {
-            if (window != nullptr)
-                glfwDestroyWindow(window);
-        }
+       ~Window() {}
 
 
         bool shouldClose() { return glfwWindowShouldClose(window); }
         void setClose(bool _close = true) { glfwSetWindowShouldClose(window, _close ? GLFW_TRUE : GLFW_FALSE); }
+        void destroy() { glfwDestroyWindow(window); }
 
         vec2i getPos() const {
             int x, y;

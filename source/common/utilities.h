@@ -4,9 +4,9 @@
 #include <type_traits>
 
 #include "common/terminal.h"
+#include "common/memory.h"
 
-// this file contains various [template] classes/functions
-// used under the hood
+// this file contains various [template] classes/functions used under the hood
 
 
 namespace Simple {
@@ -48,6 +48,61 @@ namespace Simple {
                 enum_collection[_enum_name] = _enum_values;
             }
         }; // EnumCollector END
+
+    // Used to simplify work with all the "const char **" struct members in Vulkan
+        struct StringVec {
+            std::vector<std::string> list;
+
+            StringVec() {}
+            StringVec(const std::vector<std::string> &_l) : list{_l} { updateEntriesPtr(); }
+            StringVec(const StringVec &_sv) : list{_sv.list} { updateEntriesPtr(); }
+            StringVec(StringVec &&_sv) : list{std::move(_sv.list)}, _ptr{_sv._ptr} { _sv._ptr = nullptr; }
+            StringVec(const char **_arr, uint32_t _count) {
+                list.insert(list.end(), _arr, _arr + _count);
+                updateEntriesPtr();
+            }
+           ~StringVec() { clear(); }
+
+            const StringVec &operator=(const StringVec &_sv) {
+                setEntries(_sv);
+                return *this;
+            }
+
+            void clear() {
+                list.clear();
+                safeDeleteArr(_ptr);
+            }
+
+            uint32_t count() const { return list.size(); }
+
+
+            void setEntries(const StringVec &_sv) {
+                list = _sv.list;
+                updateEntriesPtr();
+            }
+
+            void addEntries(const std::vector<std::string> &_l) {
+                list.insert(list.end(), _l.begin(), _l.end());
+                updateEntriesPtr();
+            }
+
+            const char **getEntries() const {
+                return _ptr;
+            }
+
+        private:
+            const char **_ptr = nullptr;
+
+            void updateEntriesPtr() {
+                safeDeleteArr(_ptr);
+
+                if (list.size()) {
+                    _ptr = new const char *[list.size()];
+                    for (uint32_t i = 0u; i < list.size(); ++i)
+                        _ptr[i] = list[i].c_str();
+                }
+            }
+        }; // StringVec END
 
 
         //  Functions

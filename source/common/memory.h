@@ -27,6 +27,21 @@ namespace Simple {
         _ptr = nullptr;
     }
 
+// Safe void memory deallocation (with explicit pointer cast).
+    template <typename T>
+    inline void safeDeleteVoid(const void *&_ptr) {
+        if (_ptr != nullptr)
+            delete (T*) _ptr;
+        _ptr = nullptr;
+    }
+// Safe void memory array deallocation (with explicit pointer cast).
+    template <typename T>
+    inline void safeDeleteVoidArr(const void *&_ptr) {
+        if (_ptr != nullptr)
+            delete[] (T*) _ptr;
+        _ptr = nullptr;
+    }
+
 // A deleter for unique_ptr/shared_ptr pointers, when memory is provided by malloc.
     struct FreeDeleter { void operator()(void *ptr) const { free(ptr); } };
 }; // Simple END
