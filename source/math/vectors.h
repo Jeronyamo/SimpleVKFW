@@ -902,7 +902,7 @@ namespace Simple {
             { return std::min(std::min(op1.x, op1.y), op1.z); }
         template <typename Y>
         inline Util::remove_ref_c<Y> maxOf(const Vec3Base<Y> &op1)
-            { return std::min(std::min(op1.x, op1.y), op1.z); }
+            { return std::max(std::max(op1.x, op1.y), op1.z); }
 
         template <typename Y>
         inline Util::remove_ref_c<Y> minOf(const Vec4Base<Y> &op1)
