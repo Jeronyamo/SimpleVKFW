@@ -1,560 +1,278 @@
 #ifndef SVKFW_ECSBASE_H
 #define SVKFW_ECSBASE_H
 
-#include "main/dbops.h"
-
-#include <atomic>
 #include <vector>
+#include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
 
-#ifdef SVKFW_CHAIN_LEN_EXTRA
-typedef unsigned ChainLenType;
-#else
-typedef unsigned char ChainLenType;
-#endif
+#include "math/vectors.h"
+#include "fun/etcs_tags.h"
+
+#define TAG_NO_COMPONENT UINT32_MAX
 
 
 namespace Simple {
-    //  ============  ECS utilities  ============  \\
+//  == === ==== =================================== ==== === ==  \\
+                    Entity tag-component system
+//  == === ==== =================================== ==== === ==  \\
 
-    using std::pair;
-    using std::vector;
-
-    enum struct EntityID : unsigned;
-    enum struct TagID : unsigned;
-
-    template <bool IsTypeEnum>
-    using TypeSwitchForTag = typename std::conditional<IsTypeEnum, TagID, unsigned>::type;
-
-    template <bool IsTypeEnum>
-    using TypeSwitchForEntity = typename std::conditional<IsTypeEnum, EntityID, unsigned>::type;
-
-    typedef bool (*EntitiesWhereFunc)(const un_mulset<TagID> &_mset);
-    typedef bool (*EntitiesWhereFunc2)(EntityID _ent, const un_mulset<TagID> &_mset);
-
-// Example of predefined WhereFunction
-    template <TagID tag>
-    EntitiesWhereFunc CondWithTag = [](const un_mulset<TagID> &t) { return t.find(tag) != t.end(); };
-
-// TODO: REDO
-    std::atomic<unsigned> EntityIDgenerator = 1;
-    std::atomic<unsigned> TagIDgenerator = 1;
-
-
-// Assuming _m1.size() <= _m2.size()
-    un_map<EntityID, un_mulset<TagID>> _UnionMaxOf2(const un_map<EntityID, un_mulset<TagID>> &_m1,
-                                                    const un_map<EntityID, un_mulset<TagID>> &_m2) {
-        un_map<EntityID, un_mulset<TagID>> _tmp{_m2};
-        for (auto& elem : _m1) {
-            if (_tmp.find(elem.first) != _tmp.end())
-                _tmp[elem.first] = UNION_MAX_OF_TWO(_tmp[elem.first], elem.second);
-            else _tmp[elem.first] = elem.second;
-        }
-        return _tmp;
-    }
-
-// Assuming _m1.size() <= _m2.size()
-    un_map<EntityID, un_mulset<TagID>> _InJoinMinOf2(const un_map<EntityID, un_mulset<TagID>> &_m1,
-                                                     const un_map<EntityID, un_mulset<TagID>> &_m2) {
-        un_map<EntityID, un_mulset<TagID>> _tmp{_m2};
-        for (auto& elem : _m1) {
-            if (_tmp.find(elem.first) != _tmp.end())
-                _tmp[elem.first] = UNION_MIN_OF_TWO(_tmp[elem.first], elem.second);
-        }
-        return _tmp;
-    }
-
-
-    //  ============  Entities  ============  \\
-
-    struct Entities {
-        un_map<EntityID, un_mulset<TagID>> map;
-
-
-        Entities operator|(const Entities &_ent) const {
-            if (this->map.size() <= _ent.map.size()) {
-                return { _UnionMaxOf2(this->map, _ent.map) };
-            }
-            else {
-                return { _UnionMaxOf2(_ent.map, this->map) };
-            }
-        }
-
-        Entities operator&(const Entities &_ent) const {
-            if (this->map.size() <= _ent.map.size()) {
-                return { _InJoinMinOf2(this->map, _ent.map) };
-            }
-            else {
-                return { _InJoinMinOf2(_ent.map, this->map) };
-            }
-        }
-
-        Entities operator|(const un_set<EntityID> &_ent) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp{ map };
-
-            for (auto& elem : _ent)
-                _tmp[elem];
-            return { _tmp };
-        }
-
-        Entities operator&(const un_set<EntityID> &_ent) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            if (_ent.size() < map.size()) {
-                for (auto& elem : _ent) {
-                    auto iter = map.find(elem);
-                    if (iter != map.end())
-                        _tmp.insert(*iter);
-                }
-            }
-            else {
-                for (auto& elem : map) {
-                    if (_ent.find(elem.first) != _ent.end())
-                        _tmp.insert(elem);
-                }
-            }
-            return { _tmp };
-        }
-
-// Returns a set of map keys
-        un_set<EntityID> keys() {
-            un_set<EntityID> _tmp(map.size());
-
-            for (auto& elem : map)
-                _tmp.insert(elem.first);
-            return _tmp;
-        }
-
-
-// Returns submap of entities-attributes such that Where Function of (multiset<TagID>) returns true
-        Entities Where(EntitiesWhereFunc _func) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            for (auto& elem : map) {
-                if (_func(elem.second))
-                    _tmp.insert(elem);
-            }
-            return { _tmp };
-        }
-
-// Returns submap of entities-attributes such that EntitiesWhereFunc2 of (EntityID, multiset<TagID>) returns true
-        Entities Where(EntitiesWhereFunc2 _func) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            for (auto& elem : map) {
-                if (_func(elem.first, elem.second))
-                    _tmp.insert(elem);
-            }
-            return { _tmp };
-        }
-
-// Returns submap of entities-attributes that contain "tag"
-        Entities With(TagID tag) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            for (auto& elem : map) {
-                if (elem.second.find(tag) != elem.second.end())
-                    _tmp.insert(elem);
-            }
-            return { _tmp };
-        }
-
-// Returns submap of entities-attributes that contain all tags from "tags" argument
-        Entities WithALL(const un_set<TagID> &tags) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            for (auto& elem : map) {
-                bool flag = false;
-
-                for (auto tag : tags)
-                    if (flag = elem.second.find(tag) == elem.second.end())
-                        break;
-
-                if (!flag) _tmp.insert(elem);
-            }
-            return { _tmp };
-        }
-// Returns submap of entities-attributes that contain any tag from "tags" argument
-        Entities WithANY(const un_set<TagID> &tags) const {
-            un_map<EntityID, un_mulset<TagID>> _tmp;
-
-            for (auto& elem : map) {
-                bool flag = false;
-
-                for (auto tag : tags)
-                    if (flag = elem.second.find(tag) != elem.second.end())
-                        break;
-
-                if (flag) _tmp.insert(elem);
-            }
-            return { _tmp };
-        }
-
-// If entity has attribute multiset, adds _tag to the multiset
-        int AddTag(EntityID _ent, TagID _tag) {
-            auto elem = map.find(_ent);
-            if (elem != map.end()) {
-                elem->second.insert(_tag);
-                return 0;
-            }
-            return -1;
-        }
-
-// If entity has attribute multiset, ensures there's exactly one occurence of the _tag in the multiset
-        int AddTagUnique(EntityID _ent, TagID _tag) {
-            auto elem = map.find(_ent);
-            if (elem != map.end()) {
-                unsigned cnt = elem->second.count(_tag);
-                if (!cnt)
-                    elem->second.insert(_tag);
-                while (cnt > 1)
-                    elem->second.erase(elem->second.find(_tag));
-                return 0;
-            }
-            return -1;
-        }
-
-        int DelTag(EntityID _ent, TagID _tag) {
-            auto elem = map.find(_ent);
-            if (elem != map.end()) {
-                auto _tmp = elem->second.equal_range(_tag);
-                elem->second.erase(_tmp.first, _tmp.second);
-                return 0;
-            }
-            return -1;
-        }
-
-        int DelTagOnce(EntityID _ent, TagID _tag) {
-            auto elem = map.find(_ent);
-            if (elem != map.end()) {
-                elem->second.erase(_tag);
-                return 0;
-            }
-            return -1;
-        }
-    };
-
-    Entities operator|(const un_set<EntityID> &_ent, const Entities &_ent2) {
-        return _ent2 | _ent;
-    }
-
-    Entities operator&(const un_set<EntityID> &_ent, const Entities &_ent2) {
-        return _ent2 & _ent;
-    }
-
-
-    //  ============  Components  ============  \\
+    enum struct EntityID : uint32_t;
+    typedef     uint8_t DataArr[16]; // TODO: 16 or 24?
 
     struct Component {
-        virtual ~Component() {}
-    };
+        EntityID entity;
+        TagID       tag;
+        DataArr  p_data;
 
-    struct Components {
-        un_map<TagID, Component*> comp_map;
-        un_map<std::pair<TagID, EntityID>, TagID> tag_map;
+        template <typename SetT>
+        void   setData(const SetT &_data_fill) {  std::memcpy((void*)p_data, (void*) &_data_fill, sizeof(SetT));  }
+        template <typename GetT>
+        GetT   getData() const { return *((GetT*)p_data); }
+
+        bool   isValid() const { return tag != TagID::TAG_DELETED && entity != EntityID(TAG_NO_COMPONENT); }
+        size_t getHash() const { return (uint32_t(entity) << 32) | (uint32_t)tag; }
+
+        bool operator<(const Component& _comp) { return getHash() < _comp.getHash(); }
+
+        template <typename T>
+        static Component Create(EntityID _ent, TagID _tag, const T &_data_fill) {
+            Component __res{ _ent, _tag };
+            __res.setData<T>(_data_fill);
+            return __res;
+        }
+        static const Component Invalid;
+    }; // Component END
+    const Component Component::Invalid{ EntityID(TAG_NO_COMPONENT), TagID::TAG_DELETED };
 
 
-        Component* ComponentMappingGet(TagID _tag) {
-            auto elem = comp_map.find(_tag);
-            return elem != comp_map.end() ? elem->second : nullptr;
+    struct ComponentStorage {
+        std::vector<std::unordered_map<TagID, uint32_t>> entity_tags; // entity -> set of tag-offset pairs (some tags correspond to components -> store its offset)
+        std::vector<Component> components;
+        std::unordered_set<EntityID> deleted_entities;
+
+        static std::unordered_map<TagID, uint32_t> TagMapFromVector(const std::vector<TagID> &_tags) {
+            std::unordered_map<TagID, uint32_t> __res(_tags.size());
+            for (auto tag : _tags) __res[tag] = TAG_NO_COMPONENT;
+            return __res;
         }
 
-        template <bool ReturnTypeEnum = true, bool ReturnInputTag = false>
-        TypeSwitchForTag<ReturnTypeEnum>
-        TagMappingGet(TagID _tag, EntityID _ent) {
-            auto elem = tag_map.find(pair<TagID, EntityID>{_tag, _ent});
-            return elem != tag_map.end() ? (TypeSwitchForTag<ReturnTypeEnum>) elem->second :
-                                           (ReturnInputTag ? (TypeSwitchForTag<ReturnTypeEnum>) _tag :
-                                                             (TypeSwitchForTag<ReturnTypeEnum>) 0);
+        static std::unordered_map<TagID, uint32_t> TagMapFromComponents(const std::vector<Component> &_components) {
+            std::unordered_map<TagID, uint32_t> __res(_components.size());
+            for (auto component : _components) __res[component.tag] = TAG_NO_COMPONENT;
+            return __res;
         }
 
-        template <bool ReturnTypeEnum = true, bool ReturnInputTag = false>
-        TypeSwitchForTag<ReturnTypeEnum>
-        TagMappingGetRecurrent(TagID _tag, EntityID _ent, ChainLenType chain_len = -1) {
-            pair<TagID, EntityID> last_key{_tag, _ent};
-            auto new_key = tag_map.find(last_key);
+    // Manage Entities, Tags and Components
 
-            while (new_key != tag_map.end() && chain_len--) {
-                last_key.first = new_key->second;
-                new_key = tag_map.find(last_key);
+        EntityID addEntity(const std::vector<TagID> &_tags = {}, const std::vector<Component> &_components = {}) {
+            EntityID __res_new_id;
+
+            // Get EntityID; Set tags
+            if (deleted_entities.empty()) {
+                __res_new_id = (EntityID) entity_tags.size();
+                entity_tags.push_back(TagMapFromVector(_tags));
             }
-            return (ReturnInputTag ? (TypeSwitchForTag<ReturnTypeEnum>) last_key.first :
-                                     (TypeSwitchForTag<ReturnTypeEnum>) 0);
-        }
-
-        Component* ComponentMappingGetRecurrent(TagID _tag, EntityID _ent, ChainLenType chain_len = -1) {
-            if (auto tag = TagMappingGetRecurrent<false>(_tag, _ent, chain_len)) {
-                auto elem = comp_map.find((TagID)tag);
-                if (elem != comp_map.end())
-                    return elem->second;
+            else {
+                __res_new_id = *deleted_entities.begin();
+                deleted_entities.erase(deleted_entities.begin());
+                entity_tags[(uint32_t)__res_new_id] = TagMapFromVector(_tags);
             }
-            return nullptr;
+
+            // Set components
+            if (!_components.empty()) addEntityComponents(__res_new_id, _components);
+
+            return __res_new_id;
         }
 
-
-
-        //  ============  tag_map tag chains  ============  \\ 
-
-// Checks if a tag chain _tagFrom -> ... -> _tagTo for entity _ent exists.
-        template <bool CheckForLoops = true>
-        bool TagMappingChainExists(TagID _tagFrom, TagID _tagTo, EntityID _ent, ChainLenType chain_len = -1) {
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (CheckForLoops) _tmp.insert(_key.first);
-                if (unsigned(_key.first) == unsigned(_tagTo)) return true;
-            }
-            return false;
+        bool hasTag(EntityID _ent, TagID _tag) const {
+            return uint32_t(_ent) < entity_tags.size() && entity_tags[(uint32_t)_ent].find(_tag) != entity_tags[(uint32_t)_ent].end();
+        }
+        bool hasComponent(EntityID _ent, TagID _tag) const {
+            if (uint32_t(_ent) >= entity_tags.size()) return false;
+            auto   __comp_offset  = entity_tags[(uint32_t)_ent].find(_tag);
+            return __comp_offset != entity_tags[(uint32_t)_ent].end() && __comp_offset->second != TAG_NO_COMPONENT;
+        }
+        uint32_t getComponentOffset(EntityID _ent, TagID _tag) const {
+            if (uint32_t(_ent) >= entity_tags.size()) return TAG_NO_COMPONENT;
+            auto   __comp_offset  = entity_tags[(uint32_t)_ent].find(_tag);
+            return __comp_offset != entity_tags[(uint32_t)_ent].end()  ? __comp_offset->second  : TAG_NO_COMPONENT;
         }
 
-// Checks if a tag chain _tagFrom -> ... -> _tagTo for entity _ent exists and adds chain tags (except _tagFrom and _tagTo) to inner_links
-        template <bool CheckForLoops = true>
-        bool TagMappingChainToSet(TagID _tagFrom, TagID _tagTo, EntityID _ent, un_set<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp;
+        bool hasAllTags(EntityID _ent, const std::vector<TagID> &_tags) const {
+            if (uint32_t(_ent) >= entity_tags.size()) return false;
 
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (unsigned(_key.first) == unsigned(_tagTo)) {
-                    inner_links->insert(_tmp);
-                    return true;
+            bool __res = true;
+            for (auto tag : _tags) {
+                if (entity_tags[(uint32_t)_ent].find(tag) == entity_tags[(uint32_t)_ent].end()) {
+                    __res = false; break;
                 }
-                _tmp.insert(_key.first);
             }
-            return false;
+            return __res;
         }
 
-// Checks if a tag chain _tagFrom -> ... -> _tagTo for entity _ent exists and adds chain tags (except _tagFrom and _tagTo) to inner_links
-        template <bool CheckForLoops = false>
-        bool TagMappingChainToVec(TagID _tagFrom, TagID _tagTo, EntityID _ent, vector<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            vector<TagID> _tmp;
+        bool hasAnyTags(EntityID _ent, const std::vector<TagID> &_tags) const {
+            if (uint32_t(_ent) >= entity_tags.size()) return false;
 
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (unsigned(_key.first) == unsigned(_tagTo)) {
-                    inner_links->insert(inner_links->end(), _tmp.begin(), _tmp.end());
-                    return true;
+            bool __res = false;
+            for (auto tag : _tags) {
+                if (entity_tags[(uint32_t)_ent].find(tag) != entity_tags[(uint32_t)_ent].end()) {
+                    __res = true; break;
                 }
-                if (CheckForLoops) {
-                    for (auto& elem2 : _tmp)
-                        if (_key.first == elem2) return false;
-                }
-                _tmp.push_back(_key.first);
             }
-            return false;
+            return __res;
         }
 
+        bool hasNoTags(EntityID _ent, const std::vector<TagID> &_tags) const {
+            if (uint32_t(_ent) >= entity_tags.size()) return false;
 
-// separate function with un_set<TagID> _tagTo, chain _tagFrom -> any of _tagTo, inserts the last element into inner_links
-        template <bool CheckForLoops = false>
-        bool TagMappingChainAnyExists(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, ChainLenType chain_len = -1) {
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (CheckForLoops) _tmp.insert(_key.first);
-                if (_tagTo.find(_key.first) != _tagTo.end()) return true;
+            bool __res = true;
+            for (auto tag : _tags) {
+                if (entity_tags[(uint32_t)_ent].find(tag) != entity_tags[(uint32_t)_ent].end()) {
+                    __res = false; break;
+                }
             }
-            return false;
+            return __res;
         }
 
-        template <bool CheckForLoops = true>
-        bool TagMappingChainAnyToSet(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, un_set<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainAnyExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (_tagTo.find(_key.first) != _tagTo.end()) {
-                    inner_links->insert(_tmp);
-                    return true;
-                }
-                _tmp.insert(_key.first);
-            }
-            return false;
+        uint32_t addTag(EntityID _ent, TagID _tag) {
+            if (uint32_t(_ent) >= entity_tags.size()) return TAG_NO_COMPONENT;
+            entity_tags[(uint32_t)_ent].insert({_tag, TAG_NO_COMPONENT});
+            return entity_tags[(uint32_t)_ent][_tag];
         }
-
-        template <bool CheckForLoops = false>
-        bool TagMappingChainAnyToVec(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, vector<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainAnyExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            vector<TagID> _tmp;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (_tagTo.find(_key.first) != _tagTo.end()) {
-                    inner_links->insert(inner_links->end(), _tmp.begin(), _tmp.end());
-                    return true;
-                }
-                if (CheckForLoops) {
-                    for (auto& elem2 : _tmp)
-                        if (_key.first == elem2) return false;
-                }
-                _tmp.push_back(_key.first);
-            }
-            return false;
+        void addTags(EntityID _ent, const std::vector<TagID> &_tags) {
+            if (uint32_t(_ent) >= entity_tags.size()) return;
+            auto _tag_map = TagMapFromVector(_tags);
+            entity_tags[(uint32_t)_ent].insert(_tag_map.begin(), _tag_map.end());
         }
+        void addComponent(const Component &_comp) {
+            if (uint32_t(_comp.entity) >= entity_tags.size() || !_comp.isValid()) return;
 
-
-
-// Checks if there is a chain with all elements from un_set<TagID> _tagTo
-        template <bool CheckForLoops = false>
-        bool TagMappingChainAllExists(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, ChainLenType chain_len = -1) {
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp, _tmp2;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (_tagTo.find(_key.first) != _tagTo.end()) {
-                    _tmp2.insert(_key.first);
-                    if (_tmp2.size() == _tagTo.size()) return true;
-                }
-                if (CheckForLoops) _tmp.insert(_key.first);
+            uint32_t __comp_offset = addTag(_comp.entity, _comp.tag);
+            if (__comp_offset == TAG_NO_COMPONENT) {
+                __comp_offset = (uint32_t) components.size();
+                components.emplace_back();
             }
-            return false;
+            components[__comp_offset] = _comp;
         }
+        void addEntityComponents(EntityID _ent, const std::vector<Component> &_components) {
+            if (uint32_t(_ent) >= entity_tags.size()) return;
 
-        template <bool CheckForLoops = false>
-        bool TagMappingChainAllToSet(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, un_set<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainAllExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            un_set<TagID> _tmp, _tmp2;
+            auto __comp_map = TagMapFromComponents(_components);
+            entity_tags[(uint32_t)_ent].insert(__comp_map.begin(), __comp_map.end());
 
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (_tagTo.find(_key.first) != _tagTo.end()) {
-                    _tmp2.insert(_key.first);
-                    if (_tmp2.size() == _tagTo.size()) {
-                        inner_links->insert(_tmp);
-                        return true;
+            uint32_t __comp_offset;
+            for (const Component &component : _components) {
+                __comp_offset = entity_tags[(uint32_t)_ent][component.tag];
+
+                if (__comp_offset == TAG_NO_COMPONENT) {
+                    __comp_offset = (uint32_t) components.size();
+                    components.emplace_back();
+                }
+                components[__comp_offset] = component;
+                components[__comp_offset].entity = _ent;
+            }
+        }
+        bool tryReplaceDeletedComponent(const Component &_comp) {
+            if (uint32_t(_comp.entity) >= entity_tags.size() || !_comp.isValid()) return false;
+
+            uint32_t __min_deleted_offset = getComponentOffset(_comp.entity, TagID::TAG_DELETED);
+            if (__min_deleted_offset != TAG_NO_COMPONENT) {
+                components[__min_deleted_offset] = _comp;
+                while (++__min_deleted_offset < components.size()) {
+                    if (components[__min_deleted_offset].entity == _comp.entity &&
+                        components[__min_deleted_offset].tag == TagID::TAG_DELETED) {
+                        entity_tags[(uint32_t)_comp.entity][TagID::TAG_DELETED] = __min_deleted_offset;
+                        break;
                     }
                 }
-                _tmp.insert(_key.first);
-            }
-            return false;
-        }
-
-        template <bool CheckForLoops = false>
-        bool TagMappingChainAllToVec(TagID _tagFrom, const un_set<TagID> &_tagTo, EntityID _ent, vector<TagID> *inner_links, ChainLenType chain_len = -1) {
-            if (!inner_links) return TagMappingChainAllExists<CheckForLoops>(_tagFrom, _tagTo, _ent);
-            pair<TagID, EntityID> _key{_tagFrom, _ent};
-            vector<TagID> _tmp;
-            un_set<TagID> _tmp2;
-
-            for (auto elem = tag_map.find(_key);
-                 elem != tag_map.end() && (CheckForLoops ? _tmp.find(elem->second) == _tmp.end() : true) && chain_len--;
-                 elem  = tag_map.find(_key)) {
-                _key.first = elem->second;
-                if (_tagTo.find(_key.first) != _tagTo.end()) {
-                    _tmp2.insert(_key.first);
-                    if (_tmp2.size() == _tagTo.size()) {
-                        inner_links->insert(inner_links->end(), _tmp.begin(), _tmp.end());
-                        return true;
-                    }
-                }
-                _tmp.push_back(_key.first);
-            }
-            return false;
-        }
-
-
-
-// If a tag chain _tagFrom -> ... -> _tagTo for entity _ent exists, deletes all inner links (resulting in _tagFrom -> _tagTo chain)
-        bool TagMappingChainCollapse(TagID _tagFrom, TagID _tagTo, EntityID _ent) {
-            un_set<TagID> inner_links;
-
-            if (TagMappingChainToSet(_tagFrom, _tagTo, _ent, &inner_links)) {
-                for (auto& elem : inner_links)
-                    tag_map.erase({elem, _ent});
+                if (__min_deleted_offset >= components.size()) entity_tags[(uint32_t)_comp.entity].erase(TagID::TAG_DELETED);
                 return true;
             }
             return false;
         }
 
-// If a tag chain _tagFrom -> ... -> _tagTo for entity _ent exists, deletes all inner links
-// except the ones in "_except_tags" (resulting in _tagFrom -> _except_tags -> _tagTo chain)
-        bool TagMappingChainCollapseExcept(TagID _tagFrom, TagID _tagTo, EntityID _ent, const un_set<TagID> &_except_tags) {
-            if (!_except_tags.size()) return TagMappingChainCollapse(_tagFrom, _tagTo, _ent);
-            vector<TagID> inner_links;
-            TagID last_tag = _tagFrom;
+        // Deletes tag and marks component deleted (if exists), returns 'true' if tag was deleted
+        bool delTag(EntityID _ent, TagID _tag) {
+            if (uint32_t(_ent) >= entity_tags.size()) return false;
+            auto __comp_iter  = entity_tags[(uint32_t)_ent].find(_tag);
 
-            if (TagMappingChainToVec(_tagFrom, _tagTo, _ent, &inner_links)) {
-                for (auto& elem : inner_links) {
-                    if (_except_tags.count(elem)) {
-                        tag_map[{last_tag, _ent}] = elem;
-                        last_tag = elem;
-                    }
-                    else tag_map.erase({elem, _ent});
+            if ( __comp_iter != entity_tags[(uint32_t)_ent].end()) {
+                if (__comp_iter->second != TAG_NO_COMPONENT) {
+                    components[__comp_iter->second] = Component::Invalid;
+                    entity_tags[(uint32_t)_ent].insert({TagID::TAG_DELETED, TAG_NO_COMPONENT});
+                    entity_tags[(uint32_t)_ent][TagID::TAG_DELETED] = std::min(__comp_iter->second, entity_tags[(uint32_t)_ent][TagID::TAG_DELETED]);
                 }
-                tag_map[{last_tag, _ent}] = _tagTo;
+                entity_tags[(uint32_t)_ent].erase(_tag);
                 return true;
             }
             return false;
         }
 
-// Adds "(_tagFrom, _ent) : _tagTo" to tag_map and deletes a (_tagFrom -> ... -> _tagTo) chain if exists
-        void TagMappingInsertDeletingChain(TagID _tagFrom, TagID _tagTo, EntityID _ent) {
-            TagMappingChainCollapse(_tagFrom, _tagTo, _ent);
-            tag_map[{_tagFrom, _ent}] = _tagTo;
-        }
+        // Deletes tags and marks components deleted (if exist)
+        void delTags(EntityID _ent, const std::vector<TagID> &_tags) {
+            if (uint32_t(_ent) >= entity_tags.size()) return;
 
-
-        //  ============  Component* deletion  ============  \\
-
-        void DeleteComponents(const un_set<TagID> &tags_to_elems) {
-            for (auto elem : tags_to_elems) {
-                auto elem2 = comp_map.find(elem);
-
-                if (elem2 != comp_map.end())
-                    delete   elem2->second;
-                comp_map.erase(elem2);
+            uint32_t __min_comp_offset = TAG_NO_COMPONENT;
+            for (TagID tag : _tags) {
+                auto __comp_iter = entity_tags[(uint32_t)_ent].find(tag);
+                if (__comp_iter != entity_tags[(uint32_t)_ent].end()) {
+                    __min_comp_offset = std::min(__min_comp_offset, __comp_iter->second);
+                    if (__comp_iter->second != TAG_NO_COMPONENT)
+                        components[__comp_iter->second].tag = TagID::TAG_DELETED;
+                }
+            }
+            if (__min_comp_offset < TAG_NO_COMPONENT) {
+                entity_tags[(uint32_t)_ent].insert({TagID::TAG_DELETED, __min_comp_offset});
+                entity_tags[(uint32_t)_ent][TagID::TAG_DELETED] = std::min(__min_comp_offset, entity_tags[(uint32_t)_ent][TagID::TAG_DELETED]);
             }
         }
 
-        void DeleteComponentArrays(const un_set<TagID> &tags_to_arrs) {
-            for (auto elem : tags_to_arrs) {
-                auto elem2 = comp_map.find(elem);
+        void deleteEntity(EntityID _ent) {
+            if (uint32_t(_ent) >= entity_tags.size()) return;
 
-                if (elem2 != comp_map.end())
-                    delete[] elem2->second;
-                comp_map.erase(elem2);
+            std::vector<TagID> __tags(entity_tags[(uint32_t)_ent].size());
+            auto __tags_iter = entity_tags[(uint32_t)_ent].begin();
+            for (uint32_t i = 0u; i < __tags.size(); ++i)
+                __tags[i] = (__tags_iter++)->first;
+            delTags(_ent, __tags);
+            deleted_entities.insert(_ent);
+        }
+
+        void defragComponents() {
+            std::sort(components.begin(), components.end());
+            for (int i = components.size() - 1; i >= 0; --i)
+                entity_tags[(uint32_t)components[i].entity][components[i].tag] = i;
+        }
+
+    // Tag, Component lookup
+
+        template <typename GetT>
+        GetT getComponentData(EntityID _ent, TagID _tag) const {
+            auto   __comp_offset  = entity_tags[(uint32_t)_ent].find(_tag);
+            return __comp_offset != entity_tags[(uint32_t)_ent].end() && __comp_offset->second != TAG_NO_COMPONENT ?
+                        components[__comp_offset->second].getData<GetT>() : GetT();
+        }
+
+        template <typename SetT>
+        void setComponentData(EntityID _ent, TagID _tag, const SetT &_data_fill) {
+            auto __comp_offset = entity_tags[(uint32_t)_ent].find(_tag);
+            if (__comp_offset != entity_tags[(uint32_t)_ent].end() && __comp_offset->second != TAG_NO_COMPONENT)
+                components[__comp_offset->second].setData(_data_fill);
+        }
+
+        // Gather all entities that have all 'all_tags', any of 'any_tags', and no 'no_tags'
+        std::vector<EntityID> gatherEntities(const std::vector<TagID> &_all_tags, const std::vector<TagID> &_any_tags, const std::vector<TagID> &_no_tags) const {
+            std::vector<EntityID> __res_entities;
+            for (uint32_t i = 0u; i < entity_tags.size(); ++i) {
+                bool __entity_fits = (_all_tags.size() ? hasAllTags(EntityID(i), _all_tags) : true) &&
+                                     (_any_tags.size() ? hasAnyTags(EntityID(i), _any_tags) : true) &&
+                                     ( _no_tags.size() ? hasNoTags (EntityID(i),  _no_tags) : true);
+                if (__entity_fits) __res_entities.push_back(EntityID(i));
             }
+            return __res_entities;
         }
-
-        void DeleteComponentsAll() {
-            for (auto elem : comp_map)
-                delete elem.second;
-            comp_map.clear();
-        }
-
-        void DeleteComponentArraysAll() {
-            for (auto elem : comp_map)
-                delete[] elem.second;
-            comp_map.clear();
-        }
-    };
-};
+    }; // ComponentStorage END
+}; // Simple END
 
 #endif
