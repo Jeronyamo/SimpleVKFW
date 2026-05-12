@@ -501,8 +501,10 @@ int main(int argc, char **argv) {
     delete main_window_handler.imgui_handler.widgets[0];
     main_window_handler.imgui_handler.destroyContext();
 
+    // Destruction
     Simple::VKFW::cxt_vkfw.destroyContext();
     main_window.destroy();
+    Simple::glfw_init.~GLFWInitClass();
 
     printf("Success\n");
     return 0;

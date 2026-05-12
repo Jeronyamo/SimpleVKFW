@@ -155,6 +155,8 @@ namespace Simple {
 
                 void destroyContext() {
                     destroySwapchainWithDependencies();
+                    image_views.clear();
+                    framebuffers.clear();
                     destroySurface();
                 }
 

@@ -787,16 +787,21 @@ namespace Simple {
             uint32_t descr_pool_size = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
             std::vector<WidgetItf*> widgets; // Main Menu Bar or Window widgets
 
-            ImGuiHandler() {
+            ImGuiHandler() {  createContext(); }
+           ~ImGuiHandler() { destroyContext(); }
+
+            void createContext() {
                 SVKFW_WASSERT(IMGUI_CHECKVERSION(), "ImGUI::ImGuiHandler Constructor", "ImGUI version mismatch\n");
                 context = ImGui::CreateContext();
             }
-           ~ImGuiHandler() { destroyContext(); }
 
             void destroyContext() {
-                ImGui_ImplVulkan_Shutdown();
-                ImGui_ImplGlfw_Shutdown();
-                ImGui::DestroyContext(context);
+                if (context != nullptr) {
+                    ImGui_ImplVulkan_Shutdown();
+                    ImGui_ImplGlfw_Shutdown();
+                    ImGui::DestroyContext(context);
+                    context = nullptr;
+                }
             }
 
             void enableForSVKFWWindow(const Window &_w, bool _install_callbacks) {
