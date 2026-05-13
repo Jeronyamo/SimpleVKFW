@@ -3471,7 +3471,7 @@ namespace Simple {
                         printf("Heap %d - size (%.2f MB); flags (%s)\n", i, float(wrap.memoryProperties.memoryHeaps[i].size) / (1024 * 1024), __tmp_enum_str.c_str());
                         for (uint32_t j = 0u; j < wrap.memoryProperties.memoryTypeCount; ++j) {
                             if (wrap.memoryProperties.memoryTypes[j].heapIndex == i) {
-                                __tmp_enum_str = Enum::memory_type_flag_bits.getBitNames(wrap.memoryProperties.memoryTypes[j].propertyFlags);
+                                __tmp_enum_str = Enum::memory_property_flag_bits.getBitNames(wrap.memoryProperties.memoryTypes[j].propertyFlags);
                                 printf("    %d.%d Memory type - flags (%s)\n", i, j, __tmp_enum_str.c_str());
                             }
                         }
