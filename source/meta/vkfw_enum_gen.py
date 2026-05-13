@@ -11,7 +11,7 @@ def isDigit(char: str): return ord('0') <= ord(char) <= ord('9')
 
 
 def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
-    enums: list[tuple[str, dict[int, str]]] = []
+    enums: list[tuple[str, dict[str, str]]] = []
 
     with open(vkpath) as vkcore_f:
         in_enum: bool = False
@@ -36,11 +36,11 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
             if in_enum:
                 if line.startswith('}'):
                     in_enum = False
-                    enum_dict_inv: dict[int, str] = {} # aliases ignored because C++ code ignores them
+                    enum_dict_inv: dict[str, str] = {} # aliases ignored because C++ code ignores them
                     for enm, val in enum_strs:
                         try:
-                            val_int = int(val)
-                            enum_dict_inv[val_int] = enm
+                            val_int = int(val, base=0)
+                            enum_dict_inv[val] = enm
                         except:
                             pass
                     enums.append((enum_name, enum_dict_inv))
@@ -67,7 +67,7 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
                     file_lines.append("")
                     file_lines.append("    " * 3 + "const EnumWrap " + enumn + "{ {")
                     for enumkey, enumval in enumd.items():
-                        file_lines.append("    " * 4 + "{{{enum_int:11}, \"{enum_str}\"}},".format(enum_int= enumkey, enum_str= enumval))
+                        file_lines.append("    " * 4 + "{{{enum_int:11}, \"{enum_str}\"}},".format(enum_int= ("" if enumkey.startswith('-') else " ") + enumkey, enum_str= enumval))
                     file_lines.append("    " * 3 + "} };")
 
     with open(vkfwpath, "w") as vkfwenum_f:
