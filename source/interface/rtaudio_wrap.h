@@ -545,7 +545,7 @@ namespace Simple {
                     __res = "Stream overflow detected\n";
                 else if (_status == RTAUDIO_OUTPUT_UNDERFLOW)
                     __res = "Stream underflow detected\n";
-                printf(__res);
+                printf("%s", __res);
             }
         }
 

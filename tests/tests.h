@@ -92,12 +92,12 @@ namespace Simple {
             std::vector<AssertInfo> test_asserts;
             uint32_t test_id = 0u, test_count = 0u, test_success = 0u;
 
-            TermCtrl::TerminalHandler terminal_h{ TermCtrl::TextStyle{},
-                                                  TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::BrightGreen},
-                                                  TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::BrightRed},
-                                                  TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::Red},
-                                                  TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8}, TermCtrl::TColor::BrightCyan},
-                                                  TermCtrl::TextStyle{{TermCtrl::TFlag::   BOLD}}, };
+            TermCtrl::TerminalHandler terminal_h{{ TermCtrl::TextStyle{},
+                                                   TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::BrightGreen},
+                                                   TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::BrightRed},
+                                                   TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8 , TermCtrl::TFlag::BOLD}, TermCtrl::TColor::Red},
+                                                   TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8}, TermCtrl::TColor::BrightCyan},
+                                                   TermCtrl::TextStyle{{TermCtrl::TFlag::   BOLD}}} };
 
             enum TStyleID { TSTYLE_DEFAULT, TSTYLE_SUCCESS, TSTYLE_ERROR, TSTYLE_CRASH, TSTYLE_INFO, TSTYLE_BOLD };
 

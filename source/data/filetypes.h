@@ -1355,7 +1355,7 @@ namespace Simple {
                         }
                         else {
                             std::string __warn_msg = SVKFW_WRAPWARN("ContentJSON :: JSONNode :: readValueObj", "unexpected symbol: " + std::to_string(_json_str[__sum_offset]));
-                            fprintf(svkfwwarn, __warn_msg.c_str());
+                            fprintf(svkfwwarn, "%s", __warn_msg.c_str());
                             break;
                         }
                     }

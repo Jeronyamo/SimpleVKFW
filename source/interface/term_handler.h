@@ -219,7 +219,7 @@ namespace Simple {
                 }
             } line; //  LineConfig END
 
-            TerminalHandler(const std::initializer_list<TextStyle> &_styles = {}) {
+            TerminalHandler(const std::vector<TextStyle> &_styles = {}) {
                 style.states = _styles;
             }
 
