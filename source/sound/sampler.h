@@ -1,5 +1,5 @@
-#ifndef SVKFW_SAMPLES_H
-#define SVKFW_SAMPLES_H
+#ifndef SVKFW_SAMPLER_H
+#define SVKFW_SAMPLER_H
 
 #include <cmath>
 #include <vector>
@@ -9,149 +9,14 @@
 
 
 namespace Simple {
-    namespace Sound {
-        namespace Sample {
-        // Wrappers (with time support)
+    namespace Audio {
 
-            struct SmpItf {
-                virtual float sample() = 0;
-                virtual bool  finite() = 0;
-                virtual bool  isdone() = 0;
-                virtual void   start() = 0;
-                virtual void   pause() = 0;
-                virtual void   reset() = 0;
-                virtual void setSRate(uint32_t _sample_rate) = 0; // sounds depend on sample rate, which is known only when audio stream is started
-            }; // SmpItf
-
-            // Note: uint32_t for 't' gives consistent note for ~24.3 hours straight with 48000Hz sample rate,
-            //       after which you get a short hiccup on 't' overflow.
-            struct SmpSineWave : SmpItf {
-                uint32_t t, fin, paused;
-                float t_step, freq, phase;
-
-                SmpSineWave(float _freq, float _phase = 0.f, uint32_t _fin = 0u, float _sample_rate_inv = 0.f)
-                                : t_step{_sample_rate_inv}, freq{_freq}, phase{_phase}, fin{_fin} {}
-
-                float sample() override { return (paused || isdone()) ? 0.f : std::sin((t++) * t_step * freq * (2 * M_PI) + phase); }
-                bool  finite() override { return     fin; }
-                bool  isdone() override { return finite() && t >= fin; }
-                void   start() override { paused = false; }
-                void   pause() override { paused =  true; }
-                void   reset() override { t = 0; }
-                void setSRate(uint32_t _sample_rate) override { t_step = 1.f / _sample_rate; }
-            }; // SmpSineWave
-
-            struct SmpSaw : SmpItf {
-                uint32_t t, fin, paused;
-                float t_step, freq;
-
-                SmpSaw(float _freq, uint32_t _fin = 0u, float _sample_rate_inv = 0.f)
-                                : t{0u}, fin{_fin}, paused{0u}, t_step{_sample_rate_inv}, freq{_freq} {}
-
-                static float getT(float _val) { return std::max(2*std::modf(_val, &_val)-1.f, 0.5f); }
-
-                float sample() override { return (paused || isdone()) ? 0.f : std::abs(getT((t++)*t_step*freq)); }
-                bool  finite() override { return     fin; }
-                bool  isdone() override { return finite() && t >= fin; }
-                void   start() override { paused = false; }
-                void   pause() override { paused =  true; }
-                void   reset() override { t = 0; }
-                void setSRate(uint32_t _sample_rate) override { t_step = 1.f / _sample_rate; }
-            }; // SmpSaw
-
-            struct SmpTestWave : SmpItf {
-                uint32_t t, fin, paused;
-                float t_step;
-
-                SmpTestWave(uint32_t _fin = 102500u, float _sample_rate_inv = 0.f) : t{0u}, fin{_fin}, paused{0u}, t_step{_sample_rate_inv} {}
-
-                float sample() override { return (paused || isdone()) ? 0.f : std::sin(std::log(t*t_step) * (t++)*t_step); }
-                bool  finite() override { return     fin; }
-                bool  isdone() override { return finite() && t >= fin; }
-                void   start() override { paused = false; }
-                void   pause() override { paused =  true; }
-                void   reset() override { t = 0; }
-                void setSRate(uint32_t _sample_rate) override { t_step = 1.f / _sample_rate; }
-            }; // SmpTestWave
-
-            // Set (lambda) function to sample from.
-            struct SmpFunction : SmpItf {
-                std::function<float()> sampler_func;
-                bool paused;
-
-                SmpFunction(const std::function<float()> &_sampler_func) : sampler_func{_sampler_func} {}
-
-                float sample() override { return paused ? 0.f : sampler_func(); }
-                bool  finite() override { return   false; } // can't be implemented
-                bool  isdone() override { return   false; } // can't be implemented
-                void   start() override { paused = false; }
-                void   pause() override { paused =  true; }
-                void   reset() override {} // can't be implemented
-                void setSRate(uint32_t _sample_rate) override {}
-            }; // SmpFunction END
-
-            // Mixes samples from multiple sources.
-            struct SmpMixer : SmpItf {
-                std::vector<SmpItf*> sources;
-                std::vector<  float> weights;
-                bool paused = false;
-
-                SmpMixer() {}
-                SmpMixer(const std::vector<SmpItf*> &_sources, const std::vector<float> &_weights = {})
-                                : sources{_sources}, weights{_weights} {
-                    SVKFW_ASSERT(weights.empty() || weights.size() == sources.size(), std::invalid_argument,
-                                 "Sound :: SmpMixer Constructor", "Expected 0 weights or " + std::to_string(sources.size()) +
-                                                                                  ", got " + std::to_string(weights.size()));
-                    if (weights.empty())
-                        weights.resize(sources.size(), 1.f/sources.size());
-                }
-
-                float sample() override {
-                    float __res = 0.f;
-                    if (!paused) {
-                        for (uint32_t i = 0u; i < sources.size(); ++i)
-                            __res += weights[i] * sources[i]->sample();
-                    }
-                    return __res;
-                }
-
-                bool  finite() override {
-                    for (uint32_t i = 0u; i < sources.size(); ++i)
-                        if (!sources[i]->finite()) return false;
-                    return true;
-                }
-                bool  isdone() override {
-                    for (uint32_t i = 0u; i < sources.size(); ++i)
-                        if (!sources[i]->isdone()) return false;
-                    return true;
-                }
-                void   start() override { paused = false; }
-                void   pause() override { paused =  true; }
-                void   reset() override {
-                    for (uint32_t i = 0u; i < sources.size(); ++i)
-                        sources[i]->reset();
-                }
-
-                void addSource(SmpItf* _source, float _weight) {
-                    for (uint32_t i = 0u; i < sources.size(); ++i)
-                        if (sources[i]->isdone()) {
-                            sources[i] = _source;
-                            weights[i] = _weight;
-                            return;
-                        }
-                    sources.push_back(_source);
-                    weights.push_back(_weight);
-                }
-                void setSRate(uint32_t _sample_rate) override {
-                    for (uint32_t i = 0u; i < sources.size(); ++i)
-                        sources[i]->setSRate(_sample_rate);
-                }
-            }; // SmpMixer END
-        }; // Sample END
+//  == === ==== >    Music: converting notes to frequencies
 
         namespace Music {
-            // Types
+    //  == === ====     Types & enums     ==== === ==  \\
 
+            // CDEFGAB, _S - sharp, _F - flat
             enum Note : uint8_t {
                 C  =  0,
                 CS =  1, DF =  1,
@@ -168,7 +33,7 @@ namespace Simple {
                 BS =  0
             };
 
-            enum IntervalCommon {
+            enum IntervalCommon : int16_t {
                 UNISON      =  0,
                 SECOND_MIN  =  1,
                 SECOND_MAJ  =  2,
@@ -184,10 +49,11 @@ namespace Simple {
                 OCTAVE      = 12
             };
 
-            typedef float NoteFreq; // This is used to store note frequency, Hz
-            typedef   int NoteIndex; // This type is used to store an absolute ID of a note encoded as: (note_info.octave * TuningSystem.numNotes() + note_info.note)
-            typedef   int NoteInterval; // This type accepts 'IntervalCommon' values or any other int
-            typedef   int OctaveIndex;
+            typedef   float NoteFreq;     // Stores note frequency, Hz
+            typedef     int NoteFullId;   // Stores absolute ID of a note encoded as: (NoteFull::octave * TuningSystem.numNotes()) + NoteFull::note
+            typedef int16_t NoteInterval; // Accepts 'IntervalCommon' values or any other int
+            typedef int16_t   NoteIndex;
+            typedef int16_t OctaveIndex;
 
             struct NoteFull {
                 NoteIndex note;
@@ -198,9 +64,9 @@ namespace Simple {
         // Reference note description (used in tuning)
 
             const struct NoteReference {
-                NoteFull ref_note{ Note::A, 4};
-                NoteFreq ref_note_freq = 440.f;
-                NoteIndex ref_note_ind = INT32_MAX;
+                NoteFull   ref_note{ Note::A, 4};
+                NoteFreq   ref_note_freq = 440.f;
+                NoteFullId ref_note_ind = INT32_MAX;
 
                 NoteReference() {}
                 NoteReference(NoteIndex _ref_note_index, OctaveIndex _ref_octave, NoteFreq _ref_note_freq)
@@ -209,7 +75,7 @@ namespace Simple {
             } Ref_Note_A440;
 
 
-    //  ============  Tuning systems  ============ \\
+    //  == === ====     Tuning systems     ==== === ==  \\
 
             enum TuningSystemType {
                 EQUAL_TEMPERAMENT_12T,
@@ -233,7 +99,7 @@ namespace Simple {
                     double __res = std::pow(octaveCoef(), __interval_info.octave) * subOctaveCoef(__interval_info.note);
                     return __going_down ? 1/__res : __res;
                 }
-                NoteFull getNoteFull(NoteIndex _note_ind) {
+                NoteFull getNoteFull(NoteFullId _note_ind) {
                     NoteFull __res;
                     __res.note   = _note_ind % numNotes();
                     __res.octave = _note_ind / numNotes();
@@ -245,7 +111,7 @@ namespace Simple {
 
                     return __res;
                 }
-                NoteIndex getNoteIndex(NoteFull _full_note) {
+                NoteFullId getNoteFullId(NoteFull _full_note) {
                     return _full_note.octave * numNotes() + _full_note.note;
                 }
             }; // TuningSystemItf END
@@ -268,7 +134,7 @@ namespace Simple {
                 static constexpr double       Octave =  2.0;
 
                 TSJustIntonation() {}
-                ~TSJustIntonation() {}
+               ~TSJustIntonation() {}
 
                 virtual TuningSystemType getType() override { return JUST_INTONATION; }
                 virtual uint32_t numNotes() override { return 12u; }
@@ -309,7 +175,7 @@ namespace Simple {
                 static const double       Octave;
 
                 TSEqualTemperament12() {}
-                ~TSEqualTemperament12() {}
+               ~TSEqualTemperament12() {}
 
                 virtual TuningSystemType getType() override { return EQUAL_TEMPERAMENT_12T; }
                 virtual uint32_t numNotes() override { return 12u; }
@@ -368,7 +234,7 @@ namespace Simple {
             }
 
 
-    //  ============  Scales  ============ \\
+    //  == === ====     Scales     ==== === ==  \\
 
             enum ScaleType {
                 UNDEFINED_SCALE,
@@ -389,16 +255,16 @@ namespace Simple {
 
 
             struct Scale {
-                NoteIndex tonic;
+                NoteFullId tonic;
                 ScaleType scale_type;
                 std::vector<uint8_t> steps;
 
-                Scale(NoteIndex _tonic, ScaleType _scale_type)
+                Scale(NoteFullId _tonic, ScaleType _scale_type)
                                 : tonic{_tonic}, scale_type{_scale_type}, steps{GetSteps(_tonic, _scale_type)} {}
 
-                static std::vector<uint8_t> GetSteps(NoteIndex _tonic, ScaleType _scale_type) {
+                static std::vector<uint8_t> GetSteps(NoteFullId _tonic, ScaleType _scale_type) {
                     // TODO: function 'getNumSteps(ScaleType)' to handle any 'tonic' value
-                    SVKFW_ASSERT(_tonic >= 0 && _tonic < 81, std::invalid_argument, "Sound :: Music :: Scale :: GetSteps",
+                    SVKFW_ASSERT(_tonic >= 0 && _tonic < 81, std::invalid_argument, "Audio :: Music :: Scale :: GetSteps",
                                                                             "'tonic' must be between 0 and 'numNotes()'");
 
                     std::vector<uint8_t> __res_steps;
@@ -425,27 +291,25 @@ namespace Simple {
             }; // Scale END
 
 
-    //  ============  Main class  ============  \\
-
-            struct MusicHandler {
+            struct NoteHandler {
                 NoteReference   reference_note;
                 TuningSystemItf *tuning_system;
 
-                MusicHandler(TuningSystemType _ts_type = EQUAL_TEMPERAMENT_12T, NoteReference _ref_note = Ref_Note_A440)
+                NoteHandler(TuningSystemType _ts_type = EQUAL_TEMPERAMENT_12T, NoteReference _ref_note = Ref_Note_A440)
                                 : reference_note{_ref_note}, tuning_system{getTuningSystemHandler(_ts_type)} {
-                    reference_note.ref_note_ind = tuning_system->getNoteIndex(reference_note.ref_note);
+                    reference_note.ref_note_ind = tuning_system->getNoteFullId(reference_note.ref_note);
                 }
 
-                NoteFreq getNoteFreq(NoteIndex _note_ind) {
+                NoteFreq getNoteFreq(NoteFullId _note_ind) {
                     return reference_note.ref_note_freq * tuning_system->intervalCoef(_note_ind - reference_note.ref_note_ind);
                 }
                 NoteFreq getNoteFreq(NoteFull _full_note) {
-                    return getNoteFreq(tuning_system->getNoteIndex(_full_note));
+                    return getNoteFreq(tuning_system->getNoteFullId(_full_note));
                 }
-                NoteIndex getNoteIndex(NoteFull _full_note) {
-                    return tuning_system->getNoteIndex(_full_note);
+                NoteFullId getNoteFullId(NoteFull _full_note) {
+                    return tuning_system->getNoteFullId(_full_note);
                 }
-                NoteIndex getNoteIndex(NoteFreq _note_freq) {
+                NoteFullId getNoteFullId(NoteFreq _note_freq) {
                     NoteInterval __note_int = 0;
 
                     while (_note_freq * tuning_system->octaveCoef() <= reference_note.ref_note_freq) {
@@ -475,20 +339,149 @@ namespace Simple {
                     if (__sub_octave_coef > 0.f) {
                         _note_freq /= __sub_octave_coef;
                         __note_int += __sub_octave_interval;
-                        printf(SVKFW_WRAPINFO("Sound :: Music :: MusicHandler :: getNoteIndex",
+                        printf(SVKFW_WRAPINFO("Audio :: Music :: NoteHandler :: getNoteFullId",
                                 "reference frequency: %f; got frequency %f; error %f"), reference_note.ref_note_freq, _note_freq, std::abs(_note_freq - reference_note.ref_note_freq));
                     }
                     return reference_note.ref_note_ind + __note_int;
                 }
-                NoteFull getNoteFull(NoteIndex _note_ind) {
+                NoteFull getNoteFull(NoteFullId _note_ind) {
                     return tuning_system->getNoteFull(_note_ind);
                 }
                 NoteFull getNoteFull(NoteFreq _note_freq) {
-                    return tuning_system->getNoteFull(getNoteIndex(_note_freq));
+                    return tuning_system->getNoteFull(getNoteFullId(_note_freq));
                 }
-            }; // MusicHandler END
+            }; // NoteHandler END
+
+
+            struct NotePoint {
+                NoteFull note;
+                uint32_t t;
+            };
+
+            struct NoteSheet {
+                std::vector<std::vector<NotePoint>> sample_sections;
+
+                // TODO: 
+            }; // NoteSheet END
         }; // Music END
-    }; // Sound END
+
+
+//  == === ==== >    Sample: "instruments" created with "math"
+
+        namespace Sample {
+            struct SmpItf {
+                float duration = 0.f; // Sample duration in seconds; Default: 0; 0 means infinite sample; no need to use it in 'sample()' method, it's for 'Audio::AudioSampler'.
+
+                virtual ~SmpItf() {}
+
+                // t = (t_step / sample_rate) * frequency
+                virtual float sample(float _t) = 0;
+                void setDuration(float _dur) { duration = _dur; }
+            }; // SmpItf END
+
+            struct SmpPlaceholder : SmpItf {
+                SmpPlaceholder() {}
+               ~SmpPlaceholder() {}
+                float sample(float _t) override { return 0.f; }
+            } audio_placeholder;
+
+            struct SmpSineWave : SmpItf {
+                float freq = 440.f;
+
+                SmpSineWave() {}
+               ~SmpSineWave() {}
+                float sample(float _t) override { return std::sin(_t * freq * (2 * M_PI)); }
+                void setFreq(float _freq) { freq = _freq; }
+            };
+
+            struct SmpSaw : SmpItf {
+                float freq = 440.f;
+
+                SmpSaw() {}
+               ~SmpSaw() {}
+                float sample(float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
+                void setFreq(float _freq) { freq = _freq; }
+            };
+
+            struct SmpTestWave : SmpItf {
+                float freq = 440.f;
+
+                SmpTestWave() {}
+               ~SmpTestWave() {}
+                float sample(float _t) override { return std::sin(std::log(_t*freq) * _t*freq); }
+                void setFreq(float _freq) { freq = _freq; }
+            };
+
+            // Set (lambda) function to sample from.
+            struct SmpFunction : SmpItf {
+                std::function<float(float)> sampler_func;
+
+                SmpFunction(const std::function<float(float)> &_sampler_func) : sampler_func{_sampler_func} {}
+               ~SmpFunction() {}
+                float sample(float _t) override { return sampler_func(_t); }
+            };
+        }; // Sample END
+
+
+        struct AudioSampler {
+            struct AudioSampleConfig {
+                Sample::SmpItf* sample_ptr;
+                uint32_t   t;
+                float weight;
+            } sources[31]{}; // 31 audio sources: is it realistically enough/too many?
+
+            uint32_t sample_rate = 1u, pad1, pad2, pad3;
+
+            AudioSampler() { for (uint32_t i = 0u; i < 31u; ++i) sources[i] = { &Sample::audio_placeholder, 0u, 1.f }; }
+            AudioSampler(const std::vector<Sample::SmpItf*> &_sources, const std::vector<float> &_weights = {}) { setSources(_sources, _weights); }
+           ~AudioSampler() {}
+
+            void setSampleRate(uint32_t _sample_rate) {
+                sample_rate = _sample_rate;
+            }
+
+            float sample() {
+                float __res = 0.f;
+                uint32_t __finish_t = 0u;
+
+                for (uint32_t i = 0u; i < 31u; ++i) {
+                    if (sources[i].sample_ptr == &Sample::audio_placeholder) continue;
+
+                    __finish_t = std::ceil(sources[i].sample_ptr->duration * sample_rate);
+                    if (__finish_t && sources[i].t >= __finish_t)
+                        sources[i].sample_ptr = &Sample::audio_placeholder;
+                    __res += sources[i].weight * sources[i].sample_ptr->sample((sources[i].t++) / float(sample_rate));
+                }
+                return __res;
+            }
+
+            uint32_t addSource(Sample::SmpItf* _source, float _weight) {
+                uint32_t __res_i = 31u;
+                for (uint32_t i = 0u; i < 31u; ++i)
+                    if (sources[i].sample_ptr == nullptr) {
+                        __res_i = i;
+                        sources[i].sample_ptr = _source;
+                        sources[i].weight = _weight;
+                        sources[i].t = 0u;
+                    }
+                SVKFW_WASSERT(__res_i < 31u, "AudioSampler :: addSource", "couldn't add audio sample\n");
+                return __res_i;
+            }
+
+            void setSources(const std::vector<Sample::SmpItf*> &_sources, const std::vector<float> &_weights = {}) {
+                SVKFW_ASSERT(_weights.empty() || _weights.size() == _sources.size(), std::invalid_argument,
+                                "AudioSampler :: setSources", "Expected 0 weights or " + std::to_string(_sources.size()) +
+                                                                              ", got " + std::to_string(_weights.size()));
+                SVKFW_ASSERT(_sources.size() <= 31u, std::invalid_argument,
+                                "AudioSampler :: setSources", "Expected up to 31 audio sources added, got " + std::to_string(_sources.size()));
+                for (uint32_t i = 0u; i < 31u; ++i) {
+                    sources[i].sample_ptr = i < _sources.size() ? _sources[i] : &Sample::audio_placeholder;
+                    sources[i].weight     = i < _weights.size() ? _weights[i] : 1.f / std::max(_sources.size(), size_t(1u));
+                    sources[i].t          = 0u;
+                }
+            }
+        }; // AudioSampler END
+    }; // Audio END
 }; // Simple END
 
 #endif

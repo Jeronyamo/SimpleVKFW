@@ -122,11 +122,11 @@ namespace Simple {
 
                 BoneAttrClampMinmax(const vec3f &_rot_min = {1e6f}, const vec3f &_rot_max = {-1e6f},
                                     const vec3f &_pos_min = {1e6f}, const vec3f &_pos_max = {-1e6f}) : rot_min{_rot_min}, rot_max{_rot_max},
-                                                                                                    pos_min{_pos_min}, pos_max{_pos_max} {}
+                                                                                                       pos_min{_pos_min}, pos_max{_pos_max} {}
             };
             struct MorphAttrClampMinmax {
                 float val_min = 1e6f,
-                    val_max =-1e6f;
+                      val_max =-1e6f;
 
                 MorphAttrClampMinmax(float _val_min = 1e6f, float _val_max = -1e6f) : val_min{_val_min}, val_max{_val_max} {}
             };
@@ -160,9 +160,9 @@ namespace Simple {
             static bool       BoneMapped(const std::string & _bone_name) { return  bone_name_mappings_fromraw.find( _bone_name) !=  bone_name_mappings_fromraw.end(); }
             static bool      MorphMapped(const std::string &_morph_name) { return morph_name_mappings_fromraw.find(_morph_name) != morph_name_mappings_fromraw.end(); }
             static bool  EqToBoneMapping(const std::string & _bone_name, const std::string &_comp_name) { return  BoneMapped( _bone_name) &&
-                                                                                                                bone_name_mappings_fromraw.at( _bone_name) == _comp_name; }
+                                                                                                                  bone_name_mappings_fromraw.at( _bone_name) == _comp_name; }
             static bool EqToMorphMapping(const std::string &_morph_name, const std::string &_comp_name) { return MorphMapped(_morph_name) &&
-                                                                                                                morph_name_mappings_fromraw.at(_morph_name) == _comp_name; }
+                                                                                                                 morph_name_mappings_fromraw.at(_morph_name) == _comp_name; }
             static bool IsLeftBone  (const std::string & _bone_name) { return  _bone_name.substr(0, 2) == "\215\266"; }
             static bool IsRightBone (const std::string & _bone_name) { return  _bone_name.substr(0, 2) == "\211\105"; }
             static bool IsLeftMorph (const std::string &_morph_name) { return _morph_name.substr(0, 2) == "\215\266"; }
@@ -257,16 +257,16 @@ namespace Simple {
             // Reflect through a plane X=0
             void reflectMovement() {
                 for (uint32_t i = 0u; i < keyframes_bone.size(); ++i)
-                    ReflectBoneKeyframe (keyframes_bone[i]);
+                    ReflectBoneKeyframe  (keyframes_bone[i]);
                 for (uint32_t i = 0u; i < keyframes_morph.size(); ++i)
-                    ReflectMorphKeyframe(keyframes_morph[i]);
+                    ReflectMorphKeyframe (keyframes_morph[i]);
                 for (uint32_t i = 0u; i < keyframes_camera.size(); ++i)
                     ReflectCameraKeyframe(keyframes_camera[i]);
             }
 
             void multKeyframes(const std::map<std::string, AttrAdjust> &_mult_bones,
-                            const std::map<std::string,      float> &_mult_morphs,
-                            AttrAdjust _cam_mult = {}) {
+                               const std::map<std::string,      float> &_mult_morphs,
+                               AttrAdjust _cam_mult = {}) {
                 for (auto& bone_kframe : keyframes_bone) {
                     if (bone_name_mappings_fromraw.find(bone_kframe.bone_name) != bone_name_mappings_fromraw.end() &&
                         _mult_bones.find(bone_name_mappings_fromraw.at(bone_kframe.bone_name)) != _mult_bones.end()) {
@@ -293,12 +293,12 @@ namespace Simple {
                     cam_kframe.position *= _cam_mult.pos_dist["xyz"];
                     cam_kframe.distance *= _cam_mult.pos_dist.w;
                     cam_kframe.rotation *= _cam_mult.rot_fov["xyz"];
-                    cam_kframe.fov *= _cam_mult.rot_fov.w;
+                    cam_kframe.fov      *= _cam_mult.rot_fov.w;
                 }
             }
             void offsetKeyframes(const std::map<std::string, AttrAdjust> &_offset_bones,
-                                const std::map<std::string,      float> &_offset_morphs,
-                                AttrAdjust _cam_offset = {}) {
+                                 const std::map<std::string,      float> &_offset_morphs,
+                                 AttrAdjust _cam_offset = {}) {
                 for (auto& bone_kframe : keyframes_bone) {
                     if (bone_name_mappings_fromraw.find(bone_kframe.bone_name) != bone_name_mappings_fromraw.end() &&
                         _offset_bones.find(bone_name_mappings_fromraw.at(bone_kframe.bone_name)) != _offset_bones.end()) {
@@ -330,7 +330,7 @@ namespace Simple {
             }
 
             void clampFrames(const std::vector<std::pair<std::string,  BoneAttrClampMinmax>> &_clamp_bones,
-                            const std::vector<std::pair<std::string, MorphAttrClampMinmax>> &_clamp_morphs) {
+                             const std::vector<std::pair<std::string, MorphAttrClampMinmax>> &_clamp_morphs) {
                 std::vector<uint32_t> __count_bone(_clamp_bones.size(), 0u), __count_morph(_clamp_morphs.size(), 0u);
 
                 for (auto &bone_frame : keyframes_bone) {
@@ -1075,6 +1075,38 @@ namespace Simple {
             }; // PageOGG END
             std::vector<PageOGG> data_pages;
         }; // ContentOGG END
+
+        struct ReaderWriterOGG : FiletypeReaderWriterItf {
+            ContentOGG file_content;
+
+            ReaderWriterOGG(const std::string &_fpath = "") { if (!_fpath.empty()) read(_fpath); }
+
+            virtual bool read(const std::string &_fpath) override {
+                // Open file
+                FileReader __ftype_file{_fpath};
+                if (!__ftype_file.isOpen()) return false;
+
+                printf(SVKFW_WRAPINFO("OGG Reader : Read", "Read END\n"));
+                return true;
+            }
+            virtual bool write(const std::string &_fpath) override {
+                // Open file
+                FileWriter __ftype_file{_fpath};
+                if (!__ftype_file.isOpen()) return false;
+
+
+                return __ftype_file.isValid();
+            }
+
+            bool tryHeaders(ReaderItf &_ftype_file) override {
+                const uint32_t header_len = 4;
+                char __ch_buffer[5]{};
+
+                _ftype_file.read(__ch_buffer, header_len);
+                std::string __res_str = std::string(__ch_buffer, __ch_buffer + header_len);
+                return _ftype_file.isValid() && __res_str == "OggS";
+            }
+        }; // ReaderWriterOGG END
 
 
     // JSON

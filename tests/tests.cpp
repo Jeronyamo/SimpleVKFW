@@ -9,7 +9,7 @@
 // What to test
 #include "math/vectors.h"
 #include "main/image.h"
-#include "sound/sound.h"
+#include "sound/player.h"
 #include "interface/rtaudio_wrap.h"
 
 
@@ -209,7 +209,7 @@ namespace Simple {
         audio_o.streamSetOptions(0, 0, "Test Audio Output/Input", 0);
         audio_o.deviceOutputSetParameters(__channels);
         audio_o.deviceInputSetParameters(__channels);
-        audio_o.callbackSet(RTA::rtacb_inout);
+        audio_o.callbackSet(RTA::rtacbInOut);
 
         audio_o.streamOpen(0, __buf_frames, RTAUDIO_SINT16, false);
         Test::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
@@ -263,7 +263,7 @@ namespace Simple {
     }
 
 
-    void audioPlayer(std::vector<Sound::Sample::SmpItf*> _sources, const std::vector<float> &_weights, bool _set_srate_to_sources) {
+    void audioPlayer(std::vector<Audio::Sample::SmpItf*> _sources, const std::vector<float> &_weights) {
         RTA::AudioHandler audio_o;
         const uint32_t __channels   =   2;
         const uint32_t __buf_frames = 544;
@@ -279,10 +279,8 @@ namespace Simple {
         Test::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
 
         // Set audio to play
-        for (uint32_t i = 0u; i < _sources.size(); ++i) {
-            if (_set_srate_to_sources) _sources[i]->setSRate(audio_o.stream_config.sample_rate);
-            audio_o.playAudio(_sources[i], _weights[i]);
-        }
+        audio_o.stream_config.audio_config.played_sound.setSources(_sources, _weights);
+        audio_o.stream_config.audio_config.played_sound.setSampleRate(audio_o.stream_config.sample_rate);
 
         // Start stream
         audio_o.streamStart();
@@ -293,29 +291,42 @@ namespace Simple {
     }
 
     SVKFW_ADD_TEST(AudioFuncSampler, "Audio function sampler") {
-        static Sound::Sample::SmpSineWave __sine_wave1{440.f          };
-        static Sound::Sample::SmpSineWave __sine_wave2{440.f * (2.f/3)};
+        static Audio::Sample::SmpSineWave __sine_wave1;
+        static Audio::Sample::SmpSineWave __sine_wave2;
 
-        __sine_wave1.t_step = 1.f / 48000; // yet another evidence of SmpFunction's impracticality
-        __sine_wave2.t_step = 1.f / 48000;
-        static auto __wave_sampler = [&]() { return 0.45f * __sine_wave1.sample() + 0.45f * __sine_wave2.sample(); };
-        static Sound::Sample::SmpFunction __sampler{__wave_sampler};
+        __sine_wave1.setFreq(440.f);
+        __sine_wave2.setFreq(440.f * (2.f/3));
 
-        audioPlayer({&__sampler}, {1.f}, true);
+        static auto __wave_sampler = [&](float _t) { return 0.45f * __sine_wave1.sample(_t) + 0.45f * __sine_wave2.sample(_t); };
+        static Audio::Sample::SmpFunction __sampler{__wave_sampler};
+
+        audioPlayer({&__sampler}, {1.f});
     }
 
 
     SVKFW_ADD_TEST(AudioMixerSampler, "Audio - mixer sampler") {
-        static Sound::Sample::SmpSineWave __sine_wave1{440.f          };
-        static Sound::Sample::SmpSineWave __sine_wave2{440.f * (2.f/3)};
+        static Audio::Sample::SmpSineWave __sine_wave1;
+        static Audio::Sample::SmpSineWave __sine_wave2;
 
-        audioPlayer({&__sine_wave1, &__sine_wave2}, {0.45f, 0.45f}, false);
+        __sine_wave1.setFreq(440.f);
+        __sine_wave2.setFreq(440.f * (2.f/3));
+        __sine_wave1.setDuration(2.f);
+        __sine_wave2.setDuration(3.f);
+
+        audioPlayer({&__sine_wave1, &__sine_wave2}, {0.45f, 0.45f});
     }
 
 
     SVKFW_ADD_TEST(AudioSawSampler, "Audio - saw sampler") {
-        static Sound::Sample::SmpSaw __saw_sampler{440.f};
-        audioPlayer({&__saw_sampler}, {0.9f}, false);
+        static Audio::Sample::SmpSaw __saw_sampler;
+        __saw_sampler.setFreq(440.f);
+
+        audioPlayer({&__saw_sampler}, {0.9f});
+    }
+
+
+    SVKFW_ADD_TEST(AudioOGGFileSampler, "Audio - OGG file playback") {
+        Simple::File::ReaderWriterOGG ogg_reader{"tests/resources/Kyuuyaku Megami Tensei - Daedalus (extended).ogg"};
     }
 
 

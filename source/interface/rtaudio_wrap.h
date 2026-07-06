@@ -2,7 +2,7 @@
 #define SVKFW_RTAUDIO_WRAP_H
 
 #include "RtAudio.h"
-#include "sound/samples.h"
+#include "sound/player.h"
 
 
 namespace Simple {
@@ -82,7 +82,7 @@ namespace Simple {
         // This class contains parameters set by a user
         struct AudioConfig {
             uint8_t volume = 255;
-            Sound::Sample::SmpMixer played_sound;
+            Audio::AudioSampler played_sound;
         }; // AudioConfig END
 
         // This class contains all information available to RTAudio callbacks via 'void* config' argument
@@ -105,7 +105,7 @@ namespace Simple {
             float getVolume() const { return audio_config.volume/256.f*getMaxVolume(); }
             void updateSampleRate(uint32_t _sample_rate) {
                 sample_rate = _sample_rate;
-                audio_config.played_sound.setSRate(_sample_rate);
+                audio_config.played_sound.sample_rate = _sample_rate;
             }
         }; // RTAStreamConfig END
 
@@ -117,7 +117,7 @@ namespace Simple {
 
 
             AudioHandler() : rta_cback{nullptr} { sizeof(AudioHandler); }
-            ~AudioHandler() {
+           ~AudioHandler() {
                 if (rta_handler.isStreamRunning())
                     rta_handler.abortStream();
                 if (rta_handler.isStreamOpen())
@@ -387,8 +387,7 @@ namespace Simple {
 
         // User methods
 
-            void playAudio(Sound::Sample::SmpItf *_source, float _weight) {
-                _source->setSRate(stream_config.sample_rate);
+            void playAudio(Audio::Sample::SmpItf *_source, float _weight = 1.f) {
                 stream_config.audio_config.played_sound.addSource(_source, _weight);
             }
         }; // AudioHandler END
@@ -458,7 +457,7 @@ namespace Simple {
                 }
             }
 
-            void setSignalForChannel(Sound::Sample::SmpItf *_sampler, uint32_t _ch) {
+            void setSignalForChannel(Audio::AudioSampler *_sampler, uint32_t _ch) {
                 switch (audio_format) {
                     case RTAUDIO_SINT8: {
                         for (uint32_t i = 0; i < buffer_frames; ++i)
@@ -488,7 +487,7 @@ namespace Simple {
                 }
             }
 
-            void setSignalForAllChannels(Sound::Sample::SmpItf *_sampler) {
+            void setSignalForAllChannels(Audio::AudioSampler *_sampler) {
                 switch (audio_format) {
                     case RTAUDIO_SINT8: {
                         for (uint32_t i = 0; i < buffer_frames; ++i) {
@@ -538,7 +537,7 @@ namespace Simple {
 
     // Callbacks. Last argument is expected to be a pointer to AudioHandler.
 
-        void rtacbackWarningCheck(RtAudioStreamStatus _status) {
+        void rtacbCallbackWarningCheck(RtAudioStreamStatus _status) {
             if (_status) {
                 const char *__res = "Stream unknown abnormal state detected\n";
                 if (_status == RTAUDIO_INPUT_OVERFLOW)
@@ -551,7 +550,7 @@ namespace Simple {
 
         int rtacbDefault(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
                           double _stream_t, RtAudioStreamStatus _status, void *_config) {
-            rtacbackWarningCheck(_status);
+            rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
             RTAStreamConfig *__config = (RTAStreamConfig*)_config;
@@ -559,19 +558,18 @@ namespace Simple {
             static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
             __outbuf_wrap.buffer = _o_buffer;
             __outbuf_wrap.buffer_frames = _n_buf_frames;
-            // static Sound::TestWave __sine_wave1{1.f, __config->getMaxVolume()};
 
             __outbuf_wrap.setSignalForAllChannels(&__config->audio_config.played_sound); // Note: for interleaved mode. TODO: Support non-interleaved
             return 0;
         }
 
-        int rtacb_saw_once(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
+        int rtacbSawNoRepeat(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             RTAStreamConfig *__config = (RTAStreamConfig*)_config;
             static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 0.000002f };
 
-            rtacbackWarningCheck(_status);
+            rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
             for (uint32_t i = 0; i < _n_buf_frames; ++i) {
@@ -593,13 +591,13 @@ namespace Simple {
             return 0;
         }
 
-        int rtacb_saw_pulse(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
+        int rtacbSawPulse(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             RTAStreamConfig *__config = (RTAStreamConfig*)_config;
             static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 1.00006f };
 
-            rtacbackWarningCheck(_status);
+            rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
             for (uint32_t i = 0; i < _n_buf_frames; ++i) {
@@ -622,27 +620,28 @@ namespace Simple {
             return 0;
         }
 
-        int rtacb_saw(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
+        int rtacbSaw(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             RTAStreamConfig *__config = (RTAStreamConfig*)_config;
             static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
             static float __last_val[2] = { -1.f, 0.02f };
-            float __srate_inv = 1.f / __config->sample_rate;
-            static Sound::Sample::SmpSaw __saw_sampler{440.f};
+            static Audio::Sample::SmpSaw __saw_sample;
+            static Audio::AudioSampler  __audio_sampler{ {&__saw_sample} };
+            __audio_sampler.setSampleRate(__config->sample_rate);
 
-            rtacbackWarningCheck(_status);
+            rtacbCallbackWarningCheck(_status);
 
-            __outbuf_wrap.setSignalForAllChannels(&__saw_sampler);
+            __outbuf_wrap.setSignalForAllChannels(&__audio_sampler);
             return 0;
         }
 
-        int rtacb_inout(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+        int rtacbInOut(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
                         double _stream_t, RtAudioStreamStatus _status, void *_config) {
-            rtacbackWarningCheck(_status);
+            rtacbCallbackWarningCheck(_status);
 
             RTAStreamConfig *__config = (RTAStreamConfig*)_config;
 
-            // If the number of input and output channels is equal, we simply copy buffer here.
+            // If the number of input and output channels is equal, we simply copy the buffer.
             if (__config->device_i.stream_parameters.nChannels == __config->device_o.stream_parameters.nChannels) {
                 uint32_t bytes = __config->device_o.stream_parameters.nChannels * __config->buffer_frames *
                                  __config->getBufferElemBytes();
@@ -653,7 +652,7 @@ namespace Simple {
 
         // int rtacb_record(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
         //                  double _stream_t, RtAudioStreamStatus _status, void *_config) {
-        //     rtacbackWarningCheck(_status);
+        //     rtacbCallbackWarningCheck(_status);
 
         //     memcpy(Global_audio_buf.buf, _i_buffer, Global_audio_buf.buf_size * sizeof(float));
         //     return 0;
@@ -661,7 +660,7 @@ namespace Simple {
 
         // int rtacb_playback(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
         //                  double _stream_t, RtAudioStreamStatus _status, void *_config) {
-        //     rtacbackWarningCheck(_status);
+        //     rtacbCallbackWarningCheck(_status);
 
         //     memcpy(_o_buffer, Global_audio_buf.buf, Global_audio_buf.buf_size * sizeof(float));
         //     return 0;
