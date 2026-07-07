@@ -58,16 +58,6 @@ namespace Simple {
 // Note: before Win10 consolas font must be set manually
 
 namespace Simple {
-    namespace WinInner {
-        // Taken from: https://stackoverflow.com/questions/23471873/change-console-code-page-in-windows-c
-        struct UTF8CodePage {
-            UTF8CodePage() : old_code_page(GetConsoleOutputCP()) { SetConsoleOutputCP(CP_UTF8); }
-           ~UTF8CodePage() { SetConsoleOutputCP(old_code_page); }
-
-            UINT old_code_page;
-        } init_utf8_code_page; // UTF8CodePage END
-    }; // WinInner END
-
     // Windows wrappers
 
     namespace File {
@@ -80,7 +70,7 @@ namespace Simple {
 
             virtual bool open(const std::string &_fpath) override {
                 // Get WCHAR string to open a file with (possibly) Unicode characters
-                int __wchars_num = MultiByteToWideChar(CP_UTF8, 0, _fpath.c_str(), _fpath.size(), NULL, 0);
+                int __wchars_num = MultiByteToWideChar(CP_ACP, 0, _fpath.c_str(), _fpath.size(), NULL, 0);
                 WCHAR* wstr = new wchar_t[__wchars_num+1]{};
                 MultiByteToWideChar(CP_UTF8, 0, _fpath.c_str(), _fpath.size(), wstr, __wchars_num);
 
@@ -117,7 +107,7 @@ namespace Simple {
 
         // The reason this class exists
 
-            // Reads a single element of type T from binary file. Ineffective.
+            // Reads a single element of type T from a binary file.
             template <class T>
             T readBinary() {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
@@ -128,7 +118,7 @@ namespace Simple {
                 return __res ? *reinterpret_cast<T*>(__ch_buf) : T{};
             }
 
-            // Reads a single element of type T from binary file. Ineffective.
+            // Reads a single element of type T from a binary file.
             template <class T>
             bool readBinary(T &_val) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)

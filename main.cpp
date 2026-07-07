@@ -11,6 +11,7 @@
 
 
 int main(int argc, char **argv) {
+    Simple::ArgHandler arg_handler{argc, argv};
     using Simple::VKFW::ContextIndex;
     using Simple::VKFW::ContextIndex2;
 

@@ -844,13 +844,12 @@ namespace Simple {
         // std::vector<ArgNamespace> nested_args;
         std::vector<ArgDescription> arguments;
         std::vector<std::pair<uint32_t, std::vector<std::vector<std::string>>>> argument_values;
-        int argc = 0;
-        char **argv = nullptr;
+        ArgHandler arg_handler;
 
         ArgParser() {}
-        ArgParser(int _prog_argc, char** _prog_argv) : argc{_prog_argc}, argv{_prog_argv} {}
+        ArgParser(int _prog_argc, char** _prog_argv) : arg_handler{_prog_argc, _prog_argv} {}
 
-        void setArgumentSource(int _argc, char** _argv) { argc = _argc; argv = _argv; }
+        void setArgumentSource(int _argc, char** _argv) { arg_handler.initArgs(_argc, _argv); }
 
         const ArgDescription* getArgDescriptionByName(const std::string &_arg_name) const {
             for (uint32_t i = 0u; i < arguments.size(); ++i)
@@ -904,27 +903,27 @@ namespace Simple {
 
         void parseAllArguments() {
             std::vector<std::pair<int,int>> __arg_indices;
-            for (int i = 1; i < argc; ++i) {
-                if (argv[i][0] == '-') {
-                    bool __check_name  = argv[i][1] == '-' && isalpha(argv[i][2]);
-                    bool __check_alias = isalpha(argv[i][1]);
+            for (int i = 1; i < arg_handler.argc; ++i) {
+                if (arg_handler.argv[i][0] == '-') {
+                    bool __check_name  = arg_handler.argv[i][1] == '-' && isalpha(arg_handler.argv[i][2]);
+                    bool __check_alias = isalpha(arg_handler.argv[i][1]);
 
                     if (__check_name || __check_alias) {
                         for (uint32_t j = 0u; j < arguments.size(); ++j) {
-                            if (__check_name ? arguments[j].checkArgName (argv[i])
-                                             : arguments[j].checkArgAlias(argv[i]))
+                            if (__check_name ? arguments[j].checkArgName (arg_handler.argv[i])
+                                             : arguments[j].checkArgAlias(arg_handler.argv[i]))
                                 __arg_indices.push_back({i,j});
                         }
                     }
                 }
             }
-            __arg_indices.push_back({argc, -1});
+            __arg_indices.push_back({arg_handler.argc, -1});
 
             for (uint32_t i = 0u; i < __arg_indices.size()-1; ++i) {
                 argument_values.push_back({ __arg_indices[i].second,
                                             ArgNamespace::ParseArgument(arguments[__arg_indices[i].second],
                                                       __arg_indices[i+1].first - (__arg_indices[i].first+1),
-                                                     (__arg_indices[i  ].first+1) < argc ? argv + (__arg_indices[i].first+1) : nullptr) });
+                                                     (__arg_indices[i  ].first+1) < arg_handler.argc ? arg_handler.argv + (__arg_indices[i].first+1) : nullptr) });
             }
         }
 
