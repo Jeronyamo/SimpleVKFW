@@ -171,6 +171,13 @@ set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio
 
 ##  ============  SVKFW Targets  ============  ##
 
+if(${CMAKE_BUILD_TYPE} EQUAL "Debug")
+    target_compile_options(svkfw      PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
+    target_compile_options(svkfw_test PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
+    target_link_options   (svkfw      PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
+    target_link_options   (svkfw_test PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
+endif()
+
 svkfw_set_definitions(svkfw_test)
 target_include_directories(svkfw_test PUBLIC ${SVKFW_ALL_INCULDES})
 target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio)

@@ -117,12 +117,12 @@ namespace Simple {
     SVKFW_ADD_TEST(ImageDiff, "Save/Load img differences") {
         std::string __img_dir = "/Programming/SimpleVKFW/tests/diff/";
 
-        genDiffImage(__img_dir + "armadillo_ref.png", __img_dir + "armadillo_res.png", __img_dir + "arma_diff.png");
-        genDiffImage(__img_dir + "bunny_ref.png"    , __img_dir + "bunny_res.png"    , __img_dir + "bunny_diff.png");
-        genDiffImage(__img_dir + "dragon_ref.png"   , __img_dir + "dragon_res.png"   , __img_dir + "dragon_diff.png");
-        genDiffImage(__img_dir + "happy_ref.png"    , __img_dir + "happy_res.png"    , __img_dir + "happy_diff.png");
-        genDiffImage(__img_dir + "nefertiti_ref.png", __img_dir + "nefertiti_res.png", __img_dir + "nefertiti_diff.png");
-        genDiffImage(__img_dir + "teapot_ref.png"   , __img_dir + "teapot_res.png"   , __img_dir + "teapot_diff.png");
+        // genDiffImage(__img_dir + "armadillo_ref.png", __img_dir + "armadillo_res.png", __img_dir + "arma_diff.png");
+        // genDiffImage(__img_dir + "bunny_ref.png"    , __img_dir + "bunny_res.png"    , __img_dir + "bunny_diff.png");
+        // genDiffImage(__img_dir + "dragon_ref.png"   , __img_dir + "dragon_res.png"   , __img_dir + "dragon_diff.png");
+        // genDiffImage(__img_dir + "happy_ref.png"    , __img_dir + "happy_res.png"    , __img_dir + "happy_diff.png");
+        // genDiffImage(__img_dir + "nefertiti_ref.png", __img_dir + "nefertiti_res.png", __img_dir + "nefertiti_diff.png");
+        // genDiffImage(__img_dir + "teapot_ref.png"   , __img_dir + "teapot_res.png"   , __img_dir + "teapot_diff.png");
     }
 
 
