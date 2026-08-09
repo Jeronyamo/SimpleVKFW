@@ -1063,7 +1063,7 @@ namespace Simple {
 
         struct ContentOGG : FiletypeContentItf {
             struct PageOGG {
-                uint32_t signature; // these 4 bytes must be "OggS"
+                char signature[4]; // these 4 bytes must be "OggS"
                 uint8_t  version;
                 uint8_t  header_flags;
                 uint64_t granule_position;
@@ -1071,9 +1071,10 @@ namespace Simple {
                 uint32_t sequence_number;
                 uint32_t checksum;
                 uint8_t  total_segments;
-                char segment_table[256];
+                uint8_t  segment_table[256];
+                std::vector<unsigned char> segment_data; // segment_data.size() == total_segments, i-th segment data acquired by calculating offset (it's size is in segment_table[i])
             }; // PageOGG END
-            std::vector<PageOGG> data_pages;
+            std::vector<PageOGG> pages;
         }; // ContentOGG END
 
         struct ReaderWriterOGG : FiletypeReaderWriterItf {
@@ -1086,7 +1087,52 @@ namespace Simple {
                 FileReader __ftype_file{_fpath};
                 if (!__ftype_file.isOpen()) return false;
 
-                printf(SVKFW_WRAPINFO("OGG Reader : Read", "Read END\n"));
+                while (__ftype_file.isValid()) {
+                    ContentOGG::PageOGG __tmp_ogg_page{};
+                    sizeof(__tmp_ogg_page);
+
+                    // Find 'OggS'
+                    char __oggs[5]{};
+                    bool __is_complete = __ftype_file.readBinaryArray<char>(__oggs, 4);
+                    if (!__is_complete && __ftype_file.isEOF()) break; // TODO: something smarter
+                    SVKFW_WASSERT_CMD(__is_complete, "File::ReaderWriterOGG :: read", "Page " + std::to_string(file_content.pages.size()) + " - Error while beginning to read OGG page\n", break);
+
+                    while (__ftype_file.isValid() && std::strcmp(__oggs, "OggS")) {
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ReaderWriterOGG :: read", "Page %d - OggS capture position mismatch!\n"), file_content.pages.size());
+                        __oggs[0] = __oggs[1];
+                        __oggs[1] = __oggs[2];
+                        __oggs[2] = __oggs[3];
+                        __oggs[3] = __ftype_file.readBinary<char>();
+                    }
+                    SVKFW_WASSERT_CMD(__ftype_file.isValid(), "File::ReaderWriterOGG :: read", "Error while finding 'OggS' capture\n", break);
+                    std::memcpy(__tmp_ogg_page.signature, __oggs, 4);
+
+                    // Page found, read rest of the header
+                    __tmp_ogg_page.version          = __ftype_file.readBinary<uint8_t >();
+                    __tmp_ogg_page.header_flags     = __ftype_file.readBinary<uint8_t >();
+                    __tmp_ogg_page.granule_position = __ftype_file.readBinary<uint64_t>();
+                    __tmp_ogg_page.serial_number    = __ftype_file.readBinary<uint32_t>();
+                    __tmp_ogg_page.sequence_number  = __ftype_file.readBinary<uint32_t>();
+                    __tmp_ogg_page.checksum         = __ftype_file.readBinary<uint32_t>();
+                    __tmp_ogg_page.total_segments   = __ftype_file.readBinary<uint8_t >();
+                    SVKFW_WASSERT_CMD(__ftype_file.isValid(), "File::ReaderWriterOGG :: read", "Error reading OGG page header\n", break);
+                    SVKFW_WASSERT_CMD(__ftype_file.readBinaryArray<uint8_t>(__tmp_ogg_page.segment_table, __tmp_ogg_page.total_segments), "File::ReaderWriterOGG :: read", "Error reading segment table", break);
+
+                    // Calculate data size, read it and save the page
+                    // printf(SVKFW_WRAPINFO("OGG Reader : Read", "Page %d - %d segments: "), file_content.pages.size(), __tmp_ogg_page.total_segments);
+                    uint32_t __page_data_size = 0u;
+                    for (uint32_t i = 0u; i < __tmp_ogg_page.total_segments; ++i) {
+                        __page_data_size += __tmp_ogg_page.segment_table[i];
+                        // printf("%d, ", __tmp_ogg_page.segment_table[i]);
+                    }
+                    // printf("\n");
+
+                    __tmp_ogg_page.segment_data.resize(__page_data_size, 0u);
+                    SVKFW_WASSERT(__ftype_file.readBinaryArray<uint8_t>(__tmp_ogg_page.segment_data.data(), __page_data_size), "File::ReaderWriterOGG :: read", "Error reading segment data\n");
+                    file_content.pages.emplace_back(__tmp_ogg_page);
+                }
+
+                printf(SVKFW_WRAPINFO("OGG Reader : Read", "Read END, %d OGG pages\n"), file_content.pages.size());
                 return true;
             }
             virtual bool write(const std::string &_fpath) override {
@@ -1094,6 +1140,18 @@ namespace Simple {
                 FileWriter __ftype_file{_fpath};
                 if (!__ftype_file.isOpen()) return false;
 
+                for (const auto& page : file_content.pages) {
+                    __ftype_file.writeBinaryArray(page.signature, 4);
+                    __ftype_file.writeBinary(page.version         );
+                    __ftype_file.writeBinary(page.header_flags    );
+                    __ftype_file.writeBinary(page.granule_position);
+                    __ftype_file.writeBinary(page.serial_number   );
+                    __ftype_file.writeBinary(page.sequence_number );
+                    __ftype_file.writeBinary(page.checksum        );
+                    __ftype_file.writeBinary(page.total_segments  );
+                    __ftype_file.writeBinaryArray(page.segment_table, page.total_segments);
+                    __ftype_file.writeBinaryArray(page.segment_data.data(), page.segment_data.size());
+                }
 
                 return __ftype_file.isValid();
             }
