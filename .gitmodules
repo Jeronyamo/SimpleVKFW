@@ -10,3 +10,6 @@
 [submodule "ext_sources/glfw"]
 	path = ext_sources/glfw
 	url = https://github.com/glfw/glfw
+[submodule "ext_sources/opus"]
+	path = ext_sources/opus
+	url = https://github.com/xiph/opus

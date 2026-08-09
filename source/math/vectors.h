@@ -912,6 +912,28 @@ namespace Simple {
             { return std::max(std::max(std::max(op1.x, op1.y), op1.z), op1.w); }
 
 
+        template <typename Y>
+        inline uint32_t aminOf(const Vec2Base<Y> &op1)
+            { return op1.x > op1.y; }
+        template <typename Y>
+        inline uint32_t amaxOf(const Vec2Base<Y> &op1)
+            { return op1.x < op1.y; }
+
+        template <typename Y>
+        inline uint32_t aminOf(const Vec3Base<Y> &op1)
+            { uint32_t amin2 = aminOf(op1["yz"]) + 1u; return amin2 * (op1.x > op1[amin2]); }
+        template <typename Y>
+        inline uint32_t amaxOf(const Vec3Base<Y> &op1)
+            { uint32_t amax2 = amaxOf(op1["yz"]) + 1u; return amax2 * (op1.x < op1[amax2]); }
+
+        template <typename Y>
+        inline uint32_t aminOf(const Vec4Base<Y> &op1)
+            { uint32_t amin3 = aminOf(op1["yzw"]) + 1u; return amin3 * (op1.x > op1[amin3]); }
+        template <typename Y>
+        inline uint32_t amaxOf(const Vec4Base<Y> &op1)
+            { uint32_t amax3 = amaxOf(op1["yzw"]) + 1u; return amax3 * (op1.x < op1[amax3]); }
+
+
 
         template <typename Y, typename Z>
         inline typename std::enable_if<Util::is_same_base<Y, Z>::value, Vec2Base<Util::remove_ref_c<Y>>>::type

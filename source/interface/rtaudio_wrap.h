@@ -116,7 +116,7 @@ namespace Simple {
             RTAStreamConfig stream_config;
 
 
-            AudioHandler() : rta_cback{nullptr} { sizeof(AudioHandler); }
+            AudioHandler() : rta_cback{nullptr} {}
            ~AudioHandler() {
                 if (rta_handler.isStreamRunning())
                     rta_handler.abortStream();
@@ -159,8 +159,8 @@ namespace Simple {
                         uint32_t __preferred_srate = rta_handler.getDeviceInfo(__o_params->deviceId).preferredSampleRate;
                         _sample_rate = __preferred_srate;
                     }
-                    if (__o_params != nullptr) {
-                        uint32_t __preferred_srate = rta_handler.getDeviceInfo(__o_params->deviceId).preferredSampleRate;
+                    if (__i_params != nullptr) {
+                        uint32_t __preferred_srate = rta_handler.getDeviceInfo(__i_params->deviceId).preferredSampleRate;
                         _sample_rate = std::max(_sample_rate, __preferred_srate);
                     }
                 }
@@ -257,7 +257,7 @@ namespace Simple {
                                 __device_io.stream_parameters.deviceId = _is_input_device ? rta_handler.getDefaultInputDevice() :
                                                                                             rta_handler.getDefaultOutputDevice();
                                 __device_io.device_mode = DEVICE_MODE_DEFAULT;
-                                // TODO: maybe fall back to some other method (2 lines above). Or not (below).
+                                // Note: maybe fall back to some other method (2 lines above). Or not (below).
                                 // throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate", "no duplex devices available (i)"));
                             }
                         }
@@ -273,7 +273,7 @@ namespace Simple {
 
                 if (__old_device_id != __device_io.stream_parameters.deviceId) {
                     std::string __info_string = deviceGetInfoStr_(__device_io.stream_parameters.deviceId);
-                    printf("%s %s\n", _is_input_device ? "New Input" : "New Output", __info_string.c_str());
+                    printf(SVKFW_WRAPINFO("RTA :: AudioHandler :: deviceUpdate_", "%s %s\n"), _is_input_device ? "New Input" : "New Output", __info_string.c_str());
                 }
             }
             inline void deviceInputUpdate()  { deviceUpdate_( true); }
@@ -549,7 +549,7 @@ namespace Simple {
         }
 
         int rtacbDefault(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
-                          double _stream_t, RtAudioStreamStatus _status, void *_config) {
+                         double _stream_t, RtAudioStreamStatus _status, void *_config) {
             rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.

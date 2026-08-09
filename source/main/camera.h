@@ -73,7 +73,7 @@ namespace Simple {
 
         ProjPerspective(const ProjPerspective &_proj) = default;
         ProjPerspective(vec2 _reso, float _fovy_deg, float _n, float _f)
-                        : p_near{_n}, p_far{_f}, fovy{_fovy_deg}, fb_begin{_reso}, fb_now{_reso} {}
+                        : p_near{_n}, p_far{_f}, fovy{_fovy_deg}, fb_begin{1024.f, 1024.f}, fb_now{_reso} {}
 
         mat4 proj() const override {
             mat4 __res{};

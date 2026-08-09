@@ -15,6 +15,7 @@ namespace Simple {
             virtual bool  read(char *_buf, uint32_t _size) = 0;
             virtual bool isValid() const = 0;
             virtual bool  isOpen() const = 0;
+            virtual bool   isEOF() const = 0;
             virtual void   close()       = 0;
         }; // ReaderItf END
 
@@ -66,7 +67,7 @@ namespace Simple {
             InvalidationFlags f_state = FILE_VALID;
 
             ReaderWin(const std::string &_fpath = "") { if (!_fpath.empty()) open(_fpath); }
-        ~ReaderWin() { if (isOpen()) close(); }
+           ~ReaderWin() { if (isOpen()) close(); }
 
             virtual bool open(const std::string &_fpath) override {
                 // Get WCHAR string to open a file with (possibly) Unicode characters
@@ -91,17 +92,19 @@ namespace Simple {
                 DWORD __bytes_was_read = 0;
 
                 if (!ReadFile(f_handle, _buf, _size, &__bytes_was_read, nullptr)) {
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: read", "read error"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: read", "read error\n"));
                     f_state |= FILE_INVALID_BIT_ERR;
                 }
                 else if (__bytes_was_read < _size) {
-                    // printf(SVKFW_WRAPINFO("File :: ReaderWin :: read", "EOF reached"));
+                    if (__bytes_was_read > 0)
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: read", "%d/%d bytes, EOF reached\n"), __bytes_was_read, _size);
                     f_state |= FILE_INVALID_BIT_EOF;
                 }
                 return isValid();
             }
             virtual inline bool  isOpen() const override { return f_handle !=  INVALID_HANDLE_VALUE; }
             virtual inline bool isValid() const override { return isOpen() && f_state == FILE_VALID; }
+            virtual inline bool   isEOF() const override { return f_state  &   FILE_INVALID_BIT_EOF; }
             virtual inline void   close()       override { CloseHandle(f_handle); f_handle = INVALID_HANDLE_VALUE; }
 
 
@@ -146,7 +149,7 @@ namespace Simple {
             InvalidationFlags f_state = FILE_VALID;
 
             WriterWin(const std::string &_fpath = "", bool _truncate = false) { if (!_fpath.empty()) open(_fpath, _truncate); }
-        ~WriterWin() { if (isOpen()) close(); }
+           ~WriterWin() { if (isOpen()) close(); }
 
             virtual bool open(const std::string &_fpath, bool _truncate = false) override {
                 // Get WCHAR string to open a file with (possibly) Unicode characters
@@ -169,6 +172,7 @@ namespace Simple {
             }
             virtual bool write(const char *_buf, uint32_t _size) override {
                 DWORD __bytes_written = 0;
+
                 if (!WriteFile(f_handle, _buf, _size, &__bytes_written, nullptr)) {
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: WriterWin :: write", "write error"));
                     f_state |= FILE_INVALID_BIT_ERR;
@@ -220,7 +224,7 @@ namespace Simple {
             std::ifstream f_handle;
 
             ReaderStd(const std::string &_fpath = "") { if (!_fpath.empty()) open(_fpath); }
-        ~ReaderStd() { if (isOpen()) close(); }
+           ~ReaderStd() { if (isOpen()) close(); }
 
             virtual inline bool open(const std::string  &_fpath) override {
                 f_handle.open(_fpath, std::ios_base::in | std::ios_base::binary);
@@ -230,6 +234,7 @@ namespace Simple {
                 f_handle.read(_buf, _size);
                 return isValid();
             }
+            virtual inline bool   isEOF() const override { return f_handle.    eof(); }
             virtual inline bool  isOpen() const override { return f_handle.is_open(); }
             virtual inline bool isValid() const override { return f_handle.   good(); }
             virtual inline void   close()       override {        f_handle.  close(); }
@@ -275,7 +280,7 @@ namespace Simple {
             std::ofstream f_handle;
 
             WriterStd(const std::string &_fpath = "", bool _truncate = false) { if (!_fpath.empty()) open(_fpath, _truncate); }
-        ~WriterStd() { if (isOpen()) close(); }
+           ~WriterStd() { if (isOpen()) close(); }
 
             virtual inline bool open(const std::string &_fpath, bool _truncate = false) override {
                 f_handle.open(_fpath, std::ios_base::out | std::ios_base::binary | (_truncate ? std::ios_base::trunc : (std::ios_base::openmode)0) );
