@@ -76,6 +76,7 @@ set(SVKFW_EXTERN_INC_DIR ${PROJECT_SOURCE_DIR}/ext_includes)
 ### Includes
 # set(EXTERN_INC_GLAD_DIR     ${SVKFW_EXTERN_INC_DIR}/glad)
 set(EXTERN_INC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw/include)
+set(EXTERN_INC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus/include)
 set(EXTERN_INC_STBI_DIR     ${SVKFW_EXTERN_INC_DIR}/STBI)
 set(EXTERN_INC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
 
@@ -84,6 +85,7 @@ set(EXTERN_SRC_IMGUI_DIR    ${SVKFW_EXTERN_SRC_DIR}/imgui)
 set(EXTERN_SRC_VOLK_DIR     ${SVKFW_EXTERN_SRC_DIR}/volk)
 set(EXTERN_SRC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw)
 set(EXTERN_SRC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
+set(EXTERN_SRC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus)
 
 ### Libraries
 # Note: includes from ext_libs should be declared here
@@ -100,6 +102,7 @@ set(SVKFW_ALL_INCULDES
     # ${EXTERN_INC_GLAD_DIR}
     ${EXTERN_INC_STBI_DIR}
     ${EXTERN_INC_GLFW_DIR}
+    ${EXTERN_INC_OPUS_DIR}
     ${EXTERN_INC_RTAUDIO_DIR}
 
     ${EXTERN_SRC_IMGUI_DIR}
@@ -156,10 +159,10 @@ PRIVATE
 
 
 ## RTAudio
-set(RTAUDIO_API_DS ON)
-set(RTAUDIO_API_ALSA OFF)
-set(RTAUDIO_API_ASIO OFF)
-set(RTAUDIO_API_PULSE OFF)
+set(RTAUDIO_API_DS      ON)
+set(RTAUDIO_API_ALSA   OFF)
+set(RTAUDIO_API_ASIO   OFF)
+set(RTAUDIO_API_PULSE  OFF)
 set(RTAUDIO_API_WASAPI OFF)
 set(BUILD_TESTING Off)
 set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
@@ -169,19 +172,29 @@ set_target_properties(rtaudio PROPERTIES FOLDER "RtAudio")
 set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")
 
 
+## Opus
+set(OPUS_STACK_PROTECTOR ON )
+set(OPUS_FIXED_POINT     OFF)
+set(OPUS_HARDENING       ON )
+
+add_subdirectory(${EXTERN_SRC_OPUS_DIR})
+
+
 ##  ============  SVKFW Targets  ============  ##
 
-if(${CMAKE_BUILD_TYPE} EQUAL "Debug")
-    target_compile_options(svkfw      PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
-    target_compile_options(svkfw_test PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
-    target_link_options   (svkfw      PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
-    target_link_options   (svkfw_test PRIVATE "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
-endif()
+# if(${CMAKE_BUILD_TYPE} EQUAL "Debug")
+    # target_compile_options(rtaudio    PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+    # target_compile_options(svkfw      PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+    # target_compile_options(svkfw_test PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+    # target_link_options   (rtaudio    PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+    # target_link_options   (svkfw      PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+    # target_link_options   (svkfw_test PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
+# endif()
 
 svkfw_set_definitions(svkfw_test)
 target_include_directories(svkfw_test PUBLIC ${SVKFW_ALL_INCULDES})
-target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio)
+target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio opus)
 
 svkfw_set_definitions(svkfw)
 target_include_directories(svkfw PRIVATE ${SVKFW_ALL_INCULDES})
-target_link_libraries(svkfw volk_headers glfw imgui rtaudio)
+target_link_libraries(svkfw volk_headers glfw imgui rtaudio opus)
