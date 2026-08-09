@@ -16,8 +16,7 @@ int main(int argc, char **argv) {
     using Simple::VKFW::ContextIndex2;
 
 // Config
-    // return Simple::test_csound();
-    const uint32_t FRAMES_IN_FLIGHT = 2u;
+    const uint32_t FRAMES_IN_FLIGHT = 3u;
     const uint32_t STAGING_BUFFER_SIZE = 16 * 1024*1024; //  16 MB for now
 
 // Scene info
@@ -43,7 +42,7 @@ int main(int argc, char **argv) {
         std::vector<Simple::mat4> model;
     };
 
-    const Simple::vec2u fb_size = {1024u, 1024u};
+    const Simple::vec2u fb_size = {1600u,  900u};
     const float fov = 33.f, p_near = 0.1f, p_far = 1000.f;
     const Simple::vec3 cam_pos = {-2.f,2.f,-2.f}, look_at = {0.f,0.f,0.f}, up_vect = {0.f,1.f,0.f};
 
@@ -71,6 +70,7 @@ int main(int argc, char **argv) {
     Simple::WindowInput::DefaultHandler main_window_exit{main_window.window};
 
     // ImGUI widgets
+    main_window_handler.imgui_handler.setFont("resources/fonts/RobotoMono-VariableFont_wght.ttf", 24.f);
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiWidgetLoadFile{});
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiTestWindow{});
 
@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
 // Swapchain:
     // Swapchain
     Simple::VKFW::cxt_vkfw.cxt_swapchain.setSwapchainSurfaceCapabilities();
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageCount(2);
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
     Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
     Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.wrap.imageArrayLayers = 1;
     Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.wrap.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -408,7 +408,7 @@ int main(int argc, char **argv) {
 
 
     Simple::VKFW::MemoryMapHandler ubo_memory_handler{};
-    ubo_memory_handler.mapMemoryFromResources({ci_buffer_uniform[0], ci_buffer_uniform[1]}, {});
+    ubo_memory_handler.mapMemoryFromResources(std::vector<ContextIndex2>(ci_buffer_uniform, ci_buffer_uniform+FRAMES_IN_FLIGHT), {});
 
     // Begin render pass static info
     cmd_handler.begin_render_pass_wrap.wrap.addClearValue4f({0.f, 0.f, 0.f, 1.f});
@@ -426,8 +426,8 @@ int main(int argc, char **argv) {
         glfwPollEvents();
         main_view_centered_proj.manualFrameUpdate(main_window_handler.frame_time);
 
-        barrier_handler.WaitForFences({ ci_fen_in_flight[current_frame] });
-        barrier_handler.ResetFences({ci_fen_in_flight[current_frame]});
+        barrier_handler.WaitForFences({ci_fen_in_flight[current_frame]});
+        barrier_handler.  ResetFences({ci_fen_in_flight[current_frame]});
 
         image_index = func_handler.AcquireNextImageKHR(ci_sem_image_available[current_frame]); // swapchain recreated in this function if needed
         if (image_index == UINT32_MAX) continue;
@@ -435,8 +435,7 @@ int main(int argc, char **argv) {
         // Update uniform buffers
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
-        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[0], &ubo_camera, 0, sizeof(ubo_camera));
-        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[1], &ubo_camera, 0, sizeof(ubo_camera));
+        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[image_index], &ubo_camera, 0, sizeof(ubo_camera));
 
 
         // Set command buffer
@@ -456,11 +455,12 @@ int main(int argc, char **argv) {
         cmd_handler.CmdBindIndexBuffer(ci_buffer_index);
 
         // Bind descriptor set (uniform buffer)
-        cmd_handler.CmdBindDescriptorSets(ci_pip_layout, VK_PIPELINE_BIND_POINT_GRAPHICS, { ci_descr_sets_ubo[current_frame] });
+        cmd_handler.CmdBindDescriptorSets(ci_pip_layout, VK_PIPELINE_BIND_POINT_GRAPHICS, { ci_descr_sets_ubo[image_index] });
 
         // Set viewport, scissor
         cmd_handler.cmdSetViewportScissorFromSwapchainExtent();
 
+        // Draw
         // cmd_handler.CmdClearAttachments();
         // cmd_handler.CmdDraw(vertices.size(), 1);
         // Draw (indexed)
@@ -507,6 +507,6 @@ int main(int argc, char **argv) {
     main_window.destroy();
     Simple::glfw_init.~GLFWInitClass();
 
-    printf("Success\n");
+    printf(SVKFW_WRAPINFO("main", "Success\n"));
     return 0;
 }
