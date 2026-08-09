@@ -64,7 +64,7 @@ namespace Simple {
 
             if (__res_possible) {
                 memcpy(&_in_value, byte_stream.data() + byte_offset, sizeof(T));
-                if (_swap_bytes) Util::Endianness.SwapBytesInplace(_in_value);
+                if (_swap_bytes) Endianness.SwapBytesInplace(_in_value);
                 byte_offset += sizeof(T);
             }
             return __res_possible;
@@ -78,7 +78,7 @@ namespace Simple {
                 memcpy(_in_array, byte_stream.data() + byte_offset, sizeof(T) * _len_elems);
                 if (_swap_bytes)
                     for (uint32_t i = 0u; i < _len_elems; ++i)
-                        Util::Endianness.SwapBytesInplace(_in_array[i]);
+                        Endianness.SwapBytesInplace(_in_array[i]);
                 byte_offset += sizeof(T) * _len_elems;
             }
             return __res_possible;
@@ -112,7 +112,7 @@ namespace Simple {
             if (__res_addnew)
                 byte_stream.insert(byte_stream.end(), size_t(byte_offset + sizeof(T) - byte_stream.size()), '\0');
 
-            if (_swap_bytes) Util::Endianness.SwapBytesInplace(_in_value);
+            if (_swap_bytes) Endianness.SwapBytesInplace(_in_value);
             memcpy(byte_stream.data() + byte_offset, &_in_value, sizeof(T));
             byte_offset += sizeof(T);
 
@@ -130,7 +130,7 @@ namespace Simple {
             unsigned char *__t_repr = reinterpret_cast<T*>(byte_stream.data() + byte_offset);
             if (_swap_bytes)
                 for (uint32_t i = 0u; i < _len_elems; ++i)
-                    Util::Endianness.SwapBytesInplace(__t_repr[i]);
+                    Endianness.SwapBytesInplace(__t_repr[i]);
 
             byte_offset += sizeof(T) * _len_elems;
             return __res_addnew;
