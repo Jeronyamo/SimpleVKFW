@@ -11,7 +11,7 @@ namespace Simple {
             File::ReaderWriterVMD motion_file, camera_file;
 
             ImGUI::WidgetWindow editor_window{"VMD Editor"};
-            ImGUI::WidgetInputText motion_path_input{"Motion path:"}, camera_path_input{"Camera path:"};
+            ImGUI::WidgetInputText motion_path_input{"Motion path"}, camera_path_input{"Camera path"};
             ImGUI::WidgetButton edit_button{"Edit file"};
             ImGUI::WidgetCheckbox fix_blink{"Fix blink", true}, reflect{"Reflect", true};
 

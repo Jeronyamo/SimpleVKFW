@@ -309,16 +309,16 @@ namespace Simple {
                 else {
                     if (std::is_floating_point<Color::Util::ColorChanType<T>>::value) {
                         auto __img{imgSwitchType()};
-                        if (E == PNG) stbi_write_png(_fname.c_str(), width, height, channels, (Color::Color1u*) __img.img.data(), 0);
-                        if (E == JPG) stbi_write_jpg(_fname.c_str(), width, height, channels, (Color::Color1u*) __img.img.data(), 0);
-                        if (E == BMP) stbi_write_bmp(_fname.c_str(), width, height, channels, (Color::Color1u*) __img.img.data());
-                        if (E == TGA) stbi_write_tga(_fname.c_str(), width, height, channels, (Color::Color1u*) __img.img.data());
+                        if (E == PNG) stbi_write_png(_fname.c_str(), width, height, channels, (Color::col1u*) __img.img.data(), 0);
+                        if (E == JPG) stbi_write_jpg(_fname.c_str(), width, height, channels, (Color::col1u*) __img.img.data(), 0);
+                        if (E == BMP) stbi_write_bmp(_fname.c_str(), width, height, channels, (Color::col1u*) __img.img.data());
+                        if (E == TGA) stbi_write_tga(_fname.c_str(), width, height, channels, (Color::col1u*) __img.img.data());
                     }
                     else {
-                        if (E == PNG) stbi_write_png(_fname.c_str(), width, height, channels, (Color::Color1u*)  img.data(), 0);
-                        if (E == JPG) stbi_write_jpg(_fname.c_str(), width, height, channels, (Color::Color1u*)  img.data(), 0);
-                        if (E == BMP) stbi_write_bmp(_fname.c_str(), width, height, channels, (Color::Color1u*)  img.data());
-                        if (E == TGA) stbi_write_tga(_fname.c_str(), width, height, channels, (Color::Color1u*)  img.data());
+                        if (E == PNG) stbi_write_png(_fname.c_str(), width, height, channels, (Color::col1u*)  img.data(), 0);
+                        if (E == JPG) stbi_write_jpg(_fname.c_str(), width, height, channels, (Color::col1u*)  img.data(), 0);
+                        if (E == BMP) stbi_write_bmp(_fname.c_str(), width, height, channels, (Color::col1u*)  img.data());
+                        if (E == TGA) stbi_write_tga(_fname.c_str(), width, height, channels, (Color::col1u*)  img.data());
                     }
                 }
             }
@@ -346,14 +346,14 @@ namespace Simple {
 
 //  ============  Image classes declaration  ============  \\
 
-        typedef Img::Image<Color::Color1f, 1> Image1f;
-        typedef Img::Image<Color::Color1u, 1> Image1u;
-        typedef Img::Image<Color::Color1f, 2> Image2f;
-        typedef Img::Image<Color::Color1u, 2> Image2u;
-        typedef Img::Image<Color::Color1f, 3> Image3f;
-        typedef Img::Image<Color::Color1u, 3> Image3u;
-        typedef Img::Image<Color::Color1f, 4> Image4f;
-        typedef Img::Image<Color::Color1u, 4> Image4u;
+        typedef Img::Image<Color::col1f, 1> Image1f;
+        typedef Img::Image<Color::col1u, 1> Image1u;
+        typedef Img::Image<Color::col1f, 2> Image2f;
+        typedef Img::Image<Color::col1u, 2> Image2u;
+        typedef Img::Image<Color::col1f, 3> Image3f;
+        typedef Img::Image<Color::col1u, 3> Image3u;
+        typedef Img::Image<Color::col1f, 4> Image4f;
+        typedef Img::Image<Color::col1u, 4> Image4u;
 
 
 //  ============  Image-related functions  ============  \\

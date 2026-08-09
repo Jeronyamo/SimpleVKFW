@@ -14,18 +14,18 @@ namespace Simple {
     namespace Color {
     //  ============  Color classes declaration  ============  \\
 
-        typedef             float Color1f;
-        typedef               int Color1i;
-        typedef     unsigned char Color1u;
-        typedef Vec2Base<Color1f> Color2f;
-        typedef Vec2Base<Color1i> Color2i;
-        typedef Vec2Base<Color1u> Color2u;
-        typedef Vec3Base<Color1f> Color3f;
-        typedef Vec3Base<Color1i> Color3i;
-        typedef Vec3Base<Color1u> Color3u;
-        typedef Vec4Base<Color1f> Color4f;
-        typedef Vec4Base<Color1i> Color4i;
-        typedef Vec4Base<Color1u> Color4u;
+        typedef           float col1f;
+        typedef             int col1i;
+        typedef   unsigned char col1u;
+        typedef Vec2Base<col1f> col2f;
+        typedef Vec2Base<col1i> col2i;
+        typedef Vec2Base<col1u> col2u;
+        typedef Vec3Base<col1f> col3f;
+        typedef Vec3Base<col1i> col3i;
+        typedef Vec3Base<col1u> col3u;
+        typedef Vec4Base<col1f> col4f;
+        typedef Vec4Base<col1i> col4i;
+        typedef Vec4Base<col1u> col4u;
 
 
     //  ============  Utilities  ============  \\
@@ -35,27 +35,27 @@ namespace Simple {
 
             // Construct color type from channel type and the number of channels
             template <typename T, int Ch> struct ColorConstructorSct {};
-            template <> struct ColorConstructorSct<Color1f, 1> { using type = Color1f; };
-            template <> struct ColorConstructorSct<Color1i, 1> { using type = Color1i; };
-            template <> struct ColorConstructorSct<Color1u, 1> { using type = Color1u; };
-            template <> struct ColorConstructorSct<Color1f, 2> { using type = Color2f; };
-            template <> struct ColorConstructorSct<Color1i, 2> { using type = Color2i; };
-            template <> struct ColorConstructorSct<Color1u, 2> { using type = Color2u; };
-            template <> struct ColorConstructorSct<Color1f, 3> { using type = Color3f; };
-            template <> struct ColorConstructorSct<Color1i, 3> { using type = Color3i; };
-            template <> struct ColorConstructorSct<Color1u, 3> { using type = Color3u; };
-            template <> struct ColorConstructorSct<Color1f, 4> { using type = Color4f; };
-            template <> struct ColorConstructorSct<Color1i, 4> { using type = Color4i; };
-            template <> struct ColorConstructorSct<Color1u, 4> { using type = Color4u; };
+            template <> struct ColorConstructorSct<col1f, 1> { using type = col1f; };
+            template <> struct ColorConstructorSct<col1i, 1> { using type = col1i; };
+            template <> struct ColorConstructorSct<col1u, 1> { using type = col1u; };
+            template <> struct ColorConstructorSct<col1f, 2> { using type = col2f; };
+            template <> struct ColorConstructorSct<col1i, 2> { using type = col2i; };
+            template <> struct ColorConstructorSct<col1u, 2> { using type = col2u; };
+            template <> struct ColorConstructorSct<col1f, 3> { using type = col3f; };
+            template <> struct ColorConstructorSct<col1i, 3> { using type = col3i; };
+            template <> struct ColorConstructorSct<col1u, 3> { using type = col3u; };
+            template <> struct ColorConstructorSct<col1f, 4> { using type = col4f; };
+            template <> struct ColorConstructorSct<col1i, 4> { using type = col4i; };
+            template <> struct ColorConstructorSct<col1u, 4> { using type = col4u; };
 
             template <typename T, int Ch>
             using ColorConstructor = typename ColorConstructorSct<T, Ch>::type;
 
             // Get number of channels from a color type
             template <typename T> struct ColorChannels{}; // THIS prevents from using channel types other than float,uchar,int
-            template <> struct ColorChannels<Color1f> { static constexpr uint32_t channels = 1u; };
-            template <> struct ColorChannels<Color1i> { static constexpr uint32_t channels = 1u; };
-            template <> struct ColorChannels<Color1u> { static constexpr uint32_t channels = 1u; };
+            template <> struct ColorChannels<col1f> { static constexpr uint32_t channels = 1u; };
+            template <> struct ColorChannels<col1i> { static constexpr uint32_t channels = 1u; };
+            template <> struct ColorChannels<col1u> { static constexpr uint32_t channels = 1u; };
 
             template <typename T>
             struct ColorChannels<Vec2Base<T>> { static constexpr uint32_t channels = 2u; };
@@ -79,9 +79,9 @@ namespace Simple {
 
 
             template <typename T> struct ColorChanOpsTypeSct {}; // THIS prevents from using channel types other than float,uchar,int
-            template <> struct ColorChanOpsTypeSct<Color1f> { using type = Color1f; };
-            template <> struct ColorChanOpsTypeSct<Color1i> { using type = Color1i; };
-            template <> struct ColorChanOpsTypeSct<Color1u> { using type = Color1i; };
+            template <> struct ColorChanOpsTypeSct<col1f> { using type = col1f; };
+            template <> struct ColorChanOpsTypeSct<col1i> { using type = col1i; };
+            template <> struct ColorChanOpsTypeSct<col1u> { using type = col1i; };
 
             template <typename T>
             using  ColorChanOpsType = typename ColorChanOpsTypeSct<ColorChanType<T>>::type;
@@ -89,15 +89,15 @@ namespace Simple {
 
             template <typename T>
             struct ChanMax {}; // THIS prevents from using channel types other than float,uchar,int
-            template <> struct ChanMax<Color1u> { static constexpr   int val = 255; };
-            template <> struct ChanMax<Color1i> { static constexpr   int val = 255; };
-            template <> struct ChanMax<Color1f> { static constexpr float val = 1.f; };
+            template <> struct ChanMax<col1u> { static constexpr   int val = 255; };
+            template <> struct ChanMax<col1i> { static constexpr   int val = 255; };
+            template <> struct ChanMax<col1f> { static constexpr float val = 1.f; };
 
             template <typename T>
             struct OtherChanTypeSct {}; // THIS prevents from using channel types other than float,uchar,int
-            template <> struct OtherChanTypeSct<Color1f> { using type = Color1u; };
-            template <> struct OtherChanTypeSct<Color1i> { using type = Color1f; };
-            template <> struct OtherChanTypeSct<Color1u> { using type = Color1f; };
+            template <> struct OtherChanTypeSct<col1f> { using type = col1u; };
+            template <> struct OtherChanTypeSct<col1i> { using type = col1f; };
+            template <> struct OtherChanTypeSct<col1u> { using type = col1f; };
             template <typename T>
             struct OtherChanTypeSct<Vec2Base<T>> { using type = typename OtherChanTypeSct<T>::type; };
             template <typename T>

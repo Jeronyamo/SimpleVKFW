@@ -2,6 +2,7 @@
 #define SVKFW_COLORMODEL_H
 
 #include "math/vectors.h"
+#include "main/color.h"
 
 
 namespace Simple {
@@ -220,74 +221,55 @@ namespace Simple {
 
 //  ============  Color model transforms  ============  \\
 
-        template <ColorM _From, ColorM _To>
-        struct Model {
-            template <class T>
-            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
-                if (_From != _To || !std::is_same<Cfrom, Cto>::value)
-                    fprintf(stderr, "Warning: color model conversion - not implemented\n");
-                return _c;
-            }
-            template <class T>
-            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
-                if (_From != _To || !std::is_same<Cfrom, Cto>::value)
-                    fprintf(stderr, "Warning: color4 model conversion - not implemented\n");
-                return _c;
-            }
-        };
+        template <ColorM _from, ColorM _to>
+        col3f convert3f(const col3f &_col_in) {
+            if (_from != _to)
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("Color :: convert", "Color model conversion <%d, %d> is not implemented\n"), _from, _to);
+
+            return _col_in;
+        }
+        template <ColorM _from, ColorM _to, class T>
+        inline Vec3Base<T> convert(const Vec3Base<T> &_col_in) {
+            return (convert3f<_from, _to>((_col_in * Util::ConvertCoef<T, col1f>::coef).template cast<col1f>())
+                        * Util::ConvertCoef<col1f, T>::coef).template cast<T>();
+        }
+        template <ColorM _from, ColorM _to, class T>
+        inline Vec4Base<T> convert(const Vec4Base<T> &_col_in) {
+            return { convert<_from, _to>(_col_in["xyz"]), _col_in.w };
+        }
 
         template <>
-        struct Model<Color::RGB, Color::HSV> {
-            template <class T>
-            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
-                Vec3Base<T> __res{};
+        col3f convert3f<Color::RGB, Color::HSV>(const col3f &_col_in) {
+            col3f    res{};
+            uint32_t amax = Math::amaxOf(_col_in);
+            res.z = _col_in[amax]; // V
+            res.x = res.z - _col_in[Math::aminOf(_col_in)];
 
-                unsigned __ind = (_c.x < _c.y) ? 0u : 1u;
-                __res.y = _c.z < _c[     __ind] ? _c.z : _c[__ind]; // C Min
-                __ind   = _c.z < _c[1u - __ind] ? 1u - __ind : 2u;
-                __res.z = _c[__ind];                           // V == C Max
-                float __del = __res.z - __res.y;
-                if (__res.z > SVKFW_EPS4)
-                    __res.y = UtilCol::Max<T>::val * (1.f - float(__res.y) / __res.z); // S
-                if (  __del > SVKFW_EPS4) {
-                    unsigned __i1 = (__ind + 1u) % 3u, __i2 = (__ind + 2u) % 3u;
-                    __ind = __ind || _c.y >= _c.z ? __ind : 4u;
-                    __res.x = UtilCol::Max<T>::val * 0.1666666f *
-                                ((_c[__i1] - _c[__i2]) / __del + (__ind << 1u)); // H
-                }
-                return __res;
+            if (res.z > SVKFW_EPS4)
+                res.y = res.x / res.z; // S
+
+            if (res.x > SVKFW_EPS4) {
+                res.x =  (_col_in[(amax+1)%3] - _col_in[(amax+2)%3]) / res.x + (amax << 1u);
+                if (res.x <  0.f) res.x += 6;
+                if (res.x >= 6.f) res.x -= 6;
+                res.x /= 6;
             }
-            template <class T>
-            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
-                return { Convert(_c.col()), _c.w };
-            }
-        };
+            // printf("Cast RGB -> HSV: [%f, %f, %f] -> [%f, %f, %f]\n", _col_in.x * 255, _col_in.y * 255, _col_in.z * 255, res.x * 360, res.y * 100, res.z * 100);
+            return res;
+        }
 
         template <>
-        struct Model<Color::HSV, Color::RGB> {
-            template <class T>
-            static Vec3Base<T> Convert(const Vec3Base<T> &_c) {
-                Vec3Base<T> __res{};
+        col3f convert3f<Color::HSV, Color::RGB>(const col3f &_col_in) {
+            col3f res{};
+            uint32_t angle = _col_in.x * 6;
 
-                float Vmin = (UtilCol::Max<T>::val - _c.y) *
-                              UtilCol::ValConv<T, float>::coef * _c.z;
-                float H_i = 0.f;
-                float a = (_c.z - Vmin) * std::modf(_c.x *
-                              UtilCol::ValConv<T, float>::coef * 6.f, &H_i);
-                unsigned Hi = unsigned(H_i);
-                Hi = Hi <= 5u ? Hi : 5u;
+            res[(angle+1 >> 2)%3] =  _col_in.y * _col_in.z;
+            res[     (7-angle)%3] = (_col_in.y * _col_in.z) * (1 - std::abs((_col_in.x * 3 - std::trunc(_col_in.x * 3)) * 2 - 1));
+            res += _col_in.z * (1.f - _col_in.y);
 
-                __res[(2u + (Hi >> 1)) % 3u] = Vmin;
-                if (Hi & 1u) __res[Hi >> 1] = _c.z - a; // Vdec
-                else __res[(1u + (Hi >> 1)) % 3u] = Vmin + a; // Vinc
-
-                return __res;
-            }
-            template <class T>
-            static Vec4Base<T> Convert(const Vec4Base<T> &_c) {
-                return { Convert(_c.col()), _c.w };
-            }
-        };
+            // printf("Cast HSV -> RGB: [%f, %f, %f] -> [%f, %f, %f]\n", _col_in.x * 360, _col_in.y * 100, _col_in.z * 100, res.x * 255, res.y * 255, res.z * 255);
+            return res;
+        }
     };
 };
 

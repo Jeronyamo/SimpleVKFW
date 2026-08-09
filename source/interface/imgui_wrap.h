@@ -4,6 +4,7 @@
 #define IMGUI_IMPL_VULKAN_USE_VOLK
 
 #include "interface/vkfw.h"
+#include "main/colormodel.h"
 
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_glfw.h"
@@ -783,6 +784,8 @@ namespace Simple {
         struct ImGuiHandler {
             ImGuiContext *context = nullptr;
             ImGui_ImplVulkan_InitInfo imgui_info{};
+            ImGuiIO    *imgui_io;
+            ImGuiStyle *imgui_style;
             uint32_t min_image_count = 2u;
             uint32_t descr_pool_size = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
             std::vector<WidgetItf*> widgets; // Main Menu Bar or Window widgets
@@ -793,10 +796,16 @@ namespace Simple {
             void createContext() {
                 SVKFW_WASSERT(IMGUI_CHECKVERSION(), "ImGUI::ImGuiHandler Constructor", "ImGUI version mismatch\n");
                 context = ImGui::CreateContext();
+                imgui_io    = &ImGui::GetIO();
+                imgui_style = &ImGui::GetStyle();
+
+                setDefaultStyleSVKFW();
             }
 
             void destroyContext() {
                 if (context != nullptr) {
+                    imgui_io    = nullptr;
+                    imgui_style = nullptr;
                     ImGui_ImplVulkan_Shutdown();
                     ImGui_ImplGlfw_Shutdown();
                     ImGui::DestroyContext(context);
@@ -813,6 +822,24 @@ namespace Simple {
                 ImGui_ImplVulkan_Init(&imgui_info);
             }
 
+            void setDefaultStyleSVKFW() {
+                const Color::col3f __color_theme = Color::convert<Color::RGB, Color::HSV>(Color::col3f{166.f, 78.f, 20.f} / 255);
+
+                if (imgui_style) {
+                    for (uint32_t col_id = 0u; col_id < ImGuiCol_COUNT; ++col_id) {
+                        Color::col3f __curr_col{imgui_style->Colors[col_id].x, imgui_style->Colors[col_id].y, imgui_style->Colors[col_id].z};
+                        __curr_col = Color::convert<Color::RGB, Color::HSV>(__curr_col);
+                        __curr_col.x = __color_theme.x;
+                        __curr_col = Color::convert<Color::HSV, Color::RGB>(__curr_col);
+                        imgui_style->Colors[col_id] = ImVec4(__curr_col.x, __curr_col.y, __curr_col.z, imgui_style->Colors[col_id].w);
+                    }
+                }
+            }
+            void setFont(const std::string &_font_path, float _size_pixels = 0.f) {
+                if (imgui_io)
+                    imgui_io->Fonts->AddFontFromFileTTF(_font_path.c_str(), _size_pixels);
+            }
+
             void newFrame() {
                 ImGui_ImplVulkan_NewFrame();
                 ImGui_ImplGlfw_NewFrame();
@@ -823,8 +850,7 @@ namespace Simple {
                 ImGui::Render();
             }
             void fillCommandBuffer(VkCommandBuffer _cmd_buffer) {
-                ImDrawData* __draw_data = ImGui::GetDrawData();
-                ImGui_ImplVulkan_RenderDrawData(__draw_data, _cmd_buffer);
+                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), _cmd_buffer);
             }
 
             void initializeContext(const VKFW::ObjGetterHandler &_vkfw_getter, VKFW::ContextIndex _ci_qfamily,
