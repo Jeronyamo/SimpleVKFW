@@ -353,30 +353,30 @@ namespace Simple {
 
                     if (_device_id == __device_info.ID) {
                         __res += "Audio Device Info:\n";
-                        __res += "- Name: " + __device_info.name + '\n';
-                        __res += "- ID: " + std::to_string(__device_info.ID) + '\n';
-                        __res += "- Channels (i): " + std::to_string(__device_info. inputChannels) + '\n';
-                        __res += "- Channels (o): " + std::to_string(__device_info.outputChannels) + '\n';
-                        __res += "- Channels (d): " + std::to_string(__device_info.duplexChannels) + '\n';
-                        __res += "- Is default (i): " + std::to_string(__device_info.isDefaultInput)  + '\n';
-                        __res += "- Is default (o): " + std::to_string(__device_info.isDefaultOutput) + '\n';
-                        __res += "- Sample rate (curr): " + std::to_string(__device_info.  currentSampleRate) + '\n';
-                        __res += "- Sample rate (pref): " + std::to_string(__device_info.preferredSampleRate) + '\n';
-                        __res += "- Native formats (bitflag): " + std::to_string(__device_info.nativeFormats) + '\n';
-                        __res += "- Native formats: ";
+                        __res += " - Name: " + __device_info.name + '\n';
+                        __res += " - ID: " + std::to_string(__device_info.ID) + '\n';
+                        __res += " - Channels (i): " + std::to_string(__device_info. inputChannels) + '\n';
+                        __res += " - Channels (o): " + std::to_string(__device_info.outputChannels) + '\n';
+                        __res += " - Channels (d): " + std::to_string(__device_info.duplexChannels) + '\n';
+                        __res += " - Is default (i): " + std::to_string(__device_info.isDefaultInput)  + '\n';
+                        __res += " - Is default (o): " + std::to_string(__device_info.isDefaultOutput) + '\n';
+                        __res += " - Sample rate (curr): " + std::to_string(__device_info.  currentSampleRate) + '\n';
+                        __res += " - Sample rate (pref): " + std::to_string(__device_info.preferredSampleRate) + '\n';
+                        __res += " - Native formats (bitflag): " + std::to_string(__device_info.nativeFormats) + '\n';
+                        __res += " - Native formats: ";
 
                         if (__device_info.nativeFormats & RTAUDIO_SINT8)
-                            __res += __device_info.nativeFormats >= RTAUDIO_SINT16  ? "Int8, "    : "Int8";
+                            __res += __device_info.nativeFormats >= RTAUDIO_SINT16  ? "Int8, "  : "Int8" ;
                         if (__device_info.nativeFormats & RTAUDIO_SINT16)
-                            __res += __device_info.nativeFormats >= RTAUDIO_SINT24  ? "Int16, "   : "Int16";
+                            __res += __device_info.nativeFormats >= RTAUDIO_SINT24  ? "Int16, " : "Int16";
                         if (__device_info.nativeFormats & RTAUDIO_SINT24)
-                            __res += __device_info.nativeFormats >= RTAUDIO_SINT32  ? "Int24, "   : "Int24";
+                            __res += __device_info.nativeFormats >= RTAUDIO_SINT32  ? "Int24, " : "Int24";
                         if (__device_info.nativeFormats & RTAUDIO_SINT32)
-                            __res += __device_info.nativeFormats >= RTAUDIO_FLOAT32 ? "Int32, "   : "Int32";
+                            __res += __device_info.nativeFormats >= RTAUDIO_FLOAT32 ? "Int32, " : "Int32";
                         if (__device_info.nativeFormats & RTAUDIO_FLOAT32)
-                            __res += __device_info.nativeFormats >= RTAUDIO_FLOAT64 ? "Float32, " : "Float32";
+                            __res += __device_info.nativeFormats >= RTAUDIO_FLOAT64 ? "Flt32, " : "Flt32";
                         if (__device_info.nativeFormats & RTAUDIO_FLOAT64)
-                            __res += "Float64";
+                            __res += "Flt64";
                         __res += '\n';
                     }
                 }
@@ -500,7 +500,6 @@ namespace Simple {
                     case RTAUDIO_SINT16: {
                         for (uint32_t i = 0; i < buffer_frames; ++i) {
                             float __val = maxVolume<RTAUDIO_SINT16>() * _sampler->sample();
-                            // printf("%f\n", __val);
                             for (uint32_t j = 0; j < channels; ++j)
                                 bufInt16()[i * channels + j] = __val;
                         }
@@ -527,6 +526,51 @@ namespace Simple {
                             float __val = maxVolume<RTAUDIO_FLOAT64>() * _sampler->sample();
                             for (uint32_t j = 0; j < channels; ++j)
                                 bufFlt64()[i * channels + j] = __val;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            void setSignalFor2Channels(Audio::AudioSampler *_sampler) {
+                switch (audio_format) {
+                    case RTAUDIO_SINT8: {
+                        for (uint32_t i = 0; i < buffer_frames; ++i) {
+                            vec2f __val = (float(maxVolume<RTAUDIO_SINT8>()) / maxVolume<RTAUDIO_SINT16>()) * _sampler->sample2().cast<float>();
+                            bufInt8()[i * channels + 0] = (int8_t) __val.x;
+                            bufInt8()[i * channels + 1] = (int8_t) __val.y;
+                        }
+                        break;
+                    }
+                    case RTAUDIO_SINT16: {
+                        for (uint32_t i = 0; i < buffer_frames; ++i) {
+                            vec2i16 __val = _sampler->sample2();
+                            bufInt16()[i * channels + 0] = __val.x;
+                            bufInt16()[i * channels + 1] = __val.y;
+                        }
+                        break;
+                    }
+                    case RTAUDIO_SINT32: {
+                        for (uint32_t i = 0; i < buffer_frames; ++i) {
+                            vec2f __val = (float(maxVolume<RTAUDIO_SINT32>()) / maxVolume<RTAUDIO_SINT16>()) * _sampler->sample2().cast<float>();
+                            bufInt32()[i * channels + 0] = (int32_t) __val.x;
+                            bufInt32()[i * channels + 1] = (int32_t) __val.y;
+                        }
+                        break;
+                    }
+                    case RTAUDIO_FLOAT32: {
+                        for (uint32_t i = 0; i < buffer_frames; ++i) {
+                            vec2f __val = (float(maxVolume<RTAUDIO_FLOAT32>()) / maxVolume<RTAUDIO_SINT16>()) * _sampler->sample2().cast<float>();
+                            bufFlt32()[i * channels + 0] = __val.x;
+                            bufFlt32()[i * channels + 1] = __val.y;
+                        }
+                        break;
+                    }
+                    case RTAUDIO_FLOAT64: {
+                        for (uint32_t i = 0; i < buffer_frames; ++i) {
+                            vec2d __val = (float(maxVolume<RTAUDIO_FLOAT64>()) / maxVolume<RTAUDIO_SINT16>()) * _sampler->sample2().cast<float>();
+                            bufFlt64()[i * channels + 0] = __val.x;
+                            bufFlt64()[i * channels + 1] = __val.y;
                         }
                         break;
                     }
@@ -560,6 +604,22 @@ namespace Simple {
             __outbuf_wrap.buffer_frames = _n_buf_frames;
 
             __outbuf_wrap.setSignalForAllChannels(&__config->audio_config.played_sound); // Note: for interleaved mode. TODO: Support non-interleaved
+            return 0;
+        }
+
+        // Default callback for 2 channels
+        int rtacbDefault2(void *_o_buffer, void *_i_buffer, unsigned int _n_buf_frames,
+                          double _stream_t, RtAudioStreamStatus _status, void *_config) {
+            rtacbCallbackWarningCheck(_status);
+
+            // Write interleaved audio data.
+            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
+
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            __outbuf_wrap.buffer = _o_buffer;
+            __outbuf_wrap.buffer_frames = _n_buf_frames;
+
+            __outbuf_wrap.setSignalFor2Channels(&__config->audio_config.played_sound); // Note: for interleaved mode.
             return 0;
         }
 

@@ -84,7 +84,7 @@ namespace Simple {
                                         FILE_ATTRIBUTE_NORMAL, // normal file
                                         NULL);                 // no attr. template
 
-                SVKFW_WASSERT(f_handle != INVALID_HANDLE_VALUE, "File :: ReaderWin :: open", "could not open file - possibly it doesn't exist");
+                SVKFW_WASSERT(f_handle != INVALID_HANDLE_VALUE, "File :: ReaderWin :: open", "could not open file - possibly it doesn't exist\n");
                 delete[] wstr;
                 return isOpen();
             }
@@ -114,7 +114,7 @@ namespace Simple {
             template <class T>
             T readBinary() {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
                 char *__ch_buf[sizeof(T)]{};
                 bool __res = read((char *)__ch_buf, sizeof(T));
@@ -125,7 +125,7 @@ namespace Simple {
             template <class T>
             bool readBinary(T &_val) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
                 char *__ch_buf[sizeof(T)]{};
                 bool __res = read((char *)__ch_buf, sizeof(T));
@@ -138,7 +138,7 @@ namespace Simple {
             template <class T>
             bool readBinaryArray(T* _buf, size_t _len) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: ReaderWin :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour\n"));
 
                 return read((char*)_buf, sizeof(T) * _len);
             }
@@ -166,7 +166,7 @@ namespace Simple {
                                         FILE_ATTRIBUTE_NORMAL,  // normal file
                                         NULL);                  // no attr. template
 
-                SVKFW_WASSERT(f_handle != INVALID_HANDLE_VALUE, "File :: WriterWin :: open", "could not open file - possibly it doesn't exist");
+                SVKFW_WASSERT(f_handle != INVALID_HANDLE_VALUE, "File :: WriterWin :: open", "could not open file - possibly it doesn't exist\n");
                 delete[] wstr;
                 return isOpen();
             }
@@ -194,7 +194,7 @@ namespace Simple {
             template <class T>
             bool writeBinary(const T &_val) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: WriterWin :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: WriterWin :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour\n"));
 
                 return write((const char*)&_val, sizeof(T));
             }
@@ -203,7 +203,7 @@ namespace Simple {
             template <class T>
             bool writeBinaryArray(const T* _buf, size_t _len) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: WriterWin :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: WriterWin :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour\n"));
 
                 return write((const char*)_buf, sizeof(T) * _len);
             }
@@ -246,7 +246,7 @@ namespace Simple {
             template <class T>
             T readBinary() {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
                 char *__ch_buf[sizeof(T)]{};
                 bool __res = read((char *)__ch_buf, sizeof(T));
@@ -257,7 +257,7 @@ namespace Simple {
             template <class T>
             bool readBinary(T &_val) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
                 char *__ch_buf[sizeof(T)]{};
                 bool __res = read((char *)__ch_buf, sizeof(T));
@@ -270,7 +270,7 @@ namespace Simple {
             template <class T>
             bool readBinaryArray(T* _buf, size_t _len) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: ReaderStd :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderStd :: readBinaryArray", "Reading pointers from file - this is most likely an unwanted behaviour\n"));
 
                 return read((char*)_buf, sizeof(T) * _len);
             }
@@ -301,7 +301,7 @@ namespace Simple {
             template <class T>
             bool writeBinary(const T &_val) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: WriterStd :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: WriterStd :: writeBinary", "Writing a pointer - this is most likely an unwanted behaviour\n"));
 
                 return write((const char*)&_val, sizeof(T));
             }
@@ -310,7 +310,7 @@ namespace Simple {
             template <class T>
             bool writeBinaryArray(const T* _buf, size_t _len) {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
-                    printf(SVKFW_WRAPWARN("File :: WriterStd :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: WriterStd :: writeBinaryArray", "Writing pointers - this is most likely an unwanted behaviour\n"));
 
                 return write((const char*)_buf, sizeof(T) * _len);
             }

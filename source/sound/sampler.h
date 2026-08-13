@@ -375,14 +375,16 @@ namespace Simple {
                 virtual ~SmpItf() {}
 
                 // t = (t_step / sample_rate) * frequency
-                virtual float sample(float _t) = 0;
+                virtual float   sample (float _t) = 0;
+                virtual vec2i16 sample2(float _t) = 0;
                 void setDuration(float _dur) { duration = _dur; }
             }; // SmpItf END
 
             struct SmpPlaceholder : SmpItf {
                 SmpPlaceholder() {}
                ~SmpPlaceholder() {}
-                float sample(float _t) override { return 0.f; }
+                float   sample (float _t) override { return 0.f; }
+                vec2i16 sample2(float _t) override { return 0  ; }
             } audio_placeholder;
 
             struct SmpSineWave : SmpItf {
@@ -390,7 +392,8 @@ namespace Simple {
 
                 SmpSineWave() {}
                ~SmpSineWave() {}
-                float sample(float _t) override { return std::sin(_t * freq * (2 * M_PI)); }
+                float   sample (float _t) override { return std::sin(_t * freq * (2 * M_PI)); }
+                vec2i16 sample2(float _t) override { return std::sin(_t * freq * (2 * M_PI)) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -399,7 +402,8 @@ namespace Simple {
 
                 SmpSaw() {}
                ~SmpSaw() {}
-                float sample(float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
+                float   sample (float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
+                vec2i16 sample2(float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -408,7 +412,8 @@ namespace Simple {
 
                 SmpTestWave() {}
                ~SmpTestWave() {}
-                float sample(float _t) override { return std::sin(std::log(_t*freq) * _t*freq); }
+                float   sample (float _t) override { return std::sin(std::log(_t*freq) * _t*freq); }
+                vec2i16 sample2(float _t) override { return std::sin(std::log(_t*freq) * _t*freq) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -418,7 +423,8 @@ namespace Simple {
 
                 SmpFunction(const std::function<float(float)> &_sampler_func) : sampler_func{_sampler_func} {}
                ~SmpFunction() {}
-                float sample(float _t) override { return sampler_func(_t); }
+                float   sample (float _t) override { return sampler_func(_t); }
+                vec2i16 sample2(float _t) override { return sampler_func(_t) * INT16_MAX; }
             };
         }; // Sample END
 
@@ -451,6 +457,21 @@ namespace Simple {
                     if (__finish_t && sources[i].t >= __finish_t)
                         sources[i].sample_ptr = &Sample::audio_placeholder;
                     __res += sources[i].weight * sources[i].sample_ptr->sample((sources[i].t++) / float(sample_rate));
+                }
+                return __res;
+            }
+
+            vec2i16 sample2() {
+                vec2i16 __res{};
+                uint32_t __finish_t = 0u;
+
+                for (uint32_t i = 0u; i < 31u; ++i) {
+                    if (sources[i].sample_ptr == &Sample::audio_placeholder) continue;
+
+                    __finish_t = std::ceil(sources[i].sample_ptr->duration * sample_rate);
+                    if (__finish_t && sources[i].t >= __finish_t)
+                        sources[i].sample_ptr = &Sample::audio_placeholder;
+                    __res += sources[i].weight * sources[i].sample_ptr->sample2((sources[i].t++) / float(sample_rate));
                 }
                 return __res;
             }

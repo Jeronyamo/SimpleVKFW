@@ -269,14 +269,14 @@ namespace Simple {
     void audioPlayer(std::vector<Audio::Sample::SmpItf*> _sources, const std::vector<float> &_weights) {
         RTA::AudioHandler audio_o;
         const uint32_t __channels   =   2;
-        const uint32_t __buf_frames = 544;
+        const uint32_t __buf_frames = 512;
 
         audio_o.streamSetMode(RTA::STREAM_MODE_OUT,
                               RTA::DEVICE_MODE_DEFAULT);
         audio_o.deviceUpdateAll();
         audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
         audio_o.deviceOutputSetParameters(__channels);
-        audio_o.callbackSet(RTA::rtacbDefault);
+        audio_o.callbackSet(RTA::rtacbDefault2);
 
         audio_o.streamOpen(0, __buf_frames, RTAUDIO_SINT16, false);
         Test::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
@@ -329,10 +329,9 @@ namespace Simple {
 
 
     SVKFW_ADD_TEST(AudioOGGFileSampler, "Audio - OGG file playback") {
-        Simple::File::ReaderWriterOGG ogg_reader{"tests/resources/Kyuuyaku Megami Tensei - Daedalus (extended).opus"};
-        Simple::Codec::DecoderOpus opus_decoder;
+        Simple::Audio::Sample::SmpAudioFile __ogg_sampler{"tests/resources/KMT - Daedalus (extended).ogg"};
 
-        opus_decoder.decodeOGG(ogg_reader.file_content);
+        audioPlayer({&__ogg_sampler}, {1.f});
     }
 
 

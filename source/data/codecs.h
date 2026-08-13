@@ -34,16 +34,16 @@ namespace Simple {
                     std::string __res_info;
 
                     __res_info += "OpusHead packet:\n";
-                    __res_info += "    Version:        " + std::to_string(version       ) + '\n';
-                    __res_info += "    Channels:       " + std::to_string(channels      ) + '\n';
-                    __res_info += "    Pre-skip:       " + std::to_string(preskip       ) + '\n';
-                    __res_info += "    Sample rate:    " + std::to_string(sample_rate   ) + '\n';
-                    __res_info += "    Gain:           " + std::to_string(gain          ) + '\n';
-                    __res_info += "    Mapping family: " + std::to_string(mapping_family) + '\n';
-                    __res_info += "    Stream count:   " + std::to_string(stream_count  ) + '\n';
-                    __res_info += "    Coupled count:  " + std::to_string(coupled_count ) + '\n';
+                    __res_info += " - Version:        " + std::to_string(version       ) + '\n';
+                    __res_info += " - Channels:       " + std::to_string(channels      ) + '\n';
+                    __res_info += " - Pre-skip:       " + std::to_string(preskip       ) + '\n';
+                    __res_info += " - Sample rate:    " + std::to_string(sample_rate   ) + '\n';
+                    __res_info += " - Gain:           " + std::to_string(gain          ) + '\n';
+                    __res_info += " - Mapping family: " + std::to_string(mapping_family) + '\n';
+                    __res_info += " - Stream count:   " + std::to_string(stream_count  ) + '\n';
+                    __res_info += " - Coupled count:  " + std::to_string(coupled_count ) + '\n';
                     if (!mapping_table.empty()) {
-                        __res_info += "    Mapping table: ";
+                        __res_info += " - Mapping table: ";
                         for (uint8_t map_val : mapping_table)
                             __res_info += ' ' + std::to_string(map_val) + ',';
                         __res_info.back() = '\n';
@@ -60,8 +60,8 @@ namespace Simple {
                     std::string __res_info;
 
                     __res_info += "OpusTags Packet:\n";
-                    __res_info += "    Vendor: '" + vendor + "'\n";
-                    __res_info += "    Tags:\n";
+                    __res_info += " - Vendor: '" + vendor + "'\n";
+                    __res_info += " - Tags:\n";
                     for (auto key_val : tags)
                         __res_info += "        '" + key_val.first + "' = '" + key_val.second + "'\n";
 
@@ -91,7 +91,7 @@ namespace Simple {
                 __res_success &= __opus_reader.readArray(__opushead_str, 8, Bytes::Endianness.is_big_endian);
 
                 if (std::strcmp(__opushead_str, "OpusHead")) {
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusHead", "packet doesn't start with 'OpusHead'\n"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusHead", "Packet doesn't start with 'OpusHead'\n"));
                     return false;
                 }
 
@@ -110,9 +110,9 @@ namespace Simple {
                 }
 
                 std::string __opushead_info = opus_head.infoString();
-                printf("%s", __opushead_info.c_str());
+                printf("%s\n", __opushead_info.c_str());
 
-                SVKFW_ASSERT(__res_success, std::runtime_error, "Codec::DecoderOpus :: readOpusHead", "Read failure");
+                SVKFW_ASSERT(__res_success, std::runtime_error, "Codec::DecoderOpus :: readOpusHead", "Failed to read");
 
                 int __opus_error = 0;
                 decoder = opus_decoder_create(opus_sample_rate, opus_head.channels, &__opus_error);
@@ -131,7 +131,7 @@ namespace Simple {
                 __res_success &= __opus_reader.readArray(__opustags_str, 8, Bytes::Endianness.is_big_endian);
 
                 if (std::strcmp(__opustags_str, "OpusTags")) {
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusTags", "packet doesn't start with 'OpusTags'\n"));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusTags", "Packet doesn't start with 'OpusTags'\n"));
                     return false;
                 }
 
@@ -152,14 +152,14 @@ namespace Simple {
                     memcpy(&__tag_str[0], __opus_reader.getData(), __tag_str_len);
                     __tag_str_len = __tag_str.find('=');
                     if (__tag_str_len > __tag_str.size()) {
-                        fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusTags", "could not separate tag line: '%s'\n"), __tag_str.c_str());
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusTags", "Could not separate tag line: '%s'\n"), __tag_str.c_str());
                         continue;
                     }
                     opus_tags.tags[__tag_str.substr(0u, __tag_str_len)] = __tag_str.substr(__tag_str_len+1);
                 }
 
                 std::string __opustags_info = opus_tags.infoString();
-                printf("%s", __opustags_info.c_str());
+                printf("%s\n", __opustags_info.c_str());
 
                 return __res_success;
             }
@@ -174,42 +174,14 @@ namespace Simple {
                     if (!std::strcmp(__opus_str, "OpusTags"))
                         return readOpusTags(_opus_packet);
                 }
-
                 int samples_decoded_per_channel = opus_decode(decoder, _opus_packet.data(), _opus_packet.size(),
                                                                         pcm_out.data(), max_frame_size, 0);
                 curr_frame_size = samples_decoded_per_channel * opus_head.channels;
                 if (samples_decoded_per_channel < 0) {
                     curr_frame_size = 0u;
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: decodePacket", "error decoding audio packet - %s\n"), opus_strerror(samples_decoded_per_channel));
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: decodePacket", "Error decoding audio packet - %s\n"), opus_strerror(samples_decoded_per_channel));
                 }
                 return samples_decoded_per_channel > 0;
-            }
-
-            void decodeOGG(const File::ContentOGG &_ogg_data) {
-                std::vector<unsigned char> __opus_packet;
-
-                bool __packet_ended = false, __all_decoded = true;
-                uint32_t __segment_offset = 0u;
-
-                for (const auto& page : _ogg_data.pages) {
-                    __segment_offset = 0u;
-
-                    for (uint32_t i = 0u; i < page.total_segments; ++i) {
-                        if (__packet_ended) {
-                            __all_decoded &= decodePacket(__opus_packet);
-                            __opus_packet.clear();
-                            __packet_ended = false;
-                        }
-
-                        __opus_packet.insert(__opus_packet.end(),
-                                            page.segment_data.begin() + __segment_offset,
-                                            page.segment_data.begin() + __segment_offset + page.segment_table[i]);
-
-                        __segment_offset += page.segment_table[i];
-                        __packet_ended    = page.segment_table[i] < 255u;
-                    }
-                }
-                if (__packet_ended) __all_decoded &= decodePacket(__opus_packet);
             }
         }; // DecoderOpus END
     }; // Codec END
