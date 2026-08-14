@@ -90,7 +90,7 @@
         "future": "cpp",
         "version": "cpp"
     },
-    "cmake.sourceDirectory": "C:/Programming/SimpleVKFW",
+    "cmake.sourceDirectory": "${workspaceFolder}",
     "cmake.buildDirectory": "${workspaceFolder}/build_${buildType}/win/build",
     "C_Cpp.default.compilerPath": "C:\\Another\\MSYS2\\mingw64\\bin\\cpp.exe",
     "cmake.configureOnOpen": true,
