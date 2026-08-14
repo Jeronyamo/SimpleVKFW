@@ -185,6 +185,26 @@ set(OPUS_HARDENING       ON )
 add_subdirectory(${EXTERN_SRC_OPUS_DIR})
 
 
+## Python3 (generate files)
+
+set(Python3_FIND_REGISTRY LAST) 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+message(${SVKFW_MSG_PREFIX} "Looking for Python at: '${Python3_EXECUTABLE}'")
+message(${SVKFW_MSG_PREFIX} "Looking for Script at: '${CMAKE_SOURCE_DIR}/source/meta/vkfw_enum_gen.py'")
+
+
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} "source/meta/vkfw_enum_gen.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    RESULT_VARIABLE SCRIPT_RES
+    OUTPUT_VARIABLE SCRIPT_OUT
+     ERROR_VARIABLE SCRIPT_ERR
+)
+if(NOT SCRIPT_RES EQUAL 0)
+    message(FATAL_ERROR ${SVKFW_MSG_PREFIX} "'vkfw_enum.h' generation failed: ${SCRIPT_RES}")
+endif()
+
+
 ##  ============  SVKFW Targets  ============  ##
 
 # if(${CMAKE_BUILD_TYPE} EQUAL "Debug")

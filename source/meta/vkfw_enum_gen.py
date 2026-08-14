@@ -105,7 +105,7 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
 
                 line = line.strip()[:-1].split(" = ")
                 assert len(line) == 2
-                enum_strs.append(tuple(line))
+                enum_strs.append((line[0], line[1]))
 
     file_lines: list[str] = [ vkfw_enum_beg ]
 
@@ -127,5 +127,6 @@ if __name__ == "__main__":
     if vk_sdk_path is None:
         print("Error: couldn't find Vulkan SDK path, no enums generated")
         exit(-1)
-
-    invertVulkanCoreEnums(os.path.join(vk_sdk_path, "Include", "vulkan", "vulkan_core.h"), "source/interface/vkfw_enum.h")
+    vk_sdk_path = os.path.join(vk_sdk_path, "Include", "vulkan", "vulkan_core.h")
+    print(f"Found Vulkan core at: '{vk_sdk_path}'")
+    invertVulkanCoreEnums(vk_sdk_path, "source/interface/vkfw_enum.h")
