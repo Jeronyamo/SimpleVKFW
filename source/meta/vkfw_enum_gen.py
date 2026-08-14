@@ -1,3 +1,5 @@
+import os
+
 def  findSubstrEnd(source: str, substr: str) -> int:
     res_id = source.find(substr)
     return res_id + (len(substr) if (res_id >= 0) else 0)
@@ -74,4 +76,10 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
         vkfwenum_f.writelines( line+'\n'  for line in file_lines )
 
 if __name__ == "__main__":
-    invertVulkanCoreEnums("/VulkanSDK/1.4.328.1/Include/vulkan/vulkan_core.h", "source/interface/vkfw_enum.h")
+    vk_sdk_path = os.environ.get("VULKAN_SDK", None)
+    vk_sdk_path = os.environ.get("VK_SDK_PATH", None) if vk_sdk_path is None else vk_sdk_path
+    if vk_sdk_path is None:
+        print("Error: couldn't find Vulkan SDK path, no enums generated")
+        exit(-1)
+
+    invertVulkanCoreEnums(os.path.join(vk_sdk_path, "Include", "vulkan", "vulkan_core.h"), "source/interface/vkfw_enum.h")
