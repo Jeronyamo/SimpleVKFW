@@ -5,6 +5,7 @@ project(SimpleVKFW CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(SVKFW_MSG_PREFIX ">>>  SimpleVKFW: ")
 
 
 ## Global CMake Variables
@@ -63,6 +64,10 @@ function(svkfw_set_definitions SVKFW_TARGET)
     endif()
     if (${RTAUDIO_API_ASIO} STREQUAL ON)
         target_compile_definitions(${SVKFW_TARGET} PRIVATE RTA_ASIO)
+    endif()
+    if(MINGW)
+        message(${SVKFW_MSG_PREFIX} "Linking MinGW static libraries (" ${SVKFW_TARGET} ")")
+        target_link_options(${SVKFW_TARGET} PRIVATE -static-libgcc -static-libstdc++ -static)
     endif()
 endfunction()
 

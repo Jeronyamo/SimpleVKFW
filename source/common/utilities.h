@@ -2,6 +2,7 @@
 #define SVKFW_UTILITIES_H
 
 #include <type_traits>
+#include <map>
 
 #include "common/terminal.h"
 #include "common/memory.h"
