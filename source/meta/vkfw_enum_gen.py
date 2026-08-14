@@ -1,5 +1,56 @@
 import os
 
+
+vkfw_enum_beg: str =\
+"""#ifndef SVKFW_VKFW_ENUM_H
+#define SVKFW_VKFW_ENUM_H
+
+#include <map>
+#include <string>
+
+
+namespace Simple {
+    namespace VKFW {
+        namespace Enum {
+        // Class
+
+            struct EnumWrap {
+                std::map<uint32_t, std::string> enum_names;
+
+                EnumWrap(const std::map<uint32_t, std::string> &_enum_names) : enum_names{_enum_names} {}
+
+                std::string getName(uint32_t _enum_val) const {
+                    auto __enum_iter = enum_names.find(_enum_val);
+                    return __enum_iter == enum_names.end() ? "" : __enum_iter->second;
+                }
+
+                std::string getBitNames(uint32_t _enum_val) const {
+                    std::string __res_str = "";
+
+                    for (uint32_t i = 0u; i < 32u; ++i) {
+                        if ((_enum_val & (1<<i)) == 0) continue;
+
+                        std::string __curr_str = getName(1 << i);
+                        if (!__curr_str.empty()) {
+                            if (!__res_str.empty()) __res_str += " | ";
+                            __res_str += __curr_str;
+                        }
+                    }
+                    return __res_str;
+                }
+            }; // EnumWrap END
+
+
+        // Objects"""
+
+vkfw_enum_end: str =\
+"""        }; // Enum END
+    }; // VKFW END
+}; // Simple END
+
+#endif"""
+
+
 def  findSubstrEnd(source: str, substr: str) -> int:
     res_id = source.find(substr)
     return res_id + (len(substr) if (res_id >= 0) else 0)
@@ -13,6 +64,8 @@ def isDigit(char: str): return ord('0') <= ord(char) <= ord('9')
 
 
 def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
+    global vkfw_enum_beg, vkfw_enum_end
+
     enums: list[tuple[str, dict[str, str]]] = []
 
     with open(vkpath) as vkcore_f:
@@ -54,23 +107,16 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
                 assert len(line) == 2
                 enum_strs.append(tuple(line))
 
-    file_lines: list[str] = []
-    with open(vkfwpath) as vkfwenum_f:
-        found_start: bool = False
-        for line in vkfwenum_f:
-            if found_start and line.find("//") >= 0:
-                found_start = False
-            if not found_start:
-                file_lines.append(line.rstrip())
+    file_lines: list[str] = [ vkfw_enum_beg ]
 
-            if line.find("// Objects") >= 0:
-                found_start = True
-                for enumn, enumd in enums:
-                    file_lines.append("")
-                    file_lines.append("    " * 3 + "const EnumWrap " + enumn + "{ {")
-                    for enumkey, enumval in enumd.items():
-                        file_lines.append("    " * 4 + "{{{enum_int:11}, \"{enum_str}\"}},".format(enum_int= ("" if enumkey.startswith('-') else " ") + enumkey, enum_str= enumval))
-                    file_lines.append("    " * 3 + "} };")
+    for enumn, enumd in enums:
+        file_lines.append("")
+        file_lines.append("    " * 3 + "const EnumWrap " + enumn + "{ {")
+        for enumkey, enumval in enumd.items():
+            file_lines.append("    " * 4 + "{{{enum_int:11}, \"{enum_str}\"}},".format(enum_int= ("" if enumkey.startswith('-') else " ") + enumkey, enum_str= enumval))
+        file_lines.append("    " * 3 + "} };")
+
+    file_lines.append(vkfw_enum_end)
 
     with open(vkfwpath, "w") as vkfwenum_f:
         vkfwenum_f.writelines( line+'\n'  for line in file_lines )

@@ -6,3 +6,6 @@ tests/out/
 !tests/out/.gitkeep
 
 imgui.ini
+
+# Generated files
+source/interface/vkfw_enum.h
