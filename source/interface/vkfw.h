@@ -1432,7 +1432,7 @@ namespace Simple {
             Callable::QueuePresentKHR     queue_present_wrap;
             Callable::QueueSubmit          queue_submit_wrap;
 
-            std::vector<ContextIndex> wait_fences_for_swapchain; // fences to wait before recreating swapchain
+            std::vector<ContextIndex2> wait_queues_for_swapchain; // queues to wait before recreating swapchain (graphics and present)
 
             ObjGetterHandler cxt_handler;
 
@@ -1440,16 +1440,16 @@ namespace Simple {
            ~FuncHandler() {}
 
 
-            void setFencesToWait(const std::vector<ContextIndex> &_ci_fences) {
-                wait_fences_for_swapchain = _ci_fences;
+            void setQueuesToWait(const std::vector<ContextIndex2> &_ci_queues) {
+                wait_queues_for_swapchain = _ci_queues;
             }
 
         // Functions
 
-            void QueuePresentKHR(ContextIndex2 _ci2_queue_pres, uint64_t _recreate_wait_fences_timeout = UINT64_MAX) {
+            void QueuePresentKHR(ContextIndex2 _ci2_queue_pres, uint64_t _recreate_wait_queues_timeout = UINT64_MAX) {
                 queue_present_wrap.updateWrap();
                 if (queue_present_wrap.callFunction(cxt_handler.getObjQueue(_ci2_queue_pres)) == UINT32_MAX) {
-                    waitForRequiredFences(_recreate_wait_fences_timeout);
+                    waitForRequiredQueues(_recreate_wait_queues_timeout);
                     cxt_handler.cxt_ptr->cxt_swapchain.recreate();
                 }
             }
@@ -1473,7 +1473,7 @@ namespace Simple {
                                                           _timeout, cxt_handler.getObjSemaphore(_semaphore_ci), __fence, &__image_index);
 
                 if (__result == VK_SUBOPTIMAL_KHR || __result == VK_ERROR_OUT_OF_DATE_KHR) {
-                    waitForRequiredFences(_timeout);
+                    waitForRequiredQueues(_timeout);
                     cxt_handler.cxt_ptr->cxt_swapchain.recreate();
                     __image_index = UINT32_MAX;
                 }
@@ -1489,10 +1489,9 @@ namespace Simple {
 
         // Scenarios
 
-            void waitForRequiredFences(uint64_t _timeout = UINT64_MAX) {
-                auto __obj_fences = cxt_handler.getObjsFence(wait_fences_for_swapchain);
-                if (!__obj_fences.empty())
-                    vkWaitForFences(cxt_handler.getObjDevice(), __obj_fences.size(), __obj_fences.data(), VK_TRUE, _timeout);
+            void waitForRequiredQueues(uint64_t _timeout = UINT64_MAX) {
+                auto __obj_queues = cxt_handler.getObjsQueue(wait_queues_for_swapchain);
+                for (auto queue : __obj_queues)  vkQueueWaitIdle(queue);
             }
 
             void setWholeQueuePresentStruct(const std::vector<ContextIndex> &_ci_wait_semaphores,

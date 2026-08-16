@@ -382,7 +382,7 @@ int main(int argc, char **argv) {
 
 
 // Other preparations:
-    func_handler.setFencesToWait({ci_fen_in_flight, ci_fen_in_flight + FRAMES_IN_FLIGHT});
+    func_handler.setQueuesToWait({ci_queue_graphics, ci_queue_present});
 
     // Copy static vertex/index data
     Simple::VKFW::CommandHandler cmd_handler;
