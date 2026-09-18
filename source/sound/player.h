@@ -21,13 +21,42 @@ namespace Simple {
                     return __t_step < pcm_out.size() ? pcm_out[__t_step] : 0.f;
                 }
 
-                vec2i16 sample2(float _t) override {
-                    uint32_t __t_step = uint32_t(_t * 48000) * opus_head.channels;
+                vec2i16 sample2(double _t) override {
+                    _t *= 48000;
+                    uint32_t __t_step = uint32_t(_t) * opus_head.channels;
                     if (__t_step >= pcm_out.size()) return 0.f;
 
-                    if (opus_head.channels > 1)
-                        return { pcm_out[__t_step], pcm_out[__t_step+1] };
-                    return {pcm_out[__t_step]};
+                    vec2i16 x0 = {pcm_out[__t_step], pcm_out[__t_step+1]}, x1 = x0, x2 = x0, x3 = x0;
+                    if (__t_step >= opus_head.channels)
+                        x0 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step-  opus_head.channels], pcm_out[__t_step-  opus_head.channels+1])
+                                                    : vec2i16(pcm_out[__t_step-  opus_head.channels]);
+                    if (__t_step +   opus_head.channels + 1 < pcm_out.size())
+                        x2 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step+  opus_head.channels], pcm_out[__t_step+  opus_head.channels+1])
+                                                    : vec2i16(pcm_out[__t_step+  opus_head.channels]);
+                    if (__t_step + 2*opus_head.channels + 1 < pcm_out.size())
+                        x3 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step+2*opus_head.channels], pcm_out[__t_step+2*opus_head.channels+1])
+                                                    : vec2i16(pcm_out[__t_step+2*opus_head.channels]);
+
+                    _t -= uint32_t(_t);
+                    vec2d tt{_t*_t, _t*_t*_t};
+                    tt = 0.5 * ( x0 * (-tt.y +2*tt.x -_t) + x1 * (3*tt.y -5*tt.x + 2) + x2 * (-3*tt.y + 4*tt.x + _t) + x3 * (tt.y - tt.x));
+
+                    return Math::clampCL(tt, {(double)INT16_MIN}, {(double)INT16_MAX}).cast<int16_t>();
+                }
+
+                vec2i16 sample2linear(double _t) {
+                    _t *= 48000;
+                    uint32_t __t_step = uint32_t(_t) * opus_head.channels;
+                    if (__t_step + (opus_head.channels + 1) >= pcm_out.size()) return 0.f; // skips last ~2 samples
+
+                    _t -= uint32_t(_t);
+                    vec2d __res  = {(double)pcm_out[__t_step  ], (double)pcm_out[__t_step+1]},
+                          __res1 = {(double)pcm_out[__t_step+opus_head.channels], (double)pcm_out[__t_step+opus_head.channels+1]};
+                    if (opus_head.channels == 1) {
+                        __res1 = __res.y;
+                        __res  = __res.x;
+                    }
+                    return Math::clampCL(__res + _t * (__res1 - __res), {(double)INT16_MIN}, {(double)INT16_MAX}).cast<int16_t>();
                 }
 
                 void decodeOGG(const std::string &_ogg_fpath) {

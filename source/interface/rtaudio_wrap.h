@@ -12,26 +12,26 @@ namespace Simple {
             DT_BIT_ONLY_IN  = 1 << 0,
             DT_BIT_ONLY_OUT = 1 << 1,
             DT_BIT_DUPLEX   = 1 << 2,
-            DT_BIT_BOTH_IO  = 1 << 3, // TODO: Is it possible that the same device has input and output channels and no duplex?
+            DT_BIT_BOTH_IO  = 1 << 3,
         }; // DeviceType END
 
         enum DeviceMode {
-            DEVICE_MODE_UNSPEC  , // Initial mode, replaced with DEFAULT in/out mode if this device is used to open a stream, ignored otherwise
+            DEVICE_MODE_UNSPEC  , // Initial mode; changes to DEFAULT in/out mode if the device is used to open a stream, ignored otherwise
             DEVICE_MODE_DEFAULT , // Checks for default input/output device
             DEVICE_MODE_SELECTED, // Uses selected input/output device while it's available, else selects default in/out devices
             DEVICE_MODE_DUPLEX  , // Uses device with duplex channels while it's available, else falls back to DEFAULT in/out modes
         }; // DeviceMode END
 
         enum StreamMode {
-            STREAM_MODE_UNSPEC, // Not setting stream mode is an error
+            STREAM_MODE_UNSPEC, // Leaving stream mode unspecified is an error
             STREAM_MODE_OUT   , // Output stream
             STREAM_MODE_IN    , // Input stream
-            STREAM_MODE_DUPLEX, // Input+output stream, no checks if it uses actual duplex channels of the same device. TODO: what checks to add?
+            STREAM_MODE_DUPLEX, // Input+output stream, no checks if it uses actual duplex channels of the same device.
         }; // StreamMode END
 
 
         template <RtAudioFormat _audio_format>
-        uint32_t bufferElemBytes() {
+        inline uint32_t bufferElemBytes() {
             switch (_audio_format) {
                 case RTAUDIO_SINT8:   return sizeof( int8_t);
                 case RTAUDIO_SINT16:  return sizeof(int16_t);
@@ -42,7 +42,7 @@ namespace Simple {
             }
             return 0;
         }
-        uint32_t bufferElemBytes(RtAudioFormat _audio_format) {
+        inline uint32_t bufferElemBytes(RtAudioFormat _audio_format) {
             switch (_audio_format) {
                 case RTAUDIO_SINT8:   return sizeof( int8_t);
                 case RTAUDIO_SINT16:  return sizeof(int16_t);
@@ -55,7 +55,7 @@ namespace Simple {
         }
 
         template <RtAudioFormat _audio_format>
-        uint32_t maxVolume() {
+        inline uint32_t maxVolume() {
             switch (_audio_format) {
                 case RTAUDIO_SINT8:   return  INT8_MAX;
                 case RTAUDIO_SINT16:  return INT16_MAX;
@@ -66,7 +66,7 @@ namespace Simple {
             }
             return 0;
         }
-        uint32_t maxVolume(RtAudioFormat _audio_format) {
+        inline uint32_t maxVolume(RtAudioFormat _audio_format) {
             switch (_audio_format) {
                 case RTAUDIO_SINT8:   return  INT8_MAX;
                 case RTAUDIO_SINT16:  return INT16_MAX;
@@ -80,40 +80,37 @@ namespace Simple {
 
 
         // This class contains parameters set by a user
-        struct AudioConfig {
+        struct AudioSettings {
             uint8_t volume = 255;
-            Audio::AudioSampler played_sound;
-        }; // AudioConfig END
+        }; // AudioSettings END
 
         // This class contains all information available to RTAudio callbacks via 'void* config' argument
-        struct RTAStreamConfig {
+        struct AudioStreamConfig {
             StreamMode stream_mode = STREAM_MODE_UNSPEC;
             uint32_t sample_rate;
             uint32_t buffer_frames; // automatically set on stream opening
             RtAudioFormat audio_format;
-            AudioConfig audio_config;
+            AudioSettings audio_settings;
+            Audio::AudioSampler audio_sampler;
 
             RtAudio::StreamOptions stream_options;
-            struct DeviceHandler {
-                RtAudio::StreamParameters stream_parameters; // Note: device id is only stored as 'stream_parameters.deviceId'
-                DeviceMode device_mode = DEVICE_MODE_UNSPEC;
-            } device_i, device_o; // devices: in, out; duplex mode: 'device_i'+'device_o' parameters are used
-
+            RtAudio::StreamParameters device_i, device_o;
+            DeviceMode device_i_mode = DEVICE_MODE_UNSPEC, device_o_mode = DEVICE_MODE_UNSPEC;
 
             uint32_t getBufferElemBytes() const { return bufferElemBytes(audio_format); }
-            uint32_t getMaxVolume() const { return maxVolume(audio_format); }
-            float getVolume() const { return audio_config.volume/256.f*getMaxVolume(); }
+            uint32_t getMaxVolume()       const { return       maxVolume(audio_format); }
+            float    getVolume()          const { return audio_settings.volume/256.f*getMaxVolume(); } // max is 255/256 * (maxVolume)
             void updateSampleRate(uint32_t _sample_rate) {
                 sample_rate = _sample_rate;
-                audio_config.played_sound.sample_rate = _sample_rate;
+                audio_sampler.sample_rate = _sample_rate;
             }
-        }; // RTAStreamConfig END
+        }; // AudioStreamConfig END
 
 
         struct AudioHandler {
             RtAudio rta_handler;
             RtAudioCallback rta_cback;
-            RTAStreamConfig stream_config;
+            AudioStreamConfig stream_config;
 
 
             AudioHandler() : rta_cback{nullptr} {}
@@ -137,8 +134,8 @@ namespace Simple {
                 if ((uint32_t(stream_config.stream_mode) & 2) && _i_device_mode == DEVICE_MODE_UNSPEC)
                     _i_device_mode = DEVICE_MODE_DEFAULT;
 
-                stream_config.device_i.device_mode = _i_device_mode;
-                stream_config.device_o.device_mode = _o_device_mode;
+                stream_config.device_i_mode = _i_device_mode;
+                stream_config.device_o_mode = _o_device_mode;
             }
 
             void streamSetOptions(RtAudioStreamFlags _s_flags, uint32_t _s_nbuffers, const std::string &_s_name = "SimpleVKFW_AudioHandler", int _s_priority = 0) {
@@ -150,9 +147,9 @@ namespace Simple {
 
             void streamOpen(uint32_t _sample_rate, uint32_t _buf_frames, RtAudioFormat _audio_format, bool _use_options = true) {
                 RtAudio::StreamParameters* __o_params = (uint32_t(stream_config.stream_mode) & 1) ?
-                                                                 &stream_config.device_o.stream_parameters : nullptr;
+                                                                 &stream_config.device_o : nullptr;
                 RtAudio::StreamParameters* __i_params = (uint32_t(stream_config.stream_mode) & 2) ?
-                                                                 &stream_config.device_i.stream_parameters : nullptr;
+                                                                 &stream_config.device_i : nullptr;
 
                 if (_sample_rate == 0) {
                     if (__o_params != nullptr) {
@@ -171,7 +168,7 @@ namespace Simple {
                                                                  &stream_config.buffer_frames, rta_cback, &stream_config,
                                                                  _use_options ? &stream_config.stream_options : nullptr);
 
-                // printf("Stream open with parameters:\nBuffer frames: %d\nMax volume: %d\n\n", stream_config.buffer_frames, audio_config.max_volume);
+                // printf("Stream open with parameters:\nBuffer frames: %d\nMax volume: %d\n\n", stream_config.buffer_frames, audio_settings.max_volume);
                 if (__res != RTAUDIO_NO_ERROR) {
                     throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: streamOpen", "Error code " + std::to_string(__res) + ";\n" + rta_handler.getErrorText()));
                 }
@@ -208,57 +205,50 @@ namespace Simple {
             }
 
             void deviceInputSetParameters(uint32_t _nchannels, uint32_t _first_channel = 0) {
-                stream_config.device_i.stream_parameters.firstChannel = _first_channel;
-                stream_config.device_i.stream_parameters.nChannels    = _nchannels;
+                stream_config.device_i.firstChannel = _first_channel;
+                stream_config.device_i.nChannels    = _nchannels;
             }
             void deviceOutputSetParameters(uint32_t _nchannels, uint32_t _first_channel = 0) {
-                stream_config.device_o.stream_parameters.firstChannel = _first_channel;
-                stream_config.device_o.stream_parameters.nChannels    = _nchannels;
+                stream_config.device_o.firstChannel = _first_channel;
+                stream_config.device_o.nChannels    = _nchannels;
             }
 
             bool deviceInputIsFormatSupported(RtAudioFormat _audio_format) {
-                return rta_handler.getDeviceInfo(stream_config.device_i.stream_parameters.deviceId).nativeFormats & _audio_format;
+                return rta_handler.getDeviceInfo(stream_config.device_i.deviceId).nativeFormats & _audio_format;
             }
             bool deviceOutputIsFormatSupported(RtAudioFormat _audio_format) {
-                return rta_handler.getDeviceInfo(stream_config.device_o.stream_parameters.deviceId).nativeFormats & _audio_format;
+                return rta_handler.getDeviceInfo(stream_config.device_o.deviceId).nativeFormats & _audio_format;
             }
 
-            void deviceUpdate_(bool _is_input_device) {
-                RTAStreamConfig::DeviceHandler &__device_io = _is_input_device ? stream_config.device_i : stream_config.device_o;
-                const uint32_t __old_device_id = __device_io.stream_parameters.deviceId;
+            void deviceUpdate_(RtAudio::StreamParameters &_device_io, DeviceMode &_device_io_mode, uint32_t _def_device, const char *_device_type) {
+                const uint32_t __old_device_id = _device_io.deviceId;
 
-                switch (__device_io.device_mode) {
+                switch (_device_io_mode) {
                     case DEVICE_MODE_SELECTED: {
-                        RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(__device_io.stream_parameters.deviceId);
-                        if (__device_info.ID == __device_io.stream_parameters.deviceId)
+                        RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(_device_io.deviceId);
+                        if (__device_info.ID == _device_io.deviceId)
                             break;
                     }
                     case DEVICE_MODE_DEFAULT: {
-                        __device_io.stream_parameters.deviceId = _is_input_device ? rta_handler.getDefaultInputDevice() :
-                                                                                    rta_handler.getDefaultOutputDevice();
+                        _device_io.deviceId = _def_device;
                         break;
                     }
                     case DEVICE_MODE_DUPLEX: { // can be used if other device is not duplex for some reason
-                        RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(__device_io.stream_parameters.deviceId);
-                        if (__device_info.ID != __device_io.stream_parameters.deviceId) {
+                        RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(_device_io.deviceId);
+                        if (__device_info.ID != _device_io.deviceId) {
                             uint32_t __inout_dev_id = 0; // use device that has both in and out channels, if such exists
                             for (uint32_t dev_id : rta_handler.getDeviceIds()) {
                                 __device_info = rta_handler.getDeviceInfo(dev_id);
-                                if (__device_info.duplexChannels > 0) {
-                                    __device_io.stream_parameters.deviceId = dev_id;
-                                    break;
-                                }
-                                if (__device_info.inputChannels > 0 && __device_info.outputChannels > 0)
+                                if (__device_info.duplexChannels  ||  __device_info.inputChannels && __device_info.outputChannels) {
                                     __inout_dev_id = dev_id;
+                                    if (__device_info.duplexChannels) break;
+                                }
                             }
 
-                            __device_io.stream_parameters.deviceId = __inout_dev_id;
+                            _device_io.deviceId = __inout_dev_id;
                             if (__inout_dev_id == 0) {
-                                __device_io.stream_parameters.deviceId = _is_input_device ? rta_handler.getDefaultInputDevice() :
-                                                                                            rta_handler.getDefaultOutputDevice();
-                                __device_io.device_mode = DEVICE_MODE_DEFAULT;
-                                // Note: maybe fall back to some other method (2 lines above). Or not (below).
-                                // throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate", "no duplex devices available (i)"));
+                                _device_io.deviceId = _def_device;
+                                _device_io_mode = DEVICE_MODE_DEFAULT;
                             }
                         }
                         break;
@@ -267,74 +257,75 @@ namespace Simple {
                         break;
                     }
                     default: {
-                        throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate_", "unsupported device mode: " + std::to_string(__device_io.device_mode)));
+                        throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate_", "unsupported device mode: " + std::to_string(_device_io_mode)));
                     }
                 }
 
-                if (__old_device_id != __device_io.stream_parameters.deviceId) {
-                    std::string __info_string = deviceGetInfoStr_(__device_io.stream_parameters.deviceId);
-                    printf(SVKFW_WRAPINFO("RTA :: AudioHandler :: deviceUpdate_", "%s %s\n"), _is_input_device ? "New Input" : "New Output", __info_string.c_str());
+                if (__old_device_id != _device_io.deviceId) {
+                    std::string __info_string = deviceGetInfoStr_(_device_io.deviceId);
+                    printf(SVKFW_WRAPINFO("RTA :: AudioHandler :: deviceUpdate_", "New %s %s\n"), _device_type, __info_string.c_str());
                 }
             }
-            inline void deviceInputUpdate()  { deviceUpdate_( true); }
-            inline void deviceOutputUpdate() { deviceUpdate_(false); }
+            inline void deviceInputUpdate () { deviceUpdate_(stream_config.device_i, stream_config.device_i_mode, rta_handler.getDefaultInputDevice (),  "Input"); }
+            inline void deviceOutputUpdate() { deviceUpdate_(stream_config.device_o, stream_config.device_o_mode, rta_handler.getDefaultOutputDevice(), "Output"); }
+
             void deviceDuplexUpdate() {
-                if (stream_config.device_i.device_mode == DEVICE_MODE_DUPLEX &&
-                    stream_config.device_o.device_mode == DEVICE_MODE_DUPLEX) {
-                    RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(stream_config.device_o.stream_parameters.deviceId);
-                    bool __duplex_o_exists = stream_config.device_o.stream_parameters.deviceId > 0 &&
-                                             __device_info.ID == stream_config.device_o.stream_parameters.deviceId &&
+                if (stream_config.device_i_mode == DEVICE_MODE_DUPLEX &&
+                    stream_config.device_o_mode == DEVICE_MODE_DUPLEX) {
+                    RtAudio::DeviceInfo __device_info = rta_handler.getDeviceInfo(stream_config.device_o.deviceId);
+                    bool __duplex_o_exists = stream_config.device_o.deviceId > 0 &&
+                                             __device_info.ID == stream_config.device_o.deviceId &&
                                              __device_info.duplexChannels > 0;
                     bool __duplex_i_exists = __duplex_o_exists;
-                    bool __same_i_o = stream_config.device_o.stream_parameters.deviceId == stream_config.device_i.stream_parameters.deviceId;
+                    bool __same_i_o = stream_config.device_o.deviceId == stream_config.device_i.deviceId;
 
                     if (!__same_i_o) {
-                        __device_info = rta_handler.getDeviceInfo(stream_config.device_i.stream_parameters.deviceId);
-                        __duplex_i_exists = stream_config.device_i.stream_parameters.deviceId > 0 &&
-                                            __device_info.ID == stream_config.device_i.stream_parameters.deviceId &&
+                        __device_info = rta_handler.getDeviceInfo(stream_config.device_i.deviceId);
+                        __duplex_i_exists = stream_config.device_i.deviceId > 0 &&
+                                            __device_info.ID == stream_config.device_i.deviceId &&
                                             __device_info.duplexChannels > 0;
                     }
 
                     if (__duplex_o_exists != __duplex_i_exists) { // one duplex device
-                        stream_config.device_i.stream_parameters.deviceId = __duplex_o_exists ? stream_config.device_o.stream_parameters.deviceId :
-                                                                                                stream_config.device_i.stream_parameters.deviceId;
-                        stream_config.device_o.stream_parameters.deviceId = __duplex_i_exists ? stream_config.device_i.stream_parameters.deviceId :
-                                                                                                stream_config.device_o.stream_parameters.deviceId;
+                        stream_config.device_i.deviceId = __duplex_o_exists ? stream_config.device_o.deviceId :
+                                                                                                stream_config.device_i.deviceId;
+                        stream_config.device_o.deviceId = __duplex_i_exists ? stream_config.device_i.deviceId :
+                                                                                                stream_config.device_o.deviceId;
                     }
                     else if (!(__duplex_o_exists || __duplex_i_exists)) { // no duplex devices
                         uint32_t __inout_dev_id = 0; // use device that has both in and out channels, if such exists
                         for (uint32_t dev_id : rta_handler.getDeviceIds()) {
                             __device_info = rta_handler.getDeviceInfo(dev_id);
                             if (__device_info.duplexChannels > 0) {
-                                stream_config.device_i.stream_parameters.deviceId = dev_id;
-                                stream_config.device_o.stream_parameters.deviceId = dev_id;
+                                stream_config.device_i.deviceId = dev_id;
+                                stream_config.device_o.deviceId = dev_id;
                                 break;
                             }
                             if (__device_info.inputChannels > 0 && __device_info.outputChannels > 0)
                                 __inout_dev_id = dev_id;
                         }
 
-                        stream_config.device_i.stream_parameters.deviceId = __inout_dev_id;
-                        stream_config.device_o.stream_parameters.deviceId = __inout_dev_id;
+                        stream_config.device_i.deviceId = __inout_dev_id;
+                        stream_config.device_o.deviceId = __inout_dev_id;
                         if (__inout_dev_id == 0) {
-                            stream_config.device_i.stream_parameters.deviceId = rta_handler.getDefaultInputDevice();
-                            stream_config.device_o.stream_parameters.deviceId = rta_handler.getDefaultOutputDevice();
-                            stream_config.device_i.device_mode = DEVICE_MODE_DEFAULT;
-                            stream_config.device_o.device_mode = DEVICE_MODE_DEFAULT;
+                            stream_config.device_i.deviceId = rta_handler.getDefaultInputDevice();
+                            stream_config.device_o.deviceId = rta_handler.getDefaultOutputDevice();
+                            stream_config.device_i_mode = DEVICE_MODE_DEFAULT;
+                            stream_config.device_o_mode = DEVICE_MODE_DEFAULT;
                             // TODO: maybe fall back to some other method (4 lines above). Or not (below).
                             // throw std::runtime_error(SVKFW_WRAPERR("RTA :: AudioHandler :: deviceUpdate", "no duplex devices available (i)"));
                         }
                     }
                     else if (!__same_i_o) { // two different duplex devices
                         // TODO: sync by setting same duplex device. Might do additional work here choosing between device_i/device_o as duplex device.
-                        stream_config.device_i.stream_parameters.deviceId = stream_config.device_o.stream_parameters.deviceId;
+                        stream_config.device_i.deviceId = stream_config.device_o.deviceId;
                     }
                     // else {} - same duplex device, no work needed
                 }
             }
-            inline void deviceUpdateAll() {
-                if (stream_config.device_i.device_mode == DEVICE_MODE_DUPLEX &&
-                    stream_config.device_o.device_mode == DEVICE_MODE_DUPLEX) {
+            inline void deviceUpdate() {
+                if (stream_config.device_i_mode == DEVICE_MODE_DUPLEX &&
+                    stream_config.device_o_mode == DEVICE_MODE_DUPLEX) {
                     deviceDuplexUpdate();
                 }
                 else {
@@ -382,13 +373,13 @@ namespace Simple {
                 }
                 return __res;
             }
-            inline std::string  deviceInputGetInfoStr() { return deviceGetInfoStr_(stream_config.device_i.stream_parameters.deviceId); }
-            inline std::string deviceOutputGetInfoStr() { return deviceGetInfoStr_(stream_config.device_o.stream_parameters.deviceId); }
+            inline std::string  deviceInputGetInfoStr() { return deviceGetInfoStr_(stream_config.device_i.deviceId); }
+            inline std::string deviceOutputGetInfoStr() { return deviceGetInfoStr_(stream_config.device_o.deviceId); }
 
         // User methods
 
             void playAudio(Audio::Sample::SmpItf *_source, float _weight = 1.f) {
-                stream_config.audio_config.played_sound.addSource(_source, _weight);
+                stream_config.audio_sampler.addSource(_source, _weight);
             }
         }; // AudioHandler END
 
@@ -401,7 +392,7 @@ namespace Simple {
             uint32_t buffer_frames;
             uint32_t channels;
 
-            StreamBuffer(void *_buffer, uint32_t _buf_frames, uint32_t _channels, RTAStreamConfig *_config)
+            StreamBuffer(void *_buffer, uint32_t _buf_frames, uint32_t _channels, AudioStreamConfig *_config)
                             : buffer{_buffer}, audio_format{_config->audio_format}, sample_rate{_config->sample_rate},
                               buffer_frames{_buf_frames}, channels{_channels} {}
 
@@ -597,13 +588,13 @@ namespace Simple {
             rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
 
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             __outbuf_wrap.buffer = _o_buffer;
             __outbuf_wrap.buffer_frames = _n_buf_frames;
 
-            __outbuf_wrap.setSignalForAllChannels(&__config->audio_config.played_sound); // Note: for interleaved mode. TODO: Support non-interleaved
+            __outbuf_wrap.setSignalForAllChannels(&__config->audio_sampler);
             return 0;
         }
 
@@ -613,20 +604,20 @@ namespace Simple {
             rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
 
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             __outbuf_wrap.buffer = _o_buffer;
             __outbuf_wrap.buffer_frames = _n_buf_frames;
 
-            __outbuf_wrap.setSignalFor2Channels(&__config->audio_config.played_sound); // Note: for interleaved mode.
+            __outbuf_wrap.setSignalFor2Channels(&__config->audio_sampler);
             return 0;
         }
 
         int rtacbSawNoRepeat(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 0.000002f };
 
             rtacbCallbackWarningCheck(_status);
@@ -645,7 +636,6 @@ namespace Simple {
                 __last_val[1] += Math::sign(__last_val[1]) * __last_val[2];
                 if (__last_val[1] >= 0.1f)
                     __last_val[2] = -__last_val[2];
-                // printf("%f, ", __last_val[1]);
             }
 
             return 0;
@@ -653,8 +643,8 @@ namespace Simple {
 
         int rtacbSawPulse(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 1.00006f };
 
             rtacbCallbackWarningCheck(_status);
@@ -682,8 +672,8 @@ namespace Simple {
 
         int rtacbSaw(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.stream_parameters.nChannels, __config};
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
+            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[2] = { -1.f, 0.02f };
             static Audio::Sample::SmpSaw __saw_sample;
             static Audio::AudioSampler  __audio_sampler{ {&__saw_sample} };
@@ -699,11 +689,11 @@ namespace Simple {
                         double _stream_t, RtAudioStreamStatus _status, void *_config) {
             rtacbCallbackWarningCheck(_status);
 
-            RTAStreamConfig *__config = (RTAStreamConfig*)_config;
+            AudioStreamConfig *__config = (AudioStreamConfig*)_config;
 
             // If the number of input and output channels is equal, we simply copy the buffer.
-            if (__config->device_i.stream_parameters.nChannels == __config->device_o.stream_parameters.nChannels) {
-                uint32_t bytes = __config->device_o.stream_parameters.nChannels * __config->buffer_frames *
+            if (__config->device_i.nChannels == __config->device_o.nChannels) {
+                uint32_t bytes = __config->device_o.nChannels * __config->buffer_frames *
                                  __config->getBufferElemBytes();
                 memcpy(_o_buffer, _i_buffer, bytes);
             }

@@ -98,25 +98,42 @@ namespace Simple {
     }
 
 
-    void genDiffImage(const std::string &_img_path1, const std::string &_img_path2, const std::string &_img_path_res) {
-        Img::Image3f image1(_img_path1);
-        Img::Image3f image2(_img_path2);
-
+    void genDiffImage(const Img::Image3f &image1, const Img::Image3f &image2, const std::string &_img_path_res) {
         if (image1.width != image2.width || image1.height != image2.height)
             throw std::runtime_error(SVKFW_WRAPERR("Test2 :: genDiffImage", "image sizes don't match"));
 
         Img::Image3f __res{image1.width, image1.height};
+        #pragma omp parallel for
         for (uint32_t i = 0u; i < __res.img.size(); ++i) {
             float __diff = image1.img[i].x - image2.img[i].x;
             vec3f __other_color = __diff < 0.f ? vec3f{1.f,0.f,0.f} : vec3f{0.f,0.f,1.f};
             __res.img[i] = __other_color * std::abs(__diff) + vec3f{1.f} * (1.f - std::abs(__diff));
+            __res.img[i].x = std::pow(__res.img[i].x, 4.f);
+            __res.img[i].y = std::pow(__res.img[i].y, 4.f);
+            __res.img[i].z = std::pow(__res.img[i].z, 4.f);
         }
 
         __res.imgSave<Img::PNG>(_img_path_res);
     }
 
     SVKFW_ADD_TEST(ImageDiff, "Save/Load img differences") {
-        std::string __img_dir = "/Programming/SimpleVKFW/tests/diff/";
+        std::string __img_dir = "/Programming/study/DRRenders/";
+
+        for (std::string exp_dir : {  "PufferfishNewLong", "TeapotNew", "WheelNewLong" }) {
+            printf("Processing '%s'\n", exp_dir.c_str());
+            exp_dir = __img_dir + exp_dir + '/';
+
+            for (int view_id = 0; view_id < 24; ++view_id) {
+                std::string ref_img = exp_dir + "ref/ref_" + std::to_string(view_id) + ".png";
+                Img::Image3f image1(ref_img);
+                for (int epoch_id = 1; epoch_id <= 7; ++epoch_id) {
+                    std::string  res_img = exp_dir + "res/ep"      + std::to_string(epoch_id) + "_res_" + std::to_string(view_id) + ".png";
+                    std::string diff_img = exp_dir + "res/diff_ep" + std::to_string(epoch_id) + "_res_" + std::to_string(view_id) + ".png";
+                    Img::Image3f image2(res_img);
+                    genDiffImage(image2, image1, diff_img);
+                }
+            }
+        }
 
         // genDiffImage(__img_dir + "armadillo_ref.png", __img_dir + "armadillo_res.png", __img_dir + "arma_diff.png");
         // genDiffImage(__img_dir + "bunny_ref.png"    , __img_dir + "bunny_res.png"    , __img_dir + "bunny_diff.png");
@@ -206,7 +223,7 @@ namespace Simple {
         audio_o.streamSetMode(RTA::STREAM_MODE_DUPLEX,
                               RTA::DEVICE_MODE_DEFAULT,
                               RTA::DEVICE_MODE_DEFAULT);
-        audio_o.deviceUpdateAll();
+        audio_o.deviceUpdate();
         audio_o.streamSetOptions(0, 0, "Test Audio Output/Input", 0);
         audio_o.deviceOutputSetParameters(__channels);
         audio_o.deviceInputSetParameters(__channels);
@@ -218,7 +235,7 @@ namespace Simple {
         audio_o.streamStart();
 
         AsyncExit __exit_state;
-        while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
+        while (!__exit_state.gotAnswer()) { audio_o.deviceUpdate(); }
     }
 
 
@@ -241,8 +258,8 @@ namespace Simple {
         audio_o.streamSetMode(RTA::STREAM_MODE_OUT,
                               RTA::DEVICE_MODE_DEFAULT,
                               RTA::DEVICE_MODE_DEFAULT);
-        audio_i.deviceUpdateAll();
-        audio_o.deviceUpdateAll();
+        audio_i.deviceUpdate();
+        audio_o.deviceUpdate();
         audio_i.streamSetOptions(0, 0, "Test Audio Input", 0);
         audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
         audio_o.deviceOutputSetParameters(__channels);
@@ -262,7 +279,7 @@ namespace Simple {
         return; // TODO: this test requires OGG file save/load + Opus codec.
 
         AsyncExit __exit_state;
-        while (!__exit_state.gotAnswer()) { audio_i.deviceUpdateAll(); audio_o.deviceUpdateAll(); }
+        while (!__exit_state.gotAnswer()) { audio_i.deviceUpdate(); audio_o.deviceUpdate(); }
     }
 
 
@@ -273,7 +290,7 @@ namespace Simple {
 
         audio_o.streamSetMode(RTA::STREAM_MODE_OUT,
                               RTA::DEVICE_MODE_DEFAULT);
-        audio_o.deviceUpdateAll();
+        audio_o.deviceUpdate();
         audio_o.streamSetOptions(0, 0, "Test Audio Output", 0);
         audio_o.deviceOutputSetParameters(__channels);
         audio_o.callbackSet(RTA::rtacbDefault2);
@@ -282,14 +299,14 @@ namespace Simple {
         Test::testAssert(audio_o.streamIsOpen(), "Audio stream is not open");
 
         // Set audio to play
-        audio_o.stream_config.audio_config.played_sound.setSources(_sources, _weights);
-        audio_o.stream_config.audio_config.played_sound.setSampleRate(audio_o.stream_config.sample_rate);
+        audio_o.stream_config.audio_sampler.setSources(_sources, _weights);
+        audio_o.stream_config.audio_sampler.setSampleRate(audio_o.stream_config.sample_rate);
 
         // Start stream
         audio_o.streamStart();
 
         AsyncExit __exit_state;
-        while (!__exit_state.gotAnswer()) { audio_o.deviceUpdateAll(); }
+        while (!__exit_state.gotAnswer()) { audio_o.deviceUpdate(); }
         audio_o.streamStop();
     }
 

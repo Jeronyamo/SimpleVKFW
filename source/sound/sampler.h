@@ -8,6 +8,13 @@
 #include "common/terminal.h"
 
 
+// SVKFW Audio Source constants
+
+#define SVKFW_AS_MIN_WEIGHT     1e-4f
+#define SVKFW_AS_MAX_SOURCES    127u
+#define SVKFW_AS_MAX_DURATION   1e6f
+
+
 namespace Simple {
     namespace Audio {
 
@@ -370,21 +377,21 @@ namespace Simple {
 
         namespace Sample {
             struct SmpItf {
-                float duration = 0.f; // Sample duration in seconds; Default: 0; 0 means infinite sample; no need to use it in 'sample()' method, it's for 'Audio::AudioSampler'.
+                float duration = SVKFW_AS_MAX_DURATION; // Sample duration in seconds. Default: SVKFW_AS_MAX_DURATION for 'infinite' samples.
 
                 virtual ~SmpItf() {}
 
                 // t = (t_step / sample_rate) * frequency
-                virtual float   sample (float _t) = 0;
-                virtual vec2i16 sample2(float _t) = 0;
+                virtual float   sample (float  _t) = 0;
+                virtual vec2i16 sample2(double _t) = 0;
                 void setDuration(float _dur) { duration = _dur; }
             }; // SmpItf END
 
             struct SmpPlaceholder : SmpItf {
                 SmpPlaceholder() {}
                ~SmpPlaceholder() {}
-                float   sample (float _t) override { return 0.f; }
-                vec2i16 sample2(float _t) override { return 0  ; }
+                float   sample (float  _t) override { return 0.f; }
+                vec2i16 sample2(double _t) override { return 0  ; }
             } audio_placeholder;
 
             struct SmpSineWave : SmpItf {
@@ -392,8 +399,8 @@ namespace Simple {
 
                 SmpSineWave() {}
                ~SmpSineWave() {}
-                float   sample (float _t) override { return std::sin(_t * freq * (2 * M_PI)); }
-                vec2i16 sample2(float _t) override { return std::sin(_t * freq * (2 * M_PI)) * INT16_MAX; }
+                float   sample (float  _t) override { return (_t <= duration) * std::sin(_t * freq * (2 * M_PI)); }
+                vec2i16 sample2(double _t) override { return (_t <= duration) * std::sin(_t * freq * (2 * M_PI)) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -402,8 +409,8 @@ namespace Simple {
 
                 SmpSaw() {}
                ~SmpSaw() {}
-                float   sample (float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
-                vec2i16 sample2(float _t) override { return std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)) * INT16_MAX; }
+                float   sample (float  _t) override { return (_t <= duration) * std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
+                vec2i16 sample2(double _t) override { return (_t <= duration) * std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5 )) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -412,8 +419,8 @@ namespace Simple {
 
                 SmpTestWave() {}
                ~SmpTestWave() {}
-                float   sample (float _t) override { return std::sin(std::log(_t*freq) * _t*freq); }
-                vec2i16 sample2(float _t) override { return std::sin(std::log(_t*freq) * _t*freq) * INT16_MAX; }
+                float   sample (float  _t) override { return (_t <= duration) * std::sin(std::log(_t*freq) * _t*freq); }
+                vec2i16 sample2(double _t) override { return (_t <= duration) * std::sin(std::log(_t*freq) * _t*freq) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -423,8 +430,8 @@ namespace Simple {
 
                 SmpFunction(const std::function<float(float)> &_sampler_func) : sampler_func{_sampler_func} {}
                ~SmpFunction() {}
-                float   sample (float _t) override { return sampler_func(_t); }
-                vec2i16 sample2(float _t) override { return sampler_func(_t) * INT16_MAX; }
+                float   sample (float  _t) override { return (_t <= duration) * sampler_func(_t); }
+                vec2i16 sample2(double _t) override { return (_t <= duration) * sampler_func(_t) * INT16_MAX; }
             };
         }; // Sample END
 
@@ -434,58 +441,78 @@ namespace Simple {
                 Sample::SmpItf* sample_ptr;
                 uint32_t   t;
                 float weight;
-            } sources[31]{}; // 31 audio sources: is it realistically enough/too many?
+            } sources[SVKFW_AS_MAX_SOURCES]{};
 
-            uint32_t sample_rate = 1u, pad1, pad2, pad3;
+            uint32_t sample_rate = 1u;
+            float inv_max_weight = 1.f, inv_sr = 1.f;
+            uint32_t pad1_;
 
-            AudioSampler() { for (uint32_t i = 0u; i < 31u; ++i) sources[i] = { &Sample::audio_placeholder, 0u, 1.f }; }
+            AudioSampler() { clearState(); }
             AudioSampler(const std::vector<Sample::SmpItf*> &_sources, const std::vector<float> &_weights = {}) { setSources(_sources, _weights); }
-           ~AudioSampler() {}
+           ~AudioSampler() { clearState(); }
+
+            void clearState() {
+                for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i)
+                    sources[i] = { &Sample::audio_placeholder };
+                sample_rate = 1u;
+                inv_max_weight = inv_sr = 1.f;
+            }
 
             void setSampleRate(uint32_t _sample_rate) {
-                sample_rate = _sample_rate;
+                sample_rate = std::max(_sample_rate, 1u);
+                inv_sr = 1.f / sample_rate;
             }
 
             float sample() {
                 float __res = 0.f;
-                uint32_t __finish_t = 0u;
+                float t, __max_weight = SVKFW_AS_MIN_WEIGHT;
 
-                for (uint32_t i = 0u; i < 31u; ++i) {
-                    if (sources[i].sample_ptr == &Sample::audio_placeholder) continue;
+                for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i) {
+                    t = sources[i].t++ * inv_sr;
 
-                    __finish_t = std::ceil(sources[i].sample_ptr->duration * sample_rate);
-                    if (__finish_t && sources[i].t >= __finish_t)
-                        sources[i].sample_ptr = &Sample::audio_placeholder;
-                    __res += sources[i].weight * sources[i].sample_ptr->sample((sources[i].t++) / float(sample_rate));
+                    if (t > sources[i].sample_ptr->duration)
+                        sources[i] = { &Sample::audio_placeholder };
+
+                    __max_weight = std::max(__max_weight, sources[i].weight);
+                    __res += (sources[i].weight * inv_max_weight) * sources[i].sample_ptr->sample(t);
                 }
+                inv_max_weight = 1.f / __max_weight;
                 return __res;
             }
 
             vec2i16 sample2() {
                 vec2i16 __res{};
-                uint32_t __finish_t = 0u;
+                float __max_weight = SVKFW_AS_MIN_WEIGHT;
+                double t;
 
-                for (uint32_t i = 0u; i < 31u; ++i) {
-                    if (sources[i].sample_ptr == &Sample::audio_placeholder) continue;
+                for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i) {
+                    t = sources[i].t++ * inv_sr;
 
-                    __finish_t = std::ceil(sources[i].sample_ptr->duration * sample_rate);
-                    if (__finish_t && sources[i].t >= __finish_t)
-                        sources[i].sample_ptr = &Sample::audio_placeholder;
-                    __res += sources[i].weight * sources[i].sample_ptr->sample2((sources[i].t++) / float(sample_rate));
+                    if (t > sources[i].sample_ptr->duration)
+                        sources[i] = { &Sample::audio_placeholder };
+
+                    __max_weight = std::max(__max_weight, sources[i].weight);
+                    __res += (sources[i].weight * inv_max_weight) * sources[i].sample_ptr->sample2(t);
                 }
+                inv_max_weight = 1.f / __max_weight;
                 return __res;
             }
 
             uint32_t addSource(Sample::SmpItf* _source, float _weight) {
-                uint32_t __res_i = 31u;
-                for (uint32_t i = 0u; i < 31u; ++i)
-                    if (sources[i].sample_ptr == nullptr) {
-                        __res_i = i;
-                        sources[i].sample_ptr = _source;
-                        sources[i].weight = _weight;
-                        sources[i].t = 0u;
-                    }
-                SVKFW_WASSERT(__res_i < 31u, "AudioSampler :: addSource", "couldn't add audio sample\n");
+                uint32_t __res_i = SVKFW_AS_MAX_SOURCES;
+                if (_weight >= SVKFW_AS_MIN_WEIGHT) {
+                    for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i)
+                        if (sources[i].sample_ptr == &Sample::audio_placeholder) {
+                            __res_i = i;
+                            sources[i].sample_ptr = _source;
+                            sources[i].weight = _weight;
+                            sources[i].t = 0u;
+
+                            inv_max_weight = std::min(inv_max_weight, 1.f / _weight);
+                        }
+                    SVKFW_WASSERT(__res_i < SVKFW_AS_MAX_SOURCES, "AudioSampler :: addSource", "couldn't add audio sample\n");
+                }
+                else printf(SVKFW_WRAPINFO("AudioSampler :: addSource", "Source ignored - weight is too small (%f < %f)\n"), _weight, SVKFW_AS_MIN_WEIGHT);
                 return __res_i;
             }
 
@@ -493,13 +520,16 @@ namespace Simple {
                 SVKFW_ASSERT(_weights.empty() || _weights.size() == _sources.size(), std::invalid_argument,
                                 "AudioSampler :: setSources", "Expected 0 weights or " + std::to_string(_sources.size()) +
                                                                               ", got " + std::to_string(_weights.size()));
-                SVKFW_ASSERT(_sources.size() <= 31u, std::invalid_argument,
-                                "AudioSampler :: setSources", "Expected up to 31 audio sources added, got " + std::to_string(_sources.size()));
-                for (uint32_t i = 0u; i < 31u; ++i) {
+                SVKFW_ASSERT(_sources.size() <= SVKFW_AS_MAX_SOURCES, std::invalid_argument,
+                                "AudioSampler :: setSources", "Expected up to " + std::to_string(SVKFW_AS_MAX_SOURCES) + " audio sources, got " + std::to_string(_sources.size()));
+                float __max_weight = SVKFW_AS_MIN_WEIGHT;
+                for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i) {
                     sources[i].sample_ptr = i < _sources.size() ? _sources[i] : &Sample::audio_placeholder;
-                    sources[i].weight     = i < _weights.size() ? _weights[i] : 1.f / std::max(_sources.size(), size_t(1u));
+                    sources[i].weight     = i < _weights.size() ? std::max(_weights[i], 0.f) : 1.f / std::max(_sources.size(), size_t(1u));
                     sources[i].t          = 0u;
+                    __max_weight = std::max(__max_weight, sources[i].weight);
                 }
+                inv_max_weight = 1.f / __max_weight;
             }
         }; // AudioSampler END
     }; // Audio END
