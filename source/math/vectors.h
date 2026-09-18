@@ -1408,20 +1408,20 @@ namespace Simple {
 
                 return {
                            tmp[0] * determinant,
-                        ( M[0][1] * A2323 - M[0][2] * A1323 + M[0][3] * A1223 ) * determinant,
+                       -( M[0][1] * A2323 - M[0][2] * A1323 + M[0][3] * A1223 ) * determinant,
                         ( M[0][1] * A2313 - M[0][2] * A1313 + M[0][3] * A1213 ) * determinant,
-                        ( M[0][1] * A2312 - M[0][2] * A1312 + M[0][3] * A1212 ) * determinant,
-                           tmp[1] * determinant,
+                       -( M[0][1] * A2312 - M[0][2] * A1312 + M[0][3] * A1212 ) * determinant,
+                       -   tmp[1] * determinant,
                         ( M[0][0] * A2323 - M[0][2] * A0323 + M[0][3] * A0223 ) * determinant,
-                        ( M[0][0] * A2313 - M[0][2] * A0313 + M[0][3] * A0213 ) * determinant,
+                       -( M[0][0] * A2313 - M[0][2] * A0313 + M[0][3] * A0213 ) * determinant,
                         ( M[0][0] * A2312 - M[0][2] * A0312 + M[0][3] * A0212 ) * determinant,
                            tmp[2] * determinant,
-                        ( M[0][0] * A1323 - M[0][1] * A0323 + M[0][3] * A0123 ) * determinant,
+                       -( M[0][0] * A1323 - M[0][1] * A0323 + M[0][3] * A0123 ) * determinant,
                         ( M[0][0] * A1313 - M[0][1] * A0313 + M[0][3] * A0113 ) * determinant,
-                        ( M[0][0] * A1312 - M[0][1] * A0312 + M[0][3] * A0112 ) * determinant,
-                           tmp[3] * determinant,
+                       -( M[0][0] * A1312 - M[0][1] * A0312 + M[0][3] * A0112 ) * determinant,
+                       -   tmp[3] * determinant,
                         ( M[0][0] * A1223 - M[0][1] * A0223 + M[0][2] * A0123 ) * determinant,
-                        ( M[0][0] * A1213 - M[0][1] * A0213 + M[0][2] * A0113 ) * determinant,
+                       -( M[0][0] * A1213 - M[0][1] * A0213 + M[0][2] * A0113 ) * determinant,
                         ( M[0][0] * A1212 - M[0][1] * A0212 + M[0][2] * A0112 ) * determinant
                 };
             }
