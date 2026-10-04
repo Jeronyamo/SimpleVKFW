@@ -167,6 +167,14 @@ namespace Simple {
             static bool IsRightBone (const std::string & _bone_name) { return  _bone_name.substr(0, 2) == "\211\105"; }
             static bool IsLeftMorph (const std::string &_morph_name) { return _morph_name.substr(0, 2) == "\215\266"; }
             static bool IsRightMorph(const std::string &_morph_name) { return _morph_name.substr(0, 2) == "\211\105"; }
+            static std::string GetBoneNameSafe(const std::string &_raw_bone_name) {
+                return bone_name_mappings_fromraw.find(_raw_bone_name) != bone_name_mappings_fromraw.end() ?
+                       bone_name_mappings_fromraw.  at(_raw_bone_name) :  "0000000000000000000000000000000";
+            }
+            static std::string GetMorphNameSafe(const std::string &_raw_morph_name) {
+                return morph_name_mappings_fromraw.find(_raw_morph_name) != morph_name_mappings_fromraw.end() ?
+                       morph_name_mappings_fromraw.  at(_raw_morph_name) :  "0000000000000000000000000000000";
+            }
 
             static std::string GetOppositeBone(const std::string &  _bone_name) {
                 if ( IsLeftBone(_bone_name))
@@ -371,6 +379,196 @@ namespace Simple {
                 }
             }
 
+            // One biquad section state (per scalar channel)
+            struct BiquadState {
+                float z1 = 0.f, z2 = 0.f; // transposed direct-form II states
+            };
+            struct BiquadCoeffs {
+                float b0, b1, b2, a1, a2;
+            };
+
+            static BiquadCoeffs makeLowpassBiquad(float fs, float fc, float Q) {
+                float w0 = 2.f * M_PI * fc / fs;
+                float cosw0 = std::cos(w0);
+                float alpha = std::sin(w0) / (2.f * Q);
+
+                float a0 = 1.f + alpha;
+                BiquadCoeffs c;
+                c.b0 = ((1.f - cosw0) / 2.0f) / a0;
+                c.b1 =  (1.f - cosw0)         / a0;
+                c.b2 = c.b0;
+                c.a1 = (-2.0f * cosw0) / a0;
+                c.a2 = ( 1.0f - alpha) / a0;
+                return c;
+            }
+
+            // Process one scalar sample through one biquad section (transposed DF-II)
+            static float biquadStep(const BiquadCoeffs& c, BiquadState& s, float x) {
+                float y = c.b0 * x + s.z1;
+                s.z1 = c.b1 * x - c.a1 * y + s.z2;
+                s.z2 = c.b2 * x - c.a2 * y;
+                return y;
+            }
+
+            void butterworthLowpass4(std::vector<vec3f> &data, float _freq_sample_hz, float _freq_cutout_hz, bool _is_forward) {
+                if (data.empty()) return;
+
+                const float Q1 = 0.54119610f;
+                const float Q2 = 1.30656296f;
+                BiquadState s1[3], s2[3];
+
+                // Seed from the first sample in the iteration direction
+                BiquadCoeffs c1 = makeLowpassBiquad(_freq_sample_hz, _freq_cutout_hz, Q1);
+                BiquadCoeffs c2 = makeLowpassBiquad(_freq_sample_hz, _freq_cutout_hz, Q2);
+                vec3f seed = _is_forward ? data.front() : data.back();
+                for (int k = 0; k < 3; ++k) {
+                    s1[k].z1 = (c1.b1 - c1.a1) * seed[k];
+                    s1[k].z2 = (c1.b2 - c1.a2) * seed[k];
+                    s2[k].z1 = (c2.b1 - c2.a1) * seed[k];
+                    s2[k].z2 = (c2.b2 - c2.a2) * seed[k];
+                }
+                for (int step = 0; step < data.size(); ++step) {
+                    int i = _is_forward ? step : (data.size() - 1 - step);
+                    vec3f res;
+
+                    for (int k = 0; k < 3; ++k) {
+                        float t = biquadStep(c1, s1[k], data[i][k]);
+                        res[k]  = biquadStep(c2, s2[k], t);
+                    }
+                    data[i] = res;
+                }
+            }
+
+            float findU(float _t, float _x1, float _x2) {
+                if (_t <= 0.f) return 0.f;
+                if (_t >= 1.f) return 1.f;
+
+                float lower = 0.f;
+                float upper = 1.f;
+                float u     = 0.5f;
+
+                for (int i = 0; i < 12; ++i) {
+                    float current_x = 3.f * (1.f - u) * (1.f - u) * u * _x1 +
+                                      3.f * (1.f - u) *        u  * u * _x2 +
+                                                   u  *        u  * u;
+
+                    if (std::abs(current_x - _t) < 1e-4f) break;
+                    if (current_x < _t) lower = u;
+                    else                upper = u;
+                    u = (lower + upper) * 0.5f;
+                }
+                return u;
+            }
+            float interpolateForMMD(float _t, vec2f _p1, vec2f _p2) {
+                _p1 /= 127;
+                _p2 /= 127;
+                float u = findU(_t, _p1.x, _p2.x);
+                float __res = 3.f * (1.f - u) * (1.f - u) * u * _p1.y +
+                              3.f * (1.f - u) *        u  * u * _p2.y +
+                                           u  *        u  * u;
+                return __res;
+            }
+
+            void reinterpolateBone(const std::string &_raw_bone_name) {
+                std::vector<BoneKeyframe> __bone_keyframes;
+
+                // Obtain/Interpolate every keyframe (30 FPS)
+                for (auto& bone_kframe : keyframes_bone) {
+                    if (bone_kframe.bone_name != _raw_bone_name) continue;
+                    if (!__bone_keyframes.empty()) {
+                        const uint32_t __first_ind = __bone_keyframes.size() - 1;
+                        const uint32_t __new_kframes = bone_kframe.frame_id - __bone_keyframes[__first_ind].frame_id;
+                        const vec3b __update_pos = __bone_keyframes[__first_ind].position != bone_kframe.position;
+                        const InterpolationInfo __int_info =  GetInterpolation(__bone_keyframes[__first_ind]);
+
+                        __bone_keyframes.resize(__bone_keyframes.size() + __new_kframes);
+                        if (Math::dot(__bone_keyframes[__first_ind].rotation, bone_kframe.rotation) < 1e-6f)
+                            bone_kframe.rotation = -1.f * bone_kframe.rotation;
+                        __bone_keyframes[__first_ind + __new_kframes] = bone_kframe;
+
+                        for (uint32_t i = 1u; i < __new_kframes; ++i) {
+                            __bone_keyframes[__first_ind + i] = __bone_keyframes[__first_ind];
+                            __bone_keyframes[__first_ind + i].frame_id += i;
+
+                            float __interp_t;
+                            if (__update_pos.x) {
+                                // Pos X
+                                __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_x["xy"].cast<float>(), __int_info.mov_x["zw"].cast<float>());
+                                __bone_keyframes[__first_ind + i].position.x = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.x, bone_kframe.position.x);
+                            }
+                            if (__update_pos.y) {
+                                // Pos Y
+                                __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_y["xy"].cast<float>(), __int_info.mov_y["zw"].cast<float>());
+                                __bone_keyframes[__first_ind + i].position.y = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.y, bone_kframe.position.y);
+                            }
+                            if (__update_pos.z) {
+                                // Pos Z
+                                __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_z["xy"].cast<float>(), __int_info.mov_z["zw"].cast<float>());
+                                __bone_keyframes[__first_ind + i].position.z = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.z, bone_kframe.position.z);
+                            }
+                            // Rot
+                            __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.rot["xy"].cast<float>(), __int_info.rot["zw"].cast<float>());
+                            __bone_keyframes[__first_ind + i].rotation = Interpolation::Slerp::Interpolate(__interp_t, __bone_keyframes[__first_ind].rotation, bone_kframe.rotation);
+                        }
+                    }
+                    else __bone_keyframes.insert(__bone_keyframes.end(), bone_kframe);
+                }
+                if (__bone_keyframes.size() < 2) return;
+
+                // Remove old keyframes
+                for (int i = keyframes_bone.size() - 1; i >= 0; --i)
+                    if (keyframes_bone[i].bone_name == _raw_bone_name)
+                        keyframes_bone.erase(keyframes_bone.begin() + i);
+
+                // Convert quaternion rotations into tangent-space vectors
+                std::vector<vec3f> __tangent_vecs(__bone_keyframes.size());
+                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i) {
+                    __tangent_vecs[i] = {};
+                    float __theta = std::acos(__bone_keyframes[i].rotation.s);
+                    if (std::abs(std::sin(__theta)) > 1e-5f) {
+                        __tangent_vecs[i] = (__theta / std::sin(__theta)) * __bone_keyframes[i].rotation.vecPart();
+                    }
+                }
+
+                // Apply Butterworth low-pass filter
+                butterworthLowpass4(__tangent_vecs, 30.f, 4.f,  true);
+                butterworthLowpass4(__tangent_vecs, 30.f, 4.f, false);
+
+                // Convert vectors back to quaternions
+                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i) {
+                    __bone_keyframes[i].rotation = {};
+                    float __theta = __tangent_vecs[i].norm();
+                    if (std::abs(std::sin(__theta)) > 1e-4f) {
+                        __bone_keyframes[i].rotation = { std::cos(__theta), std::sin(__theta) / __theta * __tangent_vecs[i] };
+                    }
+                }
+
+                // Add new keyframes
+                keyframes_bone.insert(keyframes_bone.end(), __bone_keyframes.begin(), __bone_keyframes.end());
+            }
+
+            void reinterpolateBones() {
+                const std::vector<std::string> __ignored_bones = {
+                    "hand_dummy_r", "hand_dummy_l",
+                    "f_thumb01_r", "f_thumb02_r", "f_thumb03_r", "f_index01_r", "f_index02_r", "f_index03_r", "f_middle01_r", "f_middle02_r", "f_middle03_r", "f_ring01_r", "f_ring02_r", "f_ring03_r", "f_little01_r", "f_little02_r", "f_little03_r",
+                    "f_thumb01_l", "f_thumb02_l", "f_thumb03_l", "f_index01_l", "f_index02_l", "f_index03_l", "f_middle01_l", "f_middle02_l", "f_middle03_l", "f_ring01_l", "f_ring02_l", "f_ring03_l", "f_little01_l", "f_little02_l", "f_little03_l",
+                    "eyes", "eye_r", "eye_l", "mouth_base", "eyebrow_base",
+                };
+
+                for (const auto& bone_mapping : bone_name_mappings) {
+                    bool __ignore_bone = false;
+                    for (const auto& ignored_bone : __ignored_bones) {
+                        __ignore_bone = bone_mapping.first == ignored_bone;
+                        if (__ignore_bone) break;
+                    }
+                    if (__ignore_bone) continue;
+
+                    printf(SVKFW_WRAPINFO("ContentVMD :: reinterpolateBones", "Reinterpolating bone: %s\n"), bone_mapping.first.c_str());
+                    reinterpolateBone(bone_mapping.second);
+                }
+                sortBoneKeyframes();
+            }
+
             void mixCamera(const ContentVMD &_other_camera, const std::vector<uint32_t> &_switch_frame_ids) {
                 std::vector<CameraKeyframe> __tmp_keyframes_camera;
 
@@ -395,6 +593,33 @@ namespace Simple {
                 keyframes_camera = std::move(__tmp_keyframes_camera);
             }
 
+
+            static InterpolationInfo GetInterpolation(BoneKeyframe &_bone_kframe) {
+                // Interpolation info (in bytes) in range [0,127]:
+                //  0-15: MovX.0x,MovY.0x,      0,     0, MovX.0y,MovY.0y,MovZ.0y,Rot.0y, MovX.1x,MovY.1x,MovZ.1x,Rot.1x, MovX.1y,MovY.1y,MovZ.1y,Rot.1y
+                // 16-30:         MovY.0x,MovZ.0x,Rot.0x, MovX.0y,MovY.0y,MovZ.0y,Rot.0y, MovX.1x,MovY.1x,MovZ.1x,Rot.1x, MovX.1y,MovY.1y,MovZ.1y,Rot.1y
+                // 31-45:               0,MovZ.0x,Rot.0x, MovX.0y,MovY.0y,MovZ.0y,Rot.0y, MovX.1x,MovY.1x,MovZ.1x,Rot.1x, MovX.1y,MovY.1y,MovZ.1y,Rot.1y
+                // 46-60:               0,      0,Rot.0x, MovX.0y,MovY.0y,MovZ.0y,Rot.0y, MovX.1x,MovY.1x,MovZ.1x,Rot.1x, MovX.1y,MovY.1y,MovZ.1y,Rot.1y
+                // 61-63:               0,      0,     0
+                InterpolationInfo __res{};
+                __res.mov_x = { _bone_kframe.int_info[ 0], _bone_kframe.int_info[ 4], _bone_kframe.int_info[ 8], _bone_kframe.int_info[12] };
+                __res.mov_y = { _bone_kframe.int_info[ 1], _bone_kframe.int_info[ 5], _bone_kframe.int_info[ 9], _bone_kframe.int_info[13] };
+                __res.mov_z = { _bone_kframe.int_info[17], _bone_kframe.int_info[ 6], _bone_kframe.int_info[10], _bone_kframe.int_info[14] };
+                __res.rot   = { _bone_kframe.int_info[18], _bone_kframe.int_info[ 7], _bone_kframe.int_info[11], _bone_kframe.int_info[15] };
+                return __res;
+            }
+            static InterpolationInfo GetInterpolation(CameraKeyframe &_cam_kframe) {
+                // Interpolation info (in bytes) in range [0,127]:
+                //  0- 3:  moveX.0x, moveX.1x, moveX.0y, moveX.1y
+                //  4- 7:  moveY.0x, moveY.1x, moveY.0y, moveY.1y
+                //  8-11:  moveZ.0x, moveZ.1x, moveZ.0y, moveZ.1y
+                // 12-15:    Rot.0x,   Rot.1x,   Rot.0y,   Rot.1y
+                // 16-19:   Dist.0x,  Dist.1x,  Dist.0y,  Dist.1y
+                // 20-23:    FOV.0x,   FOV.1x,   FOV.0y,   FOV.1y
+                InterpolationInfo __res;
+                std::memcpy(&__res, _cam_kframe.int_info, 24);
+                return __res;
+            }
             // Interpolation example - mov_x: x = 0.x, y = 0.y, z = 1.x, w = 1.y 
             static void SetInterpolation(BoneKeyframe &_bone_kframe, const InterpolationInfo &_int_info) {
                 // Interpolation info (in bytes) in range [0,127]:
@@ -453,7 +678,7 @@ namespace Simple {
             }
 
             static void SetNameFromMapping(BoneKeyframe &_bone_kframe, std::string _mapping_str);
-            static void  ModifyData(const std::string &_vmd_path, bool _fix_blink = true, bool _make_reflected = true);
+            static void  ModifyData(const std::string &_vmd_path, bool _fix_blink = true, bool _make_reflected = true, bool _reinterpolate = true);
             static void CreateMixed(const std::string &_motion_vmd_path, const std::string &_camera_vmd_path,
                                     const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
                                     const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset,
@@ -651,106 +876,106 @@ namespace Simple {
         const std::map<std::string, std::string> ContentVMD::bone_name_mappings
         {
             // Center
-            {"root", "\221\123\202\304\202\314\220\145",},
-            {"center", "\203\132\203\223\203\136\201\133",},
-            {"groove", "\203\117\203\213\201\133\203\165",},
+            {"root",      "\221\123\202\304\202\314\220\145",},
+            {"center",    "\203\132\203\223\203\136\201\133",},
+            {"groove",    "\203\117\203\213\201\133\203\165",},
             {"back_hips", "\215\230",},
             // Body
-            {"hips", "\221\314\202\314\217\144\220\123",},
-            {"spine", "\217\343\224\274\220\147",},
+            {"hips",   "\221\314\202\314\217\144\220\123",},
+            {"spine",  "\217\343\224\274\220\147",},
             {"spine2", "\217\343\224\274\220\147\62",},
             {"spine3", "\217\343\224\274\220\147\63",},
-            {"neck", "\216\361",},
-            {"head", "\223\252",},
-            {"waist", "\211\272\224\274\220\147",},
+            {"neck",   "\216\361",},
+            {"head",   "\223\252",},
+            {"waist",  "\211\272\224\274\220\147",},
             // Right Arm
-            {"shoulder_p_r", "\211\105\214\250\120",},
-            {"shoulder_r", "\211\105\214\250",},
-            {"shoulder_c_r", "\211\105\214\250\103",},
-            {"uparm_r", "\211\105\230\162",},
-            {"uparm_twist_r", "\211\105\230\162\235\200",},
-            {"lowarm_r", "\211\105\202\320\202\266",},
+            {"shoulder_p_r",   "\211\105\214\250\120",},
+            {"shoulder_r",     "\211\105\214\250",},
+            {"shoulder_c_r",   "\211\105\214\250\103",},
+            {"uparm_r",        "\211\105\230\162",},
+            {"uparm_twist_r",  "\211\105\230\162\235\200",},
+            {"lowarm_r",       "\211\105\202\320\202\266",},
             {"lowarm_twist_r", "\211\105\216\350\235\200",},
-            {"hand_r", "\211\105\216\350\216\361",},
-            {"hand_dummy_r", "\211\105\203\137\203\176\201\133",},
-            {"ik_hand_r", "\211\105\230\162\202\150\202\152",},
+            {"hand_r",         "\211\105\216\350\216\361",},
+            {"hand_dummy_r",   "\211\105\203\137\203\176\201\133",},
+            {"ik_hand_r",      "\211\105\230\162\202\150\202\152",},
             // Left Arm
-            {"shoulder_p_l", "\215\266\214\250\120",},
-            {"shoulder_l", "\215\266\214\250",},
-            {"shoulder_c_l", "\215\266\214\250\103",},
-            {"uparm_l", "\215\266\230\162",},
-            {"uparm_twist_l", "\215\266\230\162\235\200",},
-            {"lowarm_l", "\215\266\202\320\202\266",},
+            {"shoulder_p_l",   "\215\266\214\250\120",},
+            {"shoulder_l",     "\215\266\214\250",},
+            {"shoulder_c_l",   "\215\266\214\250\103",},
+            {"uparm_l",        "\215\266\230\162",},
+            {"uparm_twist_l",  "\215\266\230\162\235\200",},
+            {"lowarm_l",       "\215\266\202\320\202\266",},
             {"lowarm_twist_l", "\215\266\216\350\235\200",},
-            {"hand_l", "\215\266\216\350\216\361",},
-            {"hand_dummy_l", "\215\266\203\137\203\176\201\133",},
-            {"ik_hand_l", "\215\266\230\162\202\150\202\152",},
+            {"hand_l",         "\215\266\216\350\216\361",},
+            {"hand_dummy_l",   "\215\266\203\137\203\176\201\133",},
+            {"ik_hand_l",      "\215\266\230\162\202\150\202\152",},
             // Right Hand
-            {"f_thumb01_r", "\211\105\220\145\216\167\202\117",},
-            {"f_thumb02_r", "\211\105\220\145\216\167\202\120",},
-            {"f_thumb03_r", "\211\105\220\145\216\167\202\121",},
-            {"f_index01_r", "\211\105\220\154\216\167\202\120",},
-            {"f_index02_r", "\211\105\220\154\216\167\202\121",},
-            {"f_index03_r", "\211\105\220\154\216\167\202\122",},
+            {"f_thumb01_r",  "\211\105\220\145\216\167\202\117",},
+            {"f_thumb02_r",  "\211\105\220\145\216\167\202\120",},
+            {"f_thumb03_r",  "\211\105\220\145\216\167\202\121",},
+            {"f_index01_r",  "\211\105\220\154\216\167\202\120",},
+            {"f_index02_r",  "\211\105\220\154\216\167\202\121",},
+            {"f_index03_r",  "\211\105\220\154\216\167\202\122",},
             {"f_middle01_r", "\211\105\222\206\216\167\202\120",},
             {"f_middle02_r", "\211\105\222\206\216\167\202\121",},
             {"f_middle03_r", "\211\105\222\206\216\167\202\122",},
-            {"f_ring01_r", "\211\105\226\362\216\167\202\120",},
-            {"f_ring02_r", "\211\105\226\362\216\167\202\121",},
-            {"f_ring03_r", "\211\105\226\362\216\167\202\122",},
+            {"f_ring01_r",   "\211\105\226\362\216\167\202\120",},
+            {"f_ring02_r",   "\211\105\226\362\216\167\202\121",},
+            {"f_ring03_r",   "\211\105\226\362\216\167\202\122",},
             {"f_little01_r", "\211\105\217\254\216\167\202\120",},
             {"f_little02_r", "\211\105\217\254\216\167\202\121",},
             {"f_little03_r", "\211\105\217\254\216\167\202\122",},
             // Left Hand
-            {"f_thumb01_l", "\215\266\220\145\216\167\202\117",},
-            {"f_thumb02_l", "\215\266\220\145\216\167\202\120",},
-            {"f_thumb03_l", "\215\266\220\145\216\167\202\121",},
-            {"f_index01_l", "\215\266\220\154\216\167\202\120",},
-            {"f_index02_l", "\215\266\220\154\216\167\202\121",},
-            {"f_index03_l", "\215\266\220\154\216\167\202\122",},
+            {"f_thumb01_l",  "\215\266\220\145\216\167\202\117",},
+            {"f_thumb02_l",  "\215\266\220\145\216\167\202\120",},
+            {"f_thumb03_l",  "\215\266\220\145\216\167\202\121",},
+            {"f_index01_l",  "\215\266\220\154\216\167\202\120",},
+            {"f_index02_l",  "\215\266\220\154\216\167\202\121",},
+            {"f_index03_l",  "\215\266\220\154\216\167\202\122",},
             {"f_middle01_l", "\215\266\222\206\216\167\202\120",},
             {"f_middle02_l", "\215\266\222\206\216\167\202\121",},
             {"f_middle03_l", "\215\266\222\206\216\167\202\122",},
-            {"f_ring01_l", "\215\266\226\362\216\167\202\120",},
-            {"f_ring02_l", "\215\266\226\362\216\167\202\121",},
-            {"f_ring03_l", "\215\266\226\362\216\167\202\122",},
+            {"f_ring01_l",   "\215\266\226\362\216\167\202\120",},
+            {"f_ring02_l",   "\215\266\226\362\216\167\202\121",},
+            {"f_ring03_l",   "\215\266\226\362\216\167\202\122",},
             {"f_little01_l", "\215\266\217\254\216\167\202\120",},
             {"f_little02_l", "\215\266\217\254\216\167\202\121",},
             {"f_little03_l", "\215\266\217\254\216\167\202\122",},
             // Right Leg
             {"back_hips_c_r", "\215\230\203\114\203\203\203\223\203\132\203\213\211\105",},
-            {"upleg_r", "\211\105\221\253",},
-            {"lowleg_r", "\211\105\202\320\202\264",},
-            {"foot_r", "\211\105\221\253\216\361",},
-            {"toe_r", "\211\105\202\302\202\334\220\346",},
-            {"ik_f_root_r", "\211\105\221\253\111\113\220\145",},
-            {"ik_foot_r", "\211\105\221\253\202\150\202\152",},
-            {"ik_toe_r", "\211\105\202\302\202\334\220\346\202\150\202\152",},
-            {"upleg_d_r", "\211\105\221\253\104",},
-            {"lowleg_d_r", "\211\105\202\320\202\264\104",},
-            {"foot_d_r", "\211\105\221\253\216\361\104",},
-            {"heel_ex_r", "\211\105\346\371\105\130",},
-            {"toe_ex_r", "\211\105\221\253\220\346\105\130",},
+            {"upleg_r",       "\211\105\221\253",},
+            {"lowleg_r",      "\211\105\202\320\202\264",},
+            {"foot_r",        "\211\105\221\253\216\361",},
+            {"toe_r",         "\211\105\202\302\202\334\220\346",},
+            {"ik_f_root_r",   "\211\105\221\253\111\113\220\145",},
+            {"ik_foot_r",     "\211\105\221\253\202\150\202\152",},
+            {"ik_toe_r",      "\211\105\202\302\202\334\220\346\202\150\202\152",},
+            {"upleg_d_r",     "\211\105\221\253\104",},
+            {"lowleg_d_r",    "\211\105\202\320\202\264\104",},
+            {"foot_d_r",      "\211\105\221\253\216\361\104",},
+            {"heel_ex_r",     "\211\105\346\371\105\130",},
+            {"toe_ex_r",      "\211\105\221\253\220\346\105\130",},
             // Left Leg
             {"back_hips_c_l", "\215\230\203\114\203\203\203\223\203\132\203\213\215\266",},
-            {"upleg_l", "\215\266\221\253",},
-            {"lowleg_l", "\215\266\202\320\202\264",},
-            {"foot_l", "\215\266\221\253\216\361",},
-            {"toe_l", "\215\266\202\302\202\334\220\346",},
-            {"ik_f_root_l", "\215\266\221\253\111\113\220\145",},
-            {"ik_foot_l", "\215\266\221\253\202\150\202\152",},
-            {"ik_toe_l", "\215\266\202\302\202\334\220\346\202\150\202\152",},
-            {"upleg_d_l", "\215\266\221\253\104",},
-            {"lowleg_d_l", "\215\266\202\320\202\264\104",},
-            {"foot_d_l", "\215\266\221\253\216\361\104",},
-            {"heel_ex_l", "\215\266\346\371\105\130",},
-            {"toe_ex_l", "\215\266\221\253\220\346\105\130",},
+            {"upleg_l",       "\215\266\221\253",},
+            {"lowleg_l",      "\215\266\202\320\202\264",},
+            {"foot_l",        "\215\266\221\253\216\361",},
+            {"toe_l",         "\215\266\202\302\202\334\220\346",},
+            {"ik_f_root_l",   "\215\266\221\253\111\113\220\145",},
+            {"ik_foot_l",     "\215\266\221\253\202\150\202\152",},
+            {"ik_toe_l",      "\215\266\202\302\202\334\220\346\202\150\202\152",},
+            {"upleg_d_l",     "\215\266\221\253\104",},
+            {"lowleg_d_l",    "\215\266\202\320\202\264\104",},
+            {"foot_d_l",      "\215\266\221\253\216\361\104",},
+            {"heel_ex_l",     "\215\266\346\371\105\130",},
+            {"toe_ex_l",      "\215\266\221\253\220\346\105\130",},
             // Eyes
-            {"eyes", "\227\274\226\332",},
+            {"eyes",  "\227\274\226\332",},
             {"eye_r", "\211\105\226\332",},
             {"eye_l", "\215\266\226\332",},
             // Misc
-            {"mouth_base", "\214\373\203\170\201\133\203\130",},
+            {"mouth_base",   "\214\373\203\170\201\133\203\130",},
             {"eyebrow_base", "\224\373\203\170\201\133\203\130",},
         }; // bone_name_mappings END
 
@@ -971,7 +1196,7 @@ namespace Simple {
                 _bone_kframe.bone_name[i] = _mapping_str[i];
         }
 
-        void ContentVMD::ModifyData(const std::string &_vmd_path, bool _fix_blink, bool _make_reflected) {
+        void ContentVMD::ModifyData(const std::string &_vmd_path, bool _fix_blink, bool _make_reflected, bool _reinterpolate) {
             ReaderWriterVMD __vmd_file{_vmd_path};
             std::string __vmd_path_no_ext = pathRemoveExtension(_vmd_path), __suffix = "";
 
@@ -980,13 +1205,19 @@ namespace Simple {
                 __vmd_file.file_content.clampFrames({}, {{"blink", blink_clamp_info}});
                 __suffix += "2";
                 __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
-                printf(SVKFW_WRAPINFO("File :: ContentVMD :: CreateReflected", "Saved motion with fixed blink to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: ModifyData", "Saved motion with fixed blink to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
             }
             if (_make_reflected) {
                 __vmd_file.file_content.reflectMovement();
                 __suffix += "_reflected";
                 __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
-                printf(SVKFW_WRAPINFO("File :: ContentVMD :: CreateReflected", "Saved reflected motion to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: ModifyData", "Saved reflected motion to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
+            }
+            if (_reinterpolate) {
+                __vmd_file.file_content.reinterpolateBones();
+                __suffix += "_reinterp";
+                __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: ModifyData", "Saved reinterpolated motion to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
             }
         }
 

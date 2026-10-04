@@ -13,7 +13,7 @@ namespace Simple {
             ImGUI::WidgetWindow editor_window{"VMD Editor"};
             ImGUI::WidgetInputText motion_path_input{"Motion path"}, camera_path_input{"Camera path"};
             ImGUI::WidgetButton edit_button{"Edit file"};
-            ImGUI::WidgetCheckbox fix_blink{"Fix blink", true}, reflect{"Reflect", true};
+            ImGUI::WidgetCheckbox fix_blink{"Fix blink", true}, reflect{"Reflect", true}, reinterp{"Reinterpolate", true};
 
             ImGuiWidgetLoadFile() {}
 
@@ -23,6 +23,7 @@ namespace Simple {
                 camera_path_input.begin();
                 fix_blink.begin();
                 reflect.begin();
+                reinterp.begin();
                 return edit_button.begin();
             }
             virtual void end() override {
@@ -30,7 +31,7 @@ namespace Simple {
             }
             virtual void render() override {
                 if (std::strlen(motion_path_input.buf_str) > 0) {
-                    File::ContentVMD::ModifyData(Util::stringStrip(motion_path_input.buf_str), fix_blink.value, reflect.value);
+                    File::ContentVMD::ModifyData(Util::stringStrip(motion_path_input.buf_str), fix_blink.value, reflect.value, reinterp.value);
                 }
             }
             virtual void renderFull() override {

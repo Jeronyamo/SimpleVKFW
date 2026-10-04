@@ -814,7 +814,7 @@ namespace Simple {
                 return P0 + _t * (P1 - P0);
             }
 
-            static V interpolate(float _t, const V &_p0, const V &_p1) {
+            static V Interpolate(float _t, const V &_p0, const V &_p1) {
                 _t = Math::clampCL(_t, 0.f, 1.f);
                 return _p0 + _t * (_p1 - _p0);
             }
@@ -833,7 +833,7 @@ namespace Simple {
                 return P1 + Math::sqr(1.f - _t) * (P0 - P1) + (_t * _t) * (P2 - P1);
             }
 
-            static V interpolate(float _t, const V &_p0, const V &_p1, const V &_p2) {
+            static V Interpolate(float _t, const V &_p0, const V &_p1, const V &_p2) {
                 _t = Math::clampCL(_t, 0.f, 1.f);
                 return _p1 + Math::sqr(1.f - _t) * (_p0 - _p1) + (_t * _t) * (_p2 - _p1);
             }
@@ -852,13 +852,13 @@ namespace Simple {
             V interpolate(float _t) const override {
                 _t = Math::clampCL(_t, 0.f, 1.f);
                 return Math::cube(1.f - _t) *  P0 +
-                            3 * (1.f - _t) * _t * ( P1 + _t * ( P2 -  P1)) + (_t * _t * _t) *  P3;
+                             3 * (1.f - _t) * _t * ( P1 + _t * ( P2 -  P1)) + (_t * _t * _t) *  P3;
             }
 
-            static V interpolate(float _t, const V &_p0, const V &_p1, const V &_p2, const V &_p3) {
+            static V Interpolate(float _t, const V &_p0, const V &_p1, const V &_p2, const V &_p3) {
                 _t = Math::clampCL(_t, 0.f, 1.f);
                 return Math::cube(1.f - _t) * _p0 +
-                            3 * (1.f - _t) * _t * (_p1 + _t * (_p2 - _p1)) + (_t * _t * _t) * _p3;
+                             3 * (1.f - _t) * _t * (_p1 + _t * (_p2 - _p1)) + (_t * _t * _t) * _p3;
             }
         }; // BezierCubic END
 
@@ -896,7 +896,7 @@ namespace Simple {
                        Q2 * (Math::sin(       _u  * __theta) * __denom);
             }
 
-            static Affine::Rotation::Quaternion interpolate(float _u, const Affine::Rotation::Quaternion &_q1,
+            static Affine::Rotation::Quaternion Interpolate(float _u, const Affine::Rotation::Quaternion &_q1,
                                                                       const Affine::Rotation::Quaternion &_q2) {
                 _u = Math::clampCL(_u, 0.f, 1.f);
                 // if greedy, use one variable instead of "norm" and "theta"
