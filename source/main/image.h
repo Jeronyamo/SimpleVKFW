@@ -490,13 +490,16 @@ namespace Simple {
                 SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                                 "Img :: Metric :: MSE", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-                const float __max_mse = _img1.width * _img1.height * Ch * Color::Util::ChanMax<T>::val;
+                const float __max_mse   = Color::Util::ChanMax<T>::val;
+                const float __val_count = _img1.width * _img1.height * Ch;
                 float __res_mse = 0.f;
                 for (int j = 0; j < _img1.height; ++j)
-                    for (int i = 0; i < _img1.width; ++i)
-                        __res_mse += Math::dist(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
+                    for (int i = 0; i < _img1.width; ++i) {
+                        auto __elem = _img1.img[j*_img1.width + i] - _img2.img[j*_img1.width + i];
+                        __res_mse += Math::dot(__elem, __elem);
+                    }
                 
-                return __res_mse / __max_mse;
+                return __res_mse / __val_count / __max_mse;
             }
 
             template <typename T, int Ch>
@@ -504,13 +507,17 @@ namespace Simple {
                 SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                                 "Img :: Metric :: PSNR", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-                const float __max_mse = _img1.width * _img1.height * Ch * Color::Util::ChanMax<T>::val;
+                const float __max_mse2 = Color::Util::ChanMax<T>::val * Color::Util::ChanMax<T>::val;
+                const uint32_t __val_count = _img1.width * _img1.height * Ch;
                 float __res_mse = 0.f;
                 for (int j = 0; j < _img1.height; ++j)
-                    for (int i = 0; i < _img1.width; ++i)
-                        __res_mse += Math::dist(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
+                    for (int i = 0; i < _img1.width; ++i) {
+                        auto __elem = _img1.img[j*_img1.width + i] - _img2.img[j*_img1.width + i];
+                        __res_mse += Math::dot(__elem, __elem);
+                    }
 
-                return std::min(10 * std::log10((__max_mse*__max_mse) / Math::sqrt(__res_mse)), 100.f);
+                __res_mse /= __val_count;
+                return std::min(10 * std::log10(__max_mse2 / __res_mse), 100.f);
             }
 
             template <typename T, int Ch>
