@@ -66,6 +66,8 @@ namespace Simple {
 
             mat3 quaternion2rotMat3D  (const Quaternion &_q);
             mat4 quaternion2rotMat3D_4(const Quaternion &_q);
+            vec3 quaternion2tangent(const Quaternion &_q);
+            Quaternion tangent2quaternion(const vec3 &_v);
 
     // Quaternion class
 
@@ -119,18 +121,12 @@ namespace Simple {
 
                     if (Math::closeToZero(__n)) {
                         fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toNormalized", "cannot normalize"));
-                        s = 1.f;
-                        i = 0.f;
-                        j = 0.f;
-                        k = 0.f;
+                        s = 1.f; i = 0.f; j = 0.f; k = 0.f;
                         return;
                     }
 
                     __n = 1.f / __n;
-                    s *= __n;
-                    i *= __n;
-                    j *= __n;
-                    k *= __n;
+                    s *= __n; i *= __n; j *= __n; k *= __n;
                 }
 
                 Quaternion inverse() const {
@@ -150,18 +146,12 @@ namespace Simple {
 
                     if (Math::closeToZero(__n2)) {
                         fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("Affine :: Rotation :: Quaternion :: toInverted", "cannot invert"));
-                        s = 1.f;
-                        i = 0.f;
-                        j = 0.f;
-                        k = 0.f;
+                        s = 1.f; i = 0.f; j = 0.f; k = 0.f;
                         return;
                     }
 
                     __n2 = 1.f / __n2;
-                    s *= -__n2;
-                    i *=  __n2;
-                    j *=  __n2;
-                    k *=  __n2;
+                    s *= -__n2; i *= __n2; j *= __n2; k *= __n2;
                 }
 
                 vec3 rotateCanonical(const vec3 &_vec) const {
@@ -204,8 +194,7 @@ namespace Simple {
                     if (Math::closeToZero(__n))
                         return { 0.f, 1.f, 0.f, 0.f };
 
-                    __n = 1.f / __n;
-                    return { i * __n, j * __n, k * __n, (2 * Math::atan2(__n, s)) };
+                    return { i / __n, j / __n, k / __n, (2 * Math::atan2(__n, s)) };
                 }
 
                 Quaternion operator+(const Quaternion &op2) const
@@ -226,12 +215,13 @@ namespace Simple {
                 }
             }; // Quaternion END
 
-            Quaternion operator+(float _s, const Quaternion &_q) { return {_s + _q.s, _s + _q.i, _s + _q.j, _s + _q.k}; }
-            Quaternion operator-(float _s, const Quaternion &_q) { return {_s - _q.s, _s - _q.i, _s - _q.j, _s - _q.k}; }
+            // Note: a scalar is a quaternion with zero vector part, so only the scalar part is affected by +/-
+            Quaternion operator+(float _s, const Quaternion &_q) { return {_s + _q.s,  _q.i,  _q.j,  _q.k}; }
+            Quaternion operator-(float _s, const Quaternion &_q) { return {_s - _q.s, -_q.i, -_q.j, -_q.k}; }
             Quaternion operator*(float _s, const Quaternion &_q) { return {_s * _q.s, _s * _q.i, _s * _q.j, _s * _q.k}; }
 
-            Quaternion operator+(const Quaternion &_q, float _s) { return {_q.s + _s, _q.i + _s, _q.j + _s, _q.k + _s}; }
-            Quaternion operator-(const Quaternion &_q, float _s) { return {_q.s - _s, _q.i - _s, _q.j - _s, _q.k - _s}; }
+            Quaternion operator+(const Quaternion &_q, float _s) { return {_q.s + _s, _q.i, _q.j, _q.k}; }
+            Quaternion operator-(const Quaternion &_q, float _s) { return {_q.s - _s, _q.i, _q.j, _q.k}; }
             Quaternion operator*(const Quaternion &_q, float _s) { return {_q.s * _s, _q.i * _s, _q.j * _s, _q.k * _s}; }
             Quaternion operator/(const Quaternion &_q, float _s) { return {_q.s / _s, _q.i / _s, _q.j / _s, _q.k / _s}; }
 
@@ -327,22 +317,48 @@ namespace Simple {
 
 
 //  ============  Rotation-related functions  ============  \\
+
+            // Returns a unit vector perpendicular to '_v' (any of them)
+            vec3 anyPerpendicular(const vec3 &_v) {
+                // Cross product with the axis that is "most perpendicular" to '_v'
+                vec3 __abs_v{Math::abs(_v.x), Math::abs(_v.y), Math::abs(_v.z)};
+                vec3 __axis{0.f};
+                __axis[Math::aminOf(__abs_v)] = 1.f;
+                return Math::cross(_v, __axis).normalize();
+            }
+
             // Returns { axis.x, axis.y, axis.z, angle }
             vec4 axisAngleBetweenVecs(const vec3 &_v1, const vec3 &_v2) {
                 vec3 __V1 = _v1.normalize(), __V2 = _v2.normalize();
-                float __angle = Math::acos(Math::dot(__V1, __V2));
+                float __angle = Math::acos(Math::clampCL(Math::dot(__V1, __V2), -1.f, 1.f));
 
-                if (Math::closeToZero(__angle + (float)M_PI, SVKFW_EPS5))
-                    return { vec3{__V2.y, -__V2.x, __V2.z}, float(M_PI) };
+                if (Math::closeToZero(__angle - (float)M_PI, SVKFW_EPS5))
+                    return { anyPerpendicular(__V1), float(M_PI) };
 
                 if (Math::closeToZero(__angle, SVKFW_EPS5))
-                    return { vec3{__V2.y, -__V2.x, __V2.z}, 0.f };
+                    return { anyPerpendicular(__V1), 0.f };
 
-                return { Math::cross(__V1, __V2), __angle };
+                return { Math::cross(__V1, __V2).normalize(), __angle };
             }
 
 
 //  ============  Quaternion-based rotation functions  ============  \\
+
+    // Returns quaternion's tangent vector used in SLERP
+            vec3 quaternion2tangent(const Quaternion &_q) {
+                float __scalar_acos = std::acos(Math::clampCL(_q.s, -1.f, 1.f));
+                vec3 __res = _q.vecPart();
+                if (std::abs(__scalar_acos) > 1e-4f)
+                    __res *= __scalar_acos / std::sin(__scalar_acos);
+                return __res;
+            }
+            Quaternion tangent2quaternion(const vec3 &_v) {
+                float __vec_norm = _v.norm();
+                Quaternion __res = { std::cos(__vec_norm), _v };
+                if (__vec_norm > 1e-4f)
+                    __res = { __res.s, std::sin(__vec_norm) / __vec_norm * _v };
+                return __res;
+            }
 
     // Returns quaternion representing the shortest rotation between two vectors
             Quaternion rotationBetweenVecs(const vec3 &_v1, const vec3 &_v2) {
@@ -352,7 +368,7 @@ namespace Simple {
                 if (Math::closeToZero(__K - __KxCos))
                     return {}; // Zero rotation - default
                 if (Math::closeToZero(__K + __KxCos))
-                    return { 0, vec3{ -_v1.y, _v1.x, _v1.z }.normalize() };
+                    return { 0.f, anyPerpendicular(_v1) }; // 180 degrees around any perpendicular axis
 
                 return Quaternion{ __K + __KxCos, Math::cross(_v1, _v2) }.normalize();
             }
@@ -364,7 +380,7 @@ namespace Simple {
                 if (Math::closeToZero(1.f - __Cos))
                     return {}; // Zero rotation - default
                 if (Math::closeToZero(1.f + __Cos))
-                    return { 0, vec3{ -_v1.y, _v1.x, _v1.z } };
+                    return { 0.f, anyPerpendicular(_v1) }; // 180 degrees around any perpendicular axis
 
                 return Quaternion{ 1.f + __Cos, Math::cross(_v1, _v2) }.normalize();
             }
@@ -825,7 +841,7 @@ namespace Simple {
             V P0, P1, P2;
 
             BezierQuadratic(const V &_p0, const V &_p1, const V &_p2) : P0{_p0}, P1{_p1}, P2{_p2} {}
-            BezierQuadratic(const BezierLinear<V> &_l) : P0{_l.P0}, P1{0.5f * (_l.P1 - _l.P0)}, P2{_l.P1} {}
+            BezierQuadratic(const BezierLinear<V> &_l) : P0{_l.P0}, P1{0.5f * (_l.P0 + _l.P1)}, P2{_l.P1} {}
             BezierQuadratic(const BezierQuadratic<V> &_c) : P0{_c.P0}, P1{_c.P1}, P2{_c.P2} {}
 
             V interpolate(float _t) const override {
@@ -886,16 +902,10 @@ namespace Simple {
             Slerp(const Slerp &_s) : Q1{_s.Q1}, Q2{_s.Q2} {}
 
             Affine::Rotation::Quaternion interpolate(float _u) const {
-                _u = Math::clampCL(_u, 0.f, 1.f);
-
-                float __theta = Math::acos(Math::dot(Q1, Q2));
-                if (Math::closeToZero(__theta)) return Q1;
-
-                float __denom = 1.f / Math::sin(__theta);
-                return Q1 * (Math::sin((1.f - _u) * __theta) * __denom) +
-                       Q2 * (Math::sin(       _u  * __theta) * __denom);
+                return Interpolate(_u, Q1, Q2);
             }
 
+            // Note: interpolates along the shortest path ('q' and '-q' represent the same rotation)
             static Affine::Rotation::Quaternion Interpolate(float _u, const Affine::Rotation::Quaternion &_q1,
                                                                       const Affine::Rotation::Quaternion &_q2) {
                 _u = Math::clampCL(_u, 0.f, 1.f);
@@ -903,13 +913,23 @@ namespace Simple {
                 float __norm = Math::sqrt(_q1.norm2() * _q2.norm2());
                 if (Math::closeToZero(__norm )) return _q1;
 
-                float __theta = Math::acos(Math::dot(_q1, _q2) / __norm);
-                if (Math::closeToZero(__theta)) return _q1;
+                float __cos = Math::dot(_q1, _q2) / __norm;
+                Affine::Rotation::Quaternion __q2 = _q2;
+                if (__cos < 0.f) {
+                    __cos = -__cos;
+                    __q2  = -1.f * __q2;
+                }
+
+                // acos is undefined for |cos| > 1 (possible due to rounding); for small angles linear interpolation is used
+                float __theta = Math::acos(Math::clampCL(__cos, -1.f, 1.f));
+                if (Math::closeToZero(__theta, SVKFW_EPS5))
+                    return _q1 * (1.f - _u) + __q2 * _u;
 
                 float __denom = 1.f / Math::sin(__theta);
-                return _q1 * (Math::sin((1.f - _u) * __theta) * __denom) +
-                       _q2 * (Math::sin(       _u  * __theta) * __denom);
+                return _q1  * (Math::sin((1.f - _u) * __theta) * __denom) +
+                       __q2 * (Math::sin(       _u  * __theta) * __denom);
             }
+
         }; // Slerp END
     }; // Interpolation EnD
 }; // Simple END

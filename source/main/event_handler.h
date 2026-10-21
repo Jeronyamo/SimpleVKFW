@@ -9,6 +9,8 @@
 #include <mutex>
 #include <future>
 #include <atomic>
+#include <thread>
+
 
 #include "common/terminal.h"
 
@@ -240,6 +242,7 @@ namespace Simple {
 
             void runEventHandling() {
                 while (!stop_event_handling) {
+                    {
                     // should be locked the entire time because the event may: stop event writing/clear event list
                     std::lock_guard<std::mutex> lk1(event_list_mutex);
 
@@ -253,9 +256,13 @@ namespace Simple {
                         else
                             printf("%s %d\n", SVKFW_WRAPINFO("EventHandler", "unhandled event:"), __curr_event);
                     }
+                    }
+                    std::this_thread::yield(); // let other threads write events (the list mutex is released here)
                 }
             }
 
+            // Note: the event list is not locked while waiting for the next event, but it is locked while handling,
+            //       because handlers may call 'handlerWriteEventSeq()' (which expects the list mutex to be locked).
             void runEventHandlingLong() {
                 bool has_event = false;
                 uint32_t __curr_event = 0u;
@@ -274,6 +281,7 @@ namespace Simple {
 
                     // Handle event
                     if (has_event) {
+                        std::lock_guard<std::mutex> lk1(event_list_mutex);
                         std::lock_guard<std::mutex> lk(event_handling_mutex);
 
                         if (event_handles.find(__curr_event) != event_handles.end())
@@ -281,6 +289,8 @@ namespace Simple {
                         else
                             printf("%s %d\n", SVKFW_WRAPINFO("EventHandler", "unhandled event:"), __curr_event);
                     }
+                    else
+                        std::this_thread::yield();
                 }
             }
             inline void runEventHandlingAsync() {

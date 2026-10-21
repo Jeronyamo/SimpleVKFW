@@ -17,6 +17,10 @@ namespace Simple {
     struct Complex {
         float a = 0.f, b = 0.f;
 
+        // Note: in C++11 a struct with default member initializers isn't an aggregate, so constructors are required for '{a, b}'
+        Complex() {}
+        Complex(float _a, float _b = 0.f) : a{_a}, b{_b} {}
+
         inline Complex conj() const { return { a, -b }; }
         inline   float abs2() const { return a * a + b * b; }
 

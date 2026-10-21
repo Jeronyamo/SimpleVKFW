@@ -2,7 +2,9 @@
 #define SVKFW_BYTES_H
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
+#include <utility>
 
 namespace Simple {
     namespace Bytes {
@@ -84,8 +86,9 @@ namespace Simple {
                 return __res_possible;
             }
 
+            // Note: offset can be moved to the end of the stream (byte_offset == size)
             bool moveOffset(int _offset) {
-                int __clamped_offset = int(byte_stream.size()) - int(byte_offset) - 1;
+                int __clamped_offset = int(byte_stream.size()) - int(byte_offset);
                 __clamped_offset =          _offset >=  __clamped_offset ?  __clamped_offset : _offset;
                 __clamped_offset = __clamped_offset <  -int(byte_offset) ? -int(byte_offset) : __clamped_offset;
                 byte_offset    += __clamped_offset;
@@ -127,17 +130,21 @@ namespace Simple {
 
                 memcpy(byte_stream.data() + byte_offset, _in_array, sizeof(T) * _len_elems);
 
-                unsigned char *__t_repr = reinterpret_cast<T*>(byte_stream.data() + byte_offset);
-                if (_swap_bytes)
+                if (_swap_bytes) {
+                    unsigned char *__t_repr = byte_stream.data() + byte_offset;
                     for (uint32_t i = 0u; i < _len_elems; ++i)
-                        Endianness.SwapBytesInplace(__t_repr[i]);
+                        for (uint32_t b = 0u; b < (sizeof(T) >> 1); ++b)
+                            std::swap(__t_repr[i * sizeof(T) + b], __t_repr[i * sizeof(T) + sizeof(T) - 1 - b]);
+                }
+
 
                 byte_offset += sizeof(T) * _len_elems;
                 return __res_addnew;
             }
 
+            // Note: offset can be moved to the end of the stream (byte_offset == size)
             bool moveOffset(int _offset) {
-                int __clamped_offset = int(byte_stream.size()) - int(byte_offset) - 1;
+                int __clamped_offset = int(byte_stream.size()) - int(byte_offset);
                 __clamped_offset =          _offset >=  __clamped_offset ?  __clamped_offset : _offset;
                 __clamped_offset = __clamped_offset <  -int(byte_offset) ? -int(byte_offset) : __clamped_offset;
                 byte_offset    += __clamped_offset;

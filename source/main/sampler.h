@@ -1,5 +1,5 @@
-#ifndef SVKFW_SAMPLER_H
-#define SVKFW_SAMPLER_H
+#ifndef SVKFW_MAIN_SAMPLER_H
+#define SVKFW_MAIN_SAMPLER_H // Note: differs from sound/sampler.h guard
 
 #include "math/vectors.h"
 
@@ -11,11 +11,11 @@ namespace Simple {
 
 
     struct TileSampler3D {
-        Vec3 pos, dir, offsetH, offsetV;
-        UVec2 wsize, tsize;
+        vec3 pos, dir, offsetH, offsetV;
+        vec2u wsize, tsize;
 
-        TileSampler3D(const Vec3 &_pos, const Vec3 &_dir, float _fovy_deg, const Vec3 &_up,
-                      const UVec2 &_window, const UVec2 &_tile = 8u) :
+        TileSampler3D(const vec3 &_pos, const vec3 &_dir, float _fovy_deg, const vec3 &_up,
+                      const vec2u &_window, const vec2u &_tile = 8u) :
                       pos{_pos}, dir{_dir}, wsize{_window}, tsize{_tile} {
             
         }

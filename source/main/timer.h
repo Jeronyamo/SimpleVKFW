@@ -46,7 +46,9 @@ namespace Simple {
             h /= 60;
         }
 
-        uint32_t ms() { return 1000000    * fract; }
+        uint32_t ms() { return 1000       * fract; }
+        uint32_t us() { return 1000000    * fract; }
+
         uint32_t ns() { return 1000000000 * fract; }
         uint64_t fraction(uint64_t _coef) { return uint64_t(_coef * fract); }
     };

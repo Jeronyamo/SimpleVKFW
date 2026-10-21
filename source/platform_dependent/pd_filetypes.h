@@ -71,7 +71,7 @@ namespace Simple {
 
             virtual bool open(const std::string &_fpath) override {
                 // Get WCHAR string to open a file with (possibly) Unicode characters
-                int __wchars_num = MultiByteToWideChar(CP_ACP, 0, _fpath.c_str(), _fpath.size(), NULL, 0);
+                int __wchars_num = MultiByteToWideChar(CP_UTF8, 0, _fpath.c_str(), _fpath.size(), NULL, 0);
                 WCHAR* wstr = new wchar_t[__wchars_num+1]{};
                 MultiByteToWideChar(CP_UTF8, 0, _fpath.c_str(), _fpath.size(), wstr, __wchars_num);
 
@@ -116,9 +116,9 @@ namespace Simple {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
-                char *__ch_buf[sizeof(T)]{};
-                bool __res = read((char *)__ch_buf, sizeof(T));
-                return __res ? *reinterpret_cast<T*>(__ch_buf) : T{};
+                T __res_val{};
+                bool __res = read(reinterpret_cast<char *>(&__res_val), sizeof(T));
+                return __res ? __res_val : T{};
             }
 
             // Reads a single element of type T from a binary file.
@@ -127,10 +127,11 @@ namespace Simple {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderWin :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
-                char *__ch_buf[sizeof(T)]{};
-                bool __res = read((char *)__ch_buf, sizeof(T));
-                if (__res) _val = *reinterpret_cast<T*>(__ch_buf);
+                T __res_val{};
+                bool __res = read(reinterpret_cast<char *>(&__res_val), sizeof(T));
+                if (__res) _val = __res_val;
                 return __res;
+
             }
 
             // Reads an array of type T and length 'len' from binary file.
@@ -248,9 +249,9 @@ namespace Simple {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (1)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
-                char *__ch_buf[sizeof(T)]{};
-                bool __res = read((char *)__ch_buf, sizeof(T));
-                return __res ? *reinterpret_cast<T*>(__ch_buf) : T{};
+                T __res_val{};
+                bool __res = read(reinterpret_cast<char *>(&__res_val), sizeof(T));
+                return __res ? __res_val : T{};
             }
 
             // Reads a single element of type T from binary file. Ineffective.
@@ -259,10 +260,11 @@ namespace Simple {
                 if (std::is_reference<T>::value || std::is_pointer<T>::value)
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("File :: ReaderStd :: readBinary (2)", "Reading a pointer from file - this is most likely an unwanted behaviour\n"));
 
-                char *__ch_buf[sizeof(T)]{};
-                bool __res = read((char *)__ch_buf, sizeof(T));
-                if (__res) _val = *reinterpret_cast<T*>(__ch_buf);
+                T __res_val{};
+                bool __res = read(reinterpret_cast<char *>(&__res_val), sizeof(T));
+                if (__res) _val = __res_val;
                 return __res;
+
             }
 
             // Reads an array of type T and length 'len' from binary file.

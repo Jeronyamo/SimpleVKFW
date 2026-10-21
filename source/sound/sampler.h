@@ -3,9 +3,12 @@
 
 #include <cmath>
 #include <vector>
+#include <memory>
+#include <mutex>
 #include <functional>
 
 #include "common/terminal.h"
+#include "math/vectors.h"
 
 
 // SVKFW Audio Source constants
@@ -107,12 +110,14 @@ namespace Simple {
                     return __going_down ? 1/__res : __res;
                 }
                 NoteFull getNoteFull(NoteFullId _note_ind) {
+                    // Note: signed division is required ('numNotes()' is unsigned, mixing would convert negative ids to huge values)
+                    const NoteFullId __num_notes = NoteFullId(numNotes());
                     NoteFull __res;
-                    __res.note   = _note_ind % numNotes();
-                    __res.octave = _note_ind / numNotes();
+                    __res.note   = _note_ind % __num_notes;
+                    __res.octave = _note_ind / __num_notes;
 
-                    if (_note_ind < 0 && __res.note) {
-                        __res.note = numNotes() - __res.note;
+                    if (__res.note < 0) {
+                        __res.note   += __num_notes;
                         __res.octave -= 1;
                     }
 
@@ -281,8 +286,8 @@ namespace Simple {
                         case HEPTATONIC_MAJOR_HARMONIC:  __res_steps = {0,2,4,5,7,8,11}; break;
                         // case HEPTATONIC_MODE_AEOLIAN:
                         case HEPTATONIC_MINOR:           __res_steps = {0,2,3,5,7,8,10}; break;
-                        case HEPTATONIC_MINOR_MELODIC:   __res_steps = {0,2,3,5,7,8,11}; break;
-                        case HEPTATONIC_MINOR_HARMONIC:  __res_steps = {0,2,3,5,7,9,11}; break;
+                        case HEPTATONIC_MINOR_MELODIC:   __res_steps = {0,2,3,5,7,9,11}; break;
+                        case HEPTATONIC_MINOR_HARMONIC:  __res_steps = {0,2,3,5,7,8,11}; break;
                         case HEPTATONIC_MODE_IONIAN:     __res_steps = {0,2,4,5,7,9,11}; break;
                         case HEPTATONIC_MODE_DORIAN:     __res_steps = {0,2,3,5,7,9,10}; break;
                         case HEPTATONIC_MODE_PHRYGIAN:   __res_steps = {0,1,3,5,7,8,10}; break;
@@ -291,8 +296,9 @@ namespace Simple {
                         case HEPTATONIC_MODE_LOCRIAN:    __res_steps = {0,1,3,5,6,8,10}; break;
                         case CHROMATIC:       __res_steps = {0,1,2,3,4,5,6,7,8,9,10,11}; break;
                     }
+                    // Note: steps are semitones, so the result is taken modulo 12 (not modulo the number of steps)
                     for (auto& step : __res_steps)
-                        step = (step + _tonic) % __res_steps.size();
+                        step = (step + _tonic) % 12;
                     return __res_steps;
                 }
             }; // Scale END
@@ -300,7 +306,7 @@ namespace Simple {
 
             struct NoteHandler {
                 NoteReference   reference_note;
-                TuningSystemItf *tuning_system;
+                std::shared_ptr<TuningSystemItf> tuning_system; // Note: owned (previously leaked), shared between copies
 
                 NoteHandler(TuningSystemType _ts_type = EQUAL_TEMPERAMENT_12T, NoteReference _ref_note = Ref_Note_A440)
                                 : reference_note{_ref_note}, tuning_system{getTuningSystemHandler(_ts_type)} {
@@ -409,8 +415,9 @@ namespace Simple {
 
                 SmpSaw() {}
                ~SmpSaw() {}
-                float   sample (float  _t) override { return (_t <= duration) * std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5f)); }
-                vec2i16 sample2(double _t) override { return (_t <= duration) * std::abs(std::max(2*std::modf(_t*freq, &_t)-1.f, 0.5 )) * INT16_MAX; }
+                // Saw wave in [-1, 1)
+                float   sample (float  _t) override { float  __int_part; return (_t <= duration) * (2.f * std::modf(_t*freq, &__int_part) - 1.f); }
+                vec2i16 sample2(double _t) override { double __int_part; return (_t <= duration) * (2.  * std::modf(_t*freq, &__int_part) - 1. ) * INT16_MAX; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -419,8 +426,9 @@ namespace Simple {
 
                 SmpTestWave() {}
                ~SmpTestWave() {}
-                float   sample (float  _t) override { return (_t <= duration) * std::sin(std::log(_t*freq) * _t*freq); }
-                vec2i16 sample2(double _t) override { return (_t <= duration) * std::sin(std::log(_t*freq) * _t*freq) * INT16_MAX; }
+                // Note: log(0) = -inf, so t = 0 is skipped
+                float   sample (float  _t) override { return (_t > 0.f && _t <= duration) ? std::sin(std::log(_t*freq) * _t*freq) : 0.f; }
+                vec2i16 sample2(double _t) override { return (_t > 0.  && _t <= duration) ? std::sin(std::log(_t*freq) * _t*freq) * INT16_MAX : 0.; }
                 void setFreq(float _freq) { freq = _freq; }
             };
 
@@ -446,12 +454,14 @@ namespace Simple {
             uint32_t sample_rate = 1u;
             float inv_max_weight = 1.f, inv_sr = 1.f;
             uint32_t pad1_;
+            std::mutex sources_mutex; // Note: sources are changed from the main thread while being sampled in the audio thread
 
             AudioSampler() { clearState(); }
             AudioSampler(const std::vector<Sample::SmpItf*> &_sources, const std::vector<float> &_weights = {}) { setSources(_sources, _weights); }
            ~AudioSampler() { clearState(); }
 
             void clearState() {
+                std::lock_guard<std::mutex> __lock(sources_mutex);
                 for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i)
                     sources[i] = { &Sample::audio_placeholder };
                 sample_rate = 1u;
@@ -464,6 +474,7 @@ namespace Simple {
             }
 
             float sample() {
+                std::lock_guard<std::mutex> __lock(sources_mutex);
                 float __res = 0.f;
                 float t, __max_weight = SVKFW_AS_MIN_WEIGHT;
 
@@ -481,7 +492,8 @@ namespace Simple {
             }
 
             vec2i16 sample2() {
-                vec2i16 __res{};
+                std::lock_guard<std::mutex> __lock(sources_mutex);
+                vec2f __res{}; // Note: accumulated in float, int16 overflows when several sources are mixed
                 float __max_weight = SVKFW_AS_MIN_WEIGHT;
                 double t;
 
@@ -492,13 +504,14 @@ namespace Simple {
                         sources[i] = { &Sample::audio_placeholder };
 
                     __max_weight = std::max(__max_weight, sources[i].weight);
-                    __res += (sources[i].weight * inv_max_weight) * sources[i].sample_ptr->sample2(t);
+                    __res += (sources[i].weight * inv_max_weight) * sources[i].sample_ptr->sample2(t).cast<float>();
                 }
                 inv_max_weight = 1.f / __max_weight;
-                return __res;
+                return Math::clampCL(__res, vec2f{float(INT16_MIN)}, vec2f{float(INT16_MAX)}).cast<int16_t>();
             }
 
             uint32_t addSource(Sample::SmpItf* _source, float _weight) {
+                std::lock_guard<std::mutex> __lock(sources_mutex);
                 uint32_t __res_i = SVKFW_AS_MAX_SOURCES;
                 if (_weight >= SVKFW_AS_MIN_WEIGHT) {
                     for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i)
@@ -509,6 +522,7 @@ namespace Simple {
                             sources[i].t = 0u;
 
                             inv_max_weight = std::min(inv_max_weight, 1.f / _weight);
+                            break;
                         }
                     SVKFW_WASSERT(__res_i < SVKFW_AS_MAX_SOURCES, "AudioSampler :: addSource", "couldn't add audio sample\n");
                 }
@@ -522,6 +536,8 @@ namespace Simple {
                                                                               ", got " + std::to_string(_weights.size()));
                 SVKFW_ASSERT(_sources.size() <= SVKFW_AS_MAX_SOURCES, std::invalid_argument,
                                 "AudioSampler :: setSources", "Expected up to " + std::to_string(SVKFW_AS_MAX_SOURCES) + " audio sources, got " + std::to_string(_sources.size()));
+                std::lock_guard<std::mutex> __lock(sources_mutex);
+
                 float __max_weight = SVKFW_AS_MIN_WEIGHT;
                 for (uint32_t i = 0u; i < SVKFW_AS_MAX_SOURCES; ++i) {
                     sources[i].sample_ptr = i < _sources.size() ? _sources[i] : &Sample::audio_placeholder;

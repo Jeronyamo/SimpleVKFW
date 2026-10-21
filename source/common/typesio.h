@@ -37,9 +37,9 @@ namespace Simple {
         }
 
         template <class T>
-        bool has()         const { return typeindex_to_str.contains(std::type_index(typeid(T))); }
+        bool has()         const { return typeindex_to_str.count(std::type_index(typeid(T))) != 0u; }
         template <class T>
-        bool has(const T&) const { return typeindex_to_str.contains(std::type_index(typeid(T))); }
+        bool has(const T&) const { return has<T>(); }
 
         template <class T>
         void setNew(const std::string &_t_name) {
@@ -47,72 +47,42 @@ namespace Simple {
         }
         template <class T>
         void setNew(const std::string &_t_name, const T&) {
-            if (!has<T>())  typeindex_to_str[std::type_index(typeid(T))] = _t_name;
+            setNew<T>(_t_name);
         }
 
+        // Name of a registered (non-container) type
         template <class T>
-        std::string get()         const {
-            return has<T>() ? typeindex_to_str.at(std::type_index(typeid(T))) : std::string("UnknownType(") + std::type_index(typeid(T)).name() + " | " + std::to_string(sizeof(T)) + " B)";
-        }
-        template <class T>
-        std::string get(const T&) const {
+        std::string getRegistered() const {
             return has<T>() ? typeindex_to_str.at(std::type_index(typeid(T))) : std::string("UnknownType(") + std::type_index(typeid(T)).name() + " | " + std::to_string(sizeof(T)) + " B)";
         }
 
+        // Note: function templates can't be partially specialized, so containers are handled by 'TypesioInner::NameOf' specializations
         template <class T>
-        std::string get(const std::vector<T>&) const {
-            return "vector<" + get<T> + ">";
-        }
+        std::string get()         const;
         template <class T>
-        std::string get<std::vector<T>>()      const {
-            return "vector<" + get<T> + ">";
-        }
-
-        template <class T>
-        std::string get(const std::set<T>&) const {
-            return "set<" + get<T> + ">";
-        }
-        template <class T>
-        std::string get<std::set<T>>()      const {
-            return "set<" + get<T> + ">";
-        }
-
-        template <class T>
-        std::string get(const std::unordered_set<T>&) const {
-            return "unordered_set<" + get<T> + ">";
-        }
-        template <class T>
-        std::string get<std::unordered_set<T>>()      const {
-            return "unordered_set<" + get<T> + ">";
-        }
-
-        template <class T1, class T2>
-        std::string get(const std::pair<T1, T2>&) const {
-            return "pair<" + get<T1> + ", " + get<T2> + ">";
-        }
-        template <class T1, class T2>
-        std::string get<std::pair<T1, T2>>()      const {
-            return "pair<" + get<T1> + ", " + get<T2> + ">";
-        }
-
-        template <class T1, class T2>
-        std::string get(const std::map<T1, T2>&) const {
-            return "map<" + get<T1> + ", " + get<T2> + ">";
-        }
-        template <class T1, class T2>
-        std::string get<std::map<T1, T2>>()      const {
-            return "map<" + get<T1> + ", " + get<T2> + ">";
-        }
-
-        template <class T1, class T2>
-        std::string get(const std::unordered_map<T1, T2>&) const {
-            return "unordered_map<" + get<T1> + ", " + get<T2> + ">";
-        }
-        template <class T1, class T2>
-        std::string get<std::unordered_map<T1, T2>>()      const {
-            return "unordered_map<" + get<T1> + ", " + get<T2> + ">";
-        }
+        std::string get(const T&) const { return get<T>(); }
     } typename_storage; // TypenameStorage END
+
+    namespace TypesioInner {
+        template <class T>
+        struct NameOf { static std::string get(const TypenameStorage &_s) { return _s.getRegistered<T>(); } };
+
+        template <class T>
+        struct NameOf<std::vector<T>> { static std::string get(const TypenameStorage &_s) { return "vector<" + _s.get<T>() + ">"; } };
+        template <class T>
+        struct NameOf<std::set<T>> { static std::string get(const TypenameStorage &_s) { return "set<" + _s.get<T>() + ">"; } };
+        template <class T>
+        struct NameOf<std::unordered_set<T>> { static std::string get(const TypenameStorage &_s) { return "unordered_set<" + _s.get<T>() + ">"; } };
+        template <class T1, class T2>
+        struct NameOf<std::pair<T1, T2>> { static std::string get(const TypenameStorage &_s) { return "pair<" + _s.get<T1>() + ", " + _s.get<T2>() + ">"; } };
+        template <class T1, class T2>
+        struct NameOf<std::map<T1, T2>> { static std::string get(const TypenameStorage &_s) { return "map<" + _s.get<T1>() + ", " + _s.get<T2>() + ">"; } };
+        template <class T1, class T2>
+        struct NameOf<std::unordered_map<T1, T2>> { static std::string get(const TypenameStorage &_s) { return "unordered_map<" + _s.get<T1>() + ", " + _s.get<T2>() + ">"; } };
+    }; // TypesioInner END
+
+    template <class T>
+    std::string TypenameStorage::get() const { return TypesioInner::NameOf<T>::get(*this); }
 #endif
 
 
@@ -159,8 +129,8 @@ namespace Simple {
 #ifndef SVKFW_IMAGE_OUT
 #define SVKFW_IMAGE_OUT
     template <typename T, int Ch>
-    std::string toStr(const Image<T, Ch> &_obj) {
-        return "[ Image: " + std::to_string(_obj.width) + 'x' + std::to_string(_obj.height) + 'x' + std::to_string(Ch) + ", " + typename_storage.get<Image<T, Ch>::ChannelType> + " ]";
+    std::string toStr(const Img::Image<T, Ch> &_obj) {
+        return "[ Image: " + std::to_string(_obj.width) + 'x' + std::to_string(_obj.height) + 'x' + std::to_string(Ch) + ", " + typename_storage.get<typename Img::Image<T, Ch>::ChannelType>() + " ]";
     }
 #endif
 #endif

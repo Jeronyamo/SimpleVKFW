@@ -64,17 +64,17 @@ namespace Simple {
 
         // Frame GLFW event handler
         struct FrameInputHandlerGLFW {
-            InputHandlerItf* handler_bind_keys;
+            InputHandlerItf* handler_bind_keys = nullptr;
             std::unordered_map<int, InputHandlerItf*> handler_bind_key;
             bool use_specific_key_handlers = true;
 
-            InputHandlerItf* handler_bind_mbuttons;
+            InputHandlerItf* handler_bind_mbuttons = nullptr;
             std::unordered_map<int, InputHandlerItf*> handler_bind_mbutton;
             bool use_specific_mbutton_handlers = true;
 
-            InputHandlerItf* handler_bind_cursor;
-            InputHandlerItf* handler_bind_scroll;
-            InputHandlerItf* handler_fbuffer_size;
+            InputHandlerItf* handler_bind_cursor  = nullptr;
+            InputHandlerItf* handler_bind_scroll  = nullptr;
+            InputHandlerItf* handler_fbuffer_size = nullptr;
 
             ClockTick<std::chrono::high_resolution_clock, double> frame_clock;
             double frame_time = 0.; // updated every frame
@@ -101,7 +101,7 @@ namespace Simple {
                 return handler_bind_key.find(_scancode) != handler_bind_key.end();
             }
             bool hasMButtonSpecificHandler(int _button) const {
-                return handler_bind_mbutton.find(_button) != handler_bind_key.end();
+                return handler_bind_mbutton.find(_button) != handler_bind_mbutton.end();
             }
 
             // Setters
@@ -162,7 +162,7 @@ namespace Simple {
                 return __prev_handler;
             }
             void setMButtonsHandler(InputHandlerItf *_handler, const std::vector<int> &_buttons) {
-                for (uint16_t button : _buttons)
+                for (int button : _buttons)
                     handler_bind_mbutton[button] = _handler;
             }
 
@@ -293,6 +293,7 @@ namespace Simple {
 
         void callbackMonitor(GLFWmonitor* _monitor, int _event) {
             ImGui_ImplGlfw_MonitorCallback(_monitor, _event);
+            AvailableMonitors::monitorCallbackAllUpd(_monitor, _event); // this callback replaces the one set by AvailableMonitors
         }
 
 
@@ -344,13 +345,13 @@ namespace Simple {
 
             mat4 getView() const { return camera.getView(); }
             mat4 getProj() const { return camera.getProj(); }
-            P& getClassView() { return camera.proj_class; }
-            V& getClassProj() { return camera.view_class; }
+            P& getClassProj() { return camera.proj_class; }
+            V& getClassView() { return camera.view_class; }
 
-            void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time, bool _gui_hovered) override {}
-            void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time, bool _gui_hovered) override {}
-            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time, bool _gui_hovered) override {}
-            void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time, bool _gui_hovered) override {}
+            void processEventKey(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {}
+            void processEventCursor(GLFWwindow* _window, double _pos_x, double _pos_y, double _frame_time) override {}
+            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {}
+            void processEventScroll(GLFWwindow* _window, double _offset_x, double _offset_y, double _frame_time) override {}
         }; // CameraControls END
 
         template<>
@@ -362,8 +363,8 @@ namespace Simple {
 
             mat4 getView() const { return camera.getView(); }
             mat4 getProj() const { return camera.getProj(); }
-            ProjPerspective& getClassView() { return camera.proj_class; }
-            ViewGeneral& getClassProj() { return camera.view_class; }
+            ProjPerspective& getClassProj() { return camera.proj_class; }
+            ViewGeneral& getClassView() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
@@ -437,8 +438,8 @@ namespace Simple {
 
             mat4 getView() const { return camera.getView(); }
             mat4 getProj() const { return camera.getProj(); }
-            ProjPerspective& getClassView() { return camera.proj_class; }
-            ViewCentered&    getClassProj() { return camera.view_class; }
+            ProjPerspective& getClassProj() { return camera.proj_class; }
+            ViewCentered&    getClassView() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {
@@ -487,9 +488,9 @@ namespace Simple {
                 camera.view_class.look_at += (cam_move_state.w - cam_move_state.z) * __right_vec * _frame_time;
             }
 
-            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {
-                ImGui_ImplGlfw_MouseButtonCallback(_window, _button, _action, _mods);
-            }
+            // Note: ImGui already receives mouse button events in 'callbackMButton'
+            void processEventMButton(GLFWwindow* _window, int _button, int _action, int _mods, double _frame_time) override {}
+
 
             void processEventScroll(GLFWwindow *_window, double _offset_x, double _offset_y, double _frame_time) override {
                 camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _offset_y, 20.f, 45.f);
@@ -530,8 +531,8 @@ namespace Simple {
 
             mat4 getView() const { return camera.getView(); }
             mat4 getProj() const { return camera.getProj(); }
-            ProjPerspective& getClassView() { return camera.proj_class; }
-            ViewPOV& getClassProj() { return camera.view_class; }
+            ProjPerspective& getClassProj() { return camera.proj_class; }
+            ViewPOV& getClassView() { return camera.view_class; }
 
             void processEventKey(GLFWwindow *_window, int _key, int _scancode, int _action, int _mods, double _frame_time) override {
                 if (_scancode == glfwGetKeyScancode(GLFW_KEY_S)) {

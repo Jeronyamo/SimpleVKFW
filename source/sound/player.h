@@ -21,21 +21,29 @@ namespace Simple {
                     return __t_step < pcm_out.size() ? pcm_out[__t_step] : 0.f;
                 }
 
+                // Returns stereo frame starting at sample index '_id' (mono is duplicated), '_id' must be valid
+                vec2i16 getFrame_(uint32_t _id) const {
+                    return opus_head.channels > 1 ? vec2i16(pcm_out[_id], pcm_out[_id+1]) : vec2i16(pcm_out[_id]);
+                }
+                // Checks if a whole frame starting at sample index '_id' is available
+                bool hasFrame_(uint32_t _id) const {
+                    return opus_head.channels > 0 && _id + opus_head.channels <= pcm_out.size();
+                }
+
                 vec2i16 sample2(double _t) override {
                     _t *= 48000;
                     uint32_t __t_step = uint32_t(_t) * opus_head.channels;
-                    if (__t_step >= pcm_out.size()) return 0.f;
+                    if (!hasFrame_(__t_step)) return 0.f;
 
-                    vec2i16 x0 = {pcm_out[__t_step], pcm_out[__t_step+1]}, x1 = x0, x2 = x0, x3 = x0;
+                    vec2i16 x1 = getFrame_(__t_step), x0 = x1, x2 = x1, x3 = x1;
                     if (__t_step >= opus_head.channels)
-                        x0 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step-  opus_head.channels], pcm_out[__t_step-  opus_head.channels+1])
-                                                    : vec2i16(pcm_out[__t_step-  opus_head.channels]);
-                    if (__t_step +   opus_head.channels + 1 < pcm_out.size())
-                        x2 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step+  opus_head.channels], pcm_out[__t_step+  opus_head.channels+1])
-                                                    : vec2i16(pcm_out[__t_step+  opus_head.channels]);
-                    if (__t_step + 2*opus_head.channels + 1 < pcm_out.size())
-                        x3 = opus_head.channels > 1 ? vec2i16(pcm_out[__t_step+2*opus_head.channels], pcm_out[__t_step+2*opus_head.channels+1])
-                                                    : vec2i16(pcm_out[__t_step+2*opus_head.channels]);
+                        x0 = getFrame_(__t_step - opus_head.channels);
+                    if (hasFrame_(__t_step + opus_head.channels))
+                        x2 = getFrame_(__t_step + opus_head.channels);
+                    if (hasFrame_(__t_step + 2*opus_head.channels))
+                        x3 = getFrame_(__t_step + 2*opus_head.channels);
+                    else
+                        x3 = x2;
 
                     _t -= uint32_t(_t);
                     vec2d tt{_t*_t, _t*_t*_t};
@@ -47,15 +55,11 @@ namespace Simple {
                 vec2i16 sample2linear(double _t) {
                     _t *= 48000;
                     uint32_t __t_step = uint32_t(_t) * opus_head.channels;
-                    if (__t_step + (opus_head.channels + 1) >= pcm_out.size()) return 0.f; // skips last ~2 samples
+                    if (!hasFrame_(__t_step)) return 0.f;
 
                     _t -= uint32_t(_t);
-                    vec2d __res  = {(double)pcm_out[__t_step  ], (double)pcm_out[__t_step+1]},
-                          __res1 = {(double)pcm_out[__t_step+opus_head.channels], (double)pcm_out[__t_step+opus_head.channels+1]};
-                    if (opus_head.channels == 1) {
-                        __res1 = __res.y;
-                        __res  = __res.x;
-                    }
+                    vec2d __res  = getFrame_(__t_step).cast<double>(),
+                          __res1 = hasFrame_(__t_step + opus_head.channels) ? getFrame_(__t_step + opus_head.channels).cast<double>() : __res;
                     return Math::clampCL(__res + _t * (__res1 - __res), {(double)INT16_MIN}, {(double)INT16_MAX}).cast<int16_t>();
                 }
 
@@ -97,7 +101,13 @@ namespace Simple {
                     opus_head = opus_decoder.opus_head;
                     opus_tags = opus_decoder.opus_tags;
 
+                    if (opus_head.channels == 0u) {
+                        fprintf(svkfwwarn, "%s '%s'\n", SVKFW_WRAPWARN("Audio::Sample::SmpAudioFile :: decodeOgg", "no Opus audio decoded from file"), _ogg_fpath.c_str());
+                        setDuration(0.f);
+                        return;
+                    }
                     setDuration( (pcm_out.size() / opus_head.channels) / float(opus_decoder.opus_sample_rate) );
+
 
                     printf(SVKFW_WRAPINFO("Audio::Sample::SmpAudioFile :: decodeOgg", "OGG file successfully decoded.\n - Uncompressed size: %.1f MB\n - Duration: %02d:%02d:%02d\n"),
                                             pcm_out.size() * sizeof(int16_t) / float(1024 * 1024), uint32_t(std::round(duration)) / 3600, uint32_t(std::round(duration))%3600/60, uint32_t(std::round(duration))%60 );

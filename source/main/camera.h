@@ -7,6 +7,8 @@
 namespace Simple {
 //  ============  Projection interface and functions  ============  \\
 
+    // Note: all projections map depth into Vulkan clip space range [0, 1] (near -> 0, far -> 1),
+    //       camera looks along -Z axis of the view space
     struct Projection {
         virtual ~Projection() {}
 
@@ -16,25 +18,26 @@ namespace Simple {
         static mat4 Orthographic(float _w, float _h, float _n, float _f, float _l = 0.f, float _t = 0.f) {
             return { 2.f / (_w - _l), 0.f, 0.f, 0.f,
                      0.f, 2.f / (_t - _h), 0.f, 0.f,
-                     0.f, 0.f, 2.f / (_n - _f), 0.f,
-                     (_w + _l) / (_l - _w), (_t + _h) / (_h - _t), (_f + _n) / (_n - _f), 1.f };
+                     0.f, 0.f, 1.f / (_n - _f), 0.f,
+                     (_w + _l) / (_l - _w), (_t + _h) / (_h - _t), _n / (_n - _f), 1.f };
         }
 
         static mat4 Perspective(float _fovy_deg, float _aspect_ratio, float _near, float _far) {
             float _inv_tan = 1.f / Math::tan(_fovy_deg * (M_PI / 360));
             float _inv_nf  = 1.f / (_near - _far);
 
-            return { _aspect_ratio * _inv_tan, 0.f,     0.f,  0.f,
+            // Note: '_aspect_ratio' is width / height
+            return { _inv_tan / _aspect_ratio, 0.f,     0.f,  0.f,
                      0.f, _inv_tan,                     0.f,  0.f,
-                     0.f, 0.f,      (_far + _near)* _inv_nf, -1.f,
-                     0.f, 0.f, 2.f * _far * _near * _inv_nf,  0.f };
+                     0.f, 0.f,              _far * _inv_nf, -1.f,
+                     0.f, 0.f,      _far * _near * _inv_nf,  0.f };
         }
 
         static mat4 PerspectiveGeneral(float _t, float _b, float _l, float _r, float _near, float _far) {
             return { 2 * _near / (_r - _l), 0.f, 0.f, 0.f,
                      0.f, 2 * _near / (_t - _b), 0.f, 0.f,
-                     (_r+_l) / (_r-_l), (_t+_b) / (_t-_b), (_far+_near) / (_near-_far), -1.f,
-                     0.f, 0.f, 2.f * _far * _near / (_near-_far), 0.f };
+                     (_r+_l) / (_r-_l), (_t+_b) / (_t-_b), _far / (_near-_far), -1.f,
+                     0.f, 0.f, _far * _near / (_near-_far), 0.f };
         }
     }; // Projection END
 
@@ -58,10 +61,11 @@ namespace Simple {
 
             __res[{0,0}] = -2.f * __v1;
             __res[{1,1}] = -2.f * __v2;
-            __res[{2,2}] =  2.f * __v3;
+            __res[{2,2}] =          __v3;
             __res[{3,0}] = (w_right + left) * __v1;
             __res[{3,1}] = (top + h_bot)   * __v2;
-            __res[{3,2}] = (p_far + p_near)   * __v3;
+            __res[{3,2}] =  p_near          * __v3;
+            __res[{3,3}] =  1.f;
 
             return __res;
         }
@@ -84,9 +88,9 @@ namespace Simple {
 
             __res[{0,0}] = _coef.x * _inv_tan;
             __res[{1,1}] = _coef.y * _inv_tan;
-            __res[{2,2}] = (p_far + p_near) * _inv_nf;
+            __res[{2,2}] =  p_far * _inv_nf;
             __res[{2,3}] = -1.f;
-            __res[{3,2}] = (2.f * p_far * p_near) * _inv_nf;
+            __res[{3,2}] = (p_far * p_near) * _inv_nf;
 
             return __res;
         }
@@ -210,7 +214,8 @@ namespace Simple {
         P proj_class;
         V view_class;
 
-        static_assert(std::is_base_of<Projection, P>::value && std::is_base_of<View, V>::value);
+        static_assert(std::is_base_of<Projection, P>::value && std::is_base_of<View, V>::value, "Camera: P must be a Projection and V must be a View");
+
         Camera(const P &_proj, const V &_view) : proj_class{_proj}, view_class{_view} {}
 
         mat4 getProj() const { return proj_class.proj(); }

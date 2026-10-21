@@ -33,6 +33,9 @@ namespace Simple {
                 if (std::strlen(motion_path_input.buf_str) > 0) {
                     File::ContentVMD::ModifyData(Util::stringStrip(motion_path_input.buf_str), fix_blink.value, reflect.value, reinterp.value);
                 }
+                if (std::strlen(camera_path_input.buf_str) > 0) {
+                    File::ContentVMD::ModifyCamera(Util::stringStrip(camera_path_input.buf_str), reinterp.value);
+                }
             }
             virtual void renderFull() override {
                 if (begin()) render();

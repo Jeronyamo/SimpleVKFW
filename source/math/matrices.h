@@ -18,7 +18,7 @@ namespace Simple {
             memcpy(size, _size.begin(), dim * sizeof(unsigned));
         }
         MatrixSize(const MatrixSize &_size) : dim(_size.dim), size(new unsigned[_size.dim]) {
-            memcpy(size, _size.size, dim);
+            memcpy(size, _size.size, dim * sizeof(unsigned));
         }
         ~MatrixSize() {
             if (size != nullptr) delete[] size;
@@ -44,7 +44,7 @@ namespace Simple {
                 if (size != nullptr) delete[] size;
                 size = new unsigned[_size.size()];
             }
-            memcpy(size, _size.begin(), dim);
+            memcpy(size, _size.begin(), dim * sizeof(unsigned));
             return *this;
         }
 
@@ -168,7 +168,7 @@ namespace Simple {
         MatrixSize newSize() {
             long i = -1l;
             while (++i < dim && left_stepsize_len[i].z == 1);
-            if (i == -1l) return;
+            if (i == -1l) return {};
 
             i -= i == (long)dim;
             MatrixSize _size(dim - i);

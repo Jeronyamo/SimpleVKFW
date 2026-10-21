@@ -117,30 +117,13 @@ namespace Simple {
     }
 
     SVKFW_ADD_TEST(ImageDiff, "Save/Load img differences") {
-        std::string __img_dir = "/Programming/study/DRRenders/";
+        Img::Image3f image_ref("tests/resources/ref_1.png");
+        Img::Image3f image_res("tests/resources/ep7_res_1.png");
 
-        for (std::string exp_dir : {  "PufferfishNewLong", "TeapotNew", "WheelNewLong" }) {
-            printf("Processing '%s'\n", exp_dir.c_str());
-            exp_dir = __img_dir + exp_dir + '/';
+        float psnr = Img::Metric::PSNR(image_ref, image_res);
+        printf("PSNR (ref_1, ep7_res_1) = %f\n", psnr);
 
-            for (int view_id = 0; view_id < 24; ++view_id) {
-                std::string ref_img = exp_dir + "ref/ref_" + std::to_string(view_id) + ".png";
-                Img::Image3f image1(ref_img);
-                for (int epoch_id = 1; epoch_id <= 7; ++epoch_id) {
-                    std::string  res_img = exp_dir + "res/ep"      + std::to_string(epoch_id) + "_res_" + std::to_string(view_id) + ".png";
-                    std::string diff_img = exp_dir + "res/diff_ep" + std::to_string(epoch_id) + "_res_" + std::to_string(view_id) + ".png";
-                    Img::Image3f image2(res_img);
-                    genDiffImage(image2, image1, diff_img);
-                }
-            }
-        }
-
-        // genDiffImage(__img_dir + "armadillo_ref.png", __img_dir + "armadillo_res.png", __img_dir + "arma_diff.png");
-        // genDiffImage(__img_dir + "bunny_ref.png"    , __img_dir + "bunny_res.png"    , __img_dir + "bunny_diff.png");
-        // genDiffImage(__img_dir + "dragon_ref.png"   , __img_dir + "dragon_res.png"   , __img_dir + "dragon_diff.png");
-        // genDiffImage(__img_dir + "happy_ref.png"    , __img_dir + "happy_res.png"    , __img_dir + "happy_diff.png");
-        // genDiffImage(__img_dir + "nefertiti_ref.png", __img_dir + "nefertiti_res.png", __img_dir + "nefertiti_diff.png");
-        // genDiffImage(__img_dir + "teapot_ref.png"   , __img_dir + "teapot_res.png"   , __img_dir + "teapot_diff.png");
+        genDiffImage(image_res, image_ref, "tests/out/diff_ep7_res_1.png");
     }
 
 

@@ -37,7 +37,7 @@ namespace Simple {
             T* operator ->() { return entity_ptr; }
 
             bool shouldIgnoreCI1() const { return first == VKFW_CI_IGNORE; }
-            bool shouldIgnoreCI2() const { return first == VKFW_CI_IGNORE && second == VKFW_CI_IGNORE; }
+            bool shouldIgnoreCI2() const { return first == VKFW_CI_IGNORE || second == VKFW_CI_IGNORE; }
 
             ContextIndex  getCI1() const { return   first; }
             ContextIndex2 getCI2() const { return { first, second }; }
@@ -64,7 +64,7 @@ namespace Simple {
 
                 if (_variant != nullptr)
                     *_variant = VK_API_VERSION_VARIANT(_version);
-                return _version - VK_API_VERSION_VARIANT(_version);
+                return _version & ~VK_MAKE_API_VERSION(0x7u, 0u, 0u, 0u); // variant bits are cleared
             }
 
             inline uint32_t join(const vec3u &_version, uint32_t _variant = 0u) {
@@ -134,17 +134,23 @@ namespace Simple {
             //     General:                chain_begin -> ... -> chain_before -> subchain_begin -> ... -> subchain_end -> chain_after -> ... -> chain_end
             //     offset == 0:         subchain_begin -> ... -> subchain_end ->    chain_begin -> ... ->    chain_end
             //     offset >= chain len:    chain_begin -> ... ->    chain_end -> subchain_begin -> ... -> subchain_end
-            static void InsertStructs(VkBaseOutStructure *_chain_begin, VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX) {
+            // Returns the new beginning of the chain ('subchain_begin' if offset == 0, otherwise 'chain_begin').
+            static VkBaseOutStructure* InsertStructs(VkBaseOutStructure *_chain_begin, VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX) {
                 if (_subchain_begin == nullptr || _chain_begin == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: StructPtrChain :: InsertStructs", "null pointer(s) passed"));
 
                 VkBaseOutStructure *_subchain_end = GetChainLastElem(_subchain_begin);
-                VkBaseOutStructure *_chain_before = _offset > 0u ? GetChainElem(_chain_begin, _offset - 1) : nullptr;
-                VkBaseOutStructure *_chain_after  = _offset > 0u ? _chain_before->pNext : _chain_begin;
+                VkBaseOutStructure *_chain_before = nullptr;
+                VkBaseOutStructure *_chain_after  = _chain_begin;
 
-                if (_chain_before != nullptr)
+                if (_offset > 0u) {
+                    std::vector<VkBaseOutStructure*> __chain = ExpandPtrChain(_chain_begin);
+                    _chain_before = __chain[std::min<size_t>(_offset, __chain.size()) - 1];
+                    _chain_after  = _chain_before->pNext;
                     _chain_before->pNext = _subchain_begin;
+                }
                 _subchain_end->pNext = _chain_after;
+                return _offset > 0u ? _chain_begin : _subchain_begin;
             }
 
         // StructPtrChain class
@@ -161,8 +167,11 @@ namespace Simple {
             StructPtrChain(StructPtrChain &&_chain) : chain{_chain.chain} { _chain.chain.clear(); }
            ~StructPtrChain() { clear(); }
 
+            // Note: Vulkan structures are trivially destructible, so it's enough to deallocate the memory.
+            //       Calling 'delete' through 'VkBaseOutStructure*' for an object of another type is UB, while
+            //       '::operator delete' accepts any pointer returned by 'new T' (for non-overaligned 'T').
             void clear() {
-                for (auto p : chain) delete p;
+                for (auto p : chain) ::operator delete(static_cast<void*>(p));
                 chain.clear();
             }
 
@@ -227,12 +236,16 @@ namespace Simple {
                     __iter_begin = chain.begin() + _offset;
 
                 chain.insert(__iter_begin, __subchain.begin(), __subchain.end());
+                updateChainLinks();
             }
 
             template <typename T>
             void addStructBack(VkStructureType _s_type) {
-                chain.push_back(new T{_s_type});
+                static_assert(std::is_trivially_destructible<T>::value, "VKFW :: StructPtrChain :: addStructBack - type must be a Vulkan structure");
+                chain.push_back(reinterpret_cast<VkBaseOutStructure*>(new T{_s_type}));
+                updateChainLinks();
             }
+
         }; // StructPtrChain END
     }; // VKFW END
 }; // Simple END

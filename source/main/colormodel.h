@@ -210,11 +210,12 @@ namespace Simple {
         struct White<E, D65> {
             template <class T>
             static Vec3Base<T> inline Convert(const Vec3Base<T> &_c) {
-                return { 0.82521f * _c.x, _c.y, 1.08883f * _c.z };
+                return { 0.95047f * _c.x, _c.y, 1.08883f * _c.z };
             }
             template <class T>
             static Vec4Base<T> inline Convert(const Vec4Base<T> &_c) {
-                return { 0.82521f * _c.x, _c.y, 1.08883f * _c.z, _c.w };
+                return { 0.95047f * _c.x, _c.y, 1.08883f * _c.z, _c.w };
+
             }
         };
 
@@ -263,7 +264,8 @@ namespace Simple {
             col3f res{};
             uint32_t angle = _col_in.x * 6;
 
-            res[(angle+1 >> 2)%3] =  _col_in.y * _col_in.z;
+            // Note: dominant channel for 60-degree sectors 0..5 is R,G,G,B,B,R
+            res[((angle+1) >> 1)%3] =  _col_in.y * _col_in.z;
             res[     (7-angle)%3] = (_col_in.y * _col_in.z) * (1 - std::abs((_col_in.x * 3 - std::trunc(_col_in.x * 3)) * 2 - 1));
             res += _col_in.z * (1.f - _col_in.y);
 

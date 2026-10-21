@@ -3,8 +3,11 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <string>
+#include <vector>
 #include <type_traits>
 #include <stdexcept>
+
 
 #include "common/bits.h"
 
@@ -116,9 +119,10 @@
 #define SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, "Warning") "]>["  SVKFW_ENCLOSE(SGR_COL_FG_YELLOW, _SVKFW_WHERE) "]> " _SVKFW_MESSG
 #define SVKFW_WRAPERR( _SVKFW_WHERE, _SVKFW_MESSG) "[" SVKFW_ENCLOSE(SGR_COL_FG_RED,    "Error"  ) "]>["  SVKFW_ENCLOSE(SGR_COL_FG_RED,    _SVKFW_WHERE) "]> " _SVKFW_MESSG
 
-#define SVKFW_WASSERT_CMD(_SVKFW_EXPR, _SVKFW_WHERE, _SVKFW_MESSG, _SVKFW_CMD) if (!(_SVKFW_EXPR)) { std::string tmp_msg = SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG); printf("%s", tmp_msg.c_str()); _SVKFW_CMD; }
-#define SVKFW_WASSERT(_SVKFW_EXPR, _SVKFW_WHERE, _SVKFW_MESSG) if (!(_SVKFW_EXPR)) { std::string tmp_msg = SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG); printf("%s", tmp_msg.c_str()); }
-#define SVKFW_ASSERT(_SVKFW_EXPR, _SVKFW_ERR_TYPE, _SVKFW_WHERE, _SVKFW_MESSG) if (!(_SVKFW_EXPR)) throw _SVKFW_ERR_TYPE(SVKFW_WRAPERR(_SVKFW_WHERE, _SVKFW_MESSG))
+// Note: "else ((void)0)" prevents the macro 'if' from capturing a following 'else' (do-while isn't used, '_SVKFW_CMD' may be 'break')
+#define SVKFW_WASSERT_CMD(_SVKFW_EXPR, _SVKFW_WHERE, _SVKFW_MESSG, _SVKFW_CMD) if (!(_SVKFW_EXPR)) { std::string tmp_msg = SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG); printf("%s", tmp_msg.c_str()); _SVKFW_CMD; } else ((void)0)
+#define SVKFW_WASSERT(_SVKFW_EXPR, _SVKFW_WHERE, _SVKFW_MESSG) if (!(_SVKFW_EXPR)) { std::string tmp_msg = SVKFW_WRAPWARN(_SVKFW_WHERE, _SVKFW_MESSG); printf("%s", tmp_msg.c_str()); } else ((void)0)
+#define SVKFW_ASSERT(_SVKFW_EXPR, _SVKFW_ERR_TYPE, _SVKFW_WHERE, _SVKFW_MESSG) if (!(_SVKFW_EXPR)) throw _SVKFW_ERR_TYPE(SVKFW_WRAPERR(_SVKFW_WHERE, _SVKFW_MESSG)); else ((void)0)
 
 
 namespace Simple {

@@ -71,13 +71,16 @@ namespace Simple {
 
 
     namespace AvailableMonitors {
-        Monitor primary = glfwGetPrimaryMonitor();
+        Monitor primary = nullptr; // Note: set in 'all_init()', GLFW must be initialized before the call
         std::unordered_set<GLFWmonitor*> all;
         GLFWmonitorfun previous_callback = nullptr;
 
 
+        // Note: if a monitor callback is replaced by another one, the new callback should call this function too
         void monitorCallbackAllUpd(GLFWmonitor* monitor, int event) {
             primary = glfwGetPrimaryMonitor();
+            if (previous_callback != nullptr)
+                previous_callback(monitor, event);
 
             switch (event) {
                 case GLFW_CONNECTED: {
@@ -92,6 +95,7 @@ namespace Simple {
         }
 
         void all_refresh() {
+            primary = glfwGetPrimaryMonitor();
             int count = 0;
             GLFWmonitor **_m = glfwGetMonitors(&count);
 
@@ -251,18 +255,26 @@ namespace Simple {
 
     // a global variable of this class "automatically" turns GLFW on/off (heresy)
     struct GLFWInitClass {
+        bool is_initialized = false;
+
          GLFWInitClass() {
             glfwGetError(0);
             if (!glfwInit()) {
                 throw std::runtime_error(SVKFW_WRAPERR("GLFWInitClass", "could not initialize GLFW"));
             }
+            is_initialized = true;
             AvailableMonitors::all_init();
         }
-        ~GLFWInitClass() {
-            if (glfwGetError(0) != GLFW_NOT_INITIALIZED)
+        ~GLFWInitClass() { terminate(); }
+
+        // Can be called manually to terminate GLFW before the program exit
+        void terminate() {
+            if (is_initialized)
                 glfwTerminate();
+            is_initialized = false;
         }
     } glfw_init; // GLFWInitClass END
+
 }; // Simple END
 
 

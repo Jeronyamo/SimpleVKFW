@@ -232,22 +232,18 @@ namespace Simple {
                 return __mem_requirements;
             }
 
-            // The returned array is allocated with 'new (unsigned char)[]'; 'safeDeleteArr()' may be used to delete it
-            void* GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count) {
-                static uint32_t __replay_size = 0u;
+            void GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count,
+                                                                 std::vector<unsigned char> &_data) {
+                // Note: ray tracing pipeline properties extend VkPhysicalDeviceProperties2 (not memory properties)
+                VkPhysicalDeviceRayTracingPipelinePropertiesKHR __rt_properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+                VkPhysicalDeviceProperties2 __properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+                __properties.pNext = &__rt_properties;
+                vkGetPhysicalDeviceProperties2(_phys_device, &__properties);
 
-                if (__replay_size == 0u) {
-                    StructPtrChain __chain{{new VkPhysicalDeviceMemoryProperties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR},
-                                            new VkPhysicalDeviceRayTracingPipelinePropertiesKHR{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR}}};
-                    GetPhysicalDeviceMemoryProperties2(_phys_device, __chain.get<VkPhysicalDeviceMemoryProperties2>());
-
-                    __replay_size = __chain.cgetId<VkPhysicalDeviceRayTracingPipelinePropertiesKHR>(1)->shaderGroupHandleCaptureReplaySize;
-                }
-
-                void* __data = new unsigned char[__replay_size * _group_count]{};
-                vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __replay_size * _group_count, __data);
-
-                return __data;
+                const size_t __data_size = size_t(__rt_properties.shaderGroupHandleCaptureReplaySize) * _group_count;
+                _data.assign(__data_size, 0u);
+                if (__data_size != 0u)
+                    vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, _data.data());
             }
 
             void FlushMappedMemoryRanges(VkDevice _device, const std::vector<VkMappedMemoryRange> &_mem_ranges) {
@@ -383,7 +379,7 @@ namespace Simple {
                 void *__data_ptr = nullptr;
 
                 if (vkMapMemory(_device, _memory, _offset, _size, 0u, &__data_ptr) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("", ""));
+                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: MapMemory", "Failed to map device memory"));
                 return __data_ptr;
             }
 
@@ -1022,7 +1018,7 @@ namespace Simple {
 
                     for (uint32_t i = 0u; i < phys_devices.size(); ++i) {
                         printf(SVKFW_WRAPINFO("VKFW::Util::PhysDeviceManager :: testPickOne", "Found GPU %d:\n%s\n"), i, PhysDeviceFullInfo{phys_devices[i], features[i], properties[i]}.infoString().c_str());
-                        if (_testFunc({phys_devices[i], features[i], properties[i]})) {
+                        if (__res == VK_NULL_HANDLE && _testFunc({phys_devices[i], features[i], properties[i]})) {
                             __res_index = i;
                             __res = phys_devices[i];
                         }
@@ -1159,39 +1155,45 @@ namespace Simple {
                         int __rank = _rankFunc({phys_devices[i], features[i], properties[i]});
                         switch (COMP_OP) {
                             case CompareOp::NE: {
-                                if (__rank != _threshold)
+                                if (__rank != _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                             case CompareOp::EQ: {
-                                if (__rank == _threshold)
+                                if (__rank == _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                             case CompareOp::LT: {
-                                if (__rank <  _threshold)
+                                if (__rank <  _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                             case CompareOp::LE: {
-                                if (__rank <= _threshold)
+                                if (__rank <= _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                             case CompareOp::GE: {
-                                if (__rank >= _threshold)
+                                if (__rank >= _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                             case CompareOp::GT: {
-                                if (__rank >  _threshold)
+                                if (__rank >  _threshold) {
                                     _ranks.push_back(__rank);
                                     __res_devices.push_back(phys_devices[i]);
+                                }
                                 break;
                             }
                         }
@@ -1519,12 +1521,11 @@ namespace Simple {
             struct StructWrap<VkViewport> {
                 VkViewport wrap{ 0.f, 0.f, 0.f, 0.f, 0.f, 1.f };
 
+                // Note: VkViewport fields order - x, y, width, height, minDepth, maxDepth
                 StructWrap(const VkExtent2D &_extent, float _x = 0.f, float _y = 0.f, float _depthMin = 0.f, float _depthMax = 1.f) :
-                            wrap{.x= _x, .y= _y, .width= (float)_extent.width, .height= (float)_extent.height,
-                                                    .minDepth= _depthMin, .maxDepth= _depthMax} {}
+                            wrap{_x, _y, (float)_extent.width, (float)_extent.height, _depthMin, _depthMax} {}
                 StructWrap(const vec2f &_extent = 0.f, const vec2f &_offset = 0.f, const vec2f &_depth = { 0.f, 1.f }) :
-                            wrap{.x= _offset.x, .y= _offset.y, .width= _extent.x, .height= _extent.y,
-                                                    .minDepth= _depth.x, .maxDepth= _depth.y} {}
+                            wrap{_offset.x, _offset.y, _extent.x, _extent.y, _depth.x, _depth.y} {}
                 StructWrap(const StructWrap &_viewport) : wrap{_viewport.wrap} {}
                ~StructWrap() { clear(); }
 
@@ -1554,10 +1555,11 @@ namespace Simple {
 
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
+                // Note: VkRect2D fields order - offset, extent
                 StructWrap(const VkExtent2D &_extent, const VkOffset2D &_offset = {0, 0})
-                                : wrap{ .offset= {_offset.x, _offset.y}, .extent= {_extent.width, _extent.height} } {}
+                                : wrap{ {_offset.x, _offset.y}, {_extent.width, _extent.height} } {}
                 StructWrap(const vec2u &_extent, const vec2i &_offset = 0)
-                                : wrap{ .offset= {_offset.x, _offset.y}, .extent= {_extent.x, _extent.y} } {}
+                                : wrap{ {_offset.x, _offset.y}, {_extent.x, _extent.y} } {}
                ~StructWrap() { clear(); }
 
                 void clear() {
@@ -1583,10 +1585,10 @@ namespace Simple {
                 VkClearValue wrap{};
 
                 StructWrap() {}
-                StructWrap(float    _v0, float    _v1, float    _v2, float    _v3) {}
-                StructWrap(int32_t  _v0, int32_t  _v1, int32_t  _v2, int32_t  _v3) {}
-                StructWrap(uint32_t _v0, uint32_t _v1, uint32_t _v2, uint32_t _v3) {}
-                StructWrap(float _depth, uint32_t _stencil) {}
+                StructWrap(float    _v0, float    _v1, float    _v2, float    _v3) { fromColorVec4f({_v0, _v1, _v2, _v3}); }
+                StructWrap(int32_t  _v0, int32_t  _v1, int32_t  _v2, int32_t  _v3) { fromColorVec4i({_v0, _v1, _v2, _v3}); }
+                StructWrap(uint32_t _v0, uint32_t _v1, uint32_t _v2, uint32_t _v3) { fromColorVec4u({_v0, _v1, _v2, _v3}); }
+                StructWrap(float _depth, uint32_t _stencil) { fromDepthStencil(_depth, _stencil); }
                ~StructWrap() { clear(); }
 
                 void clear() {
@@ -1598,31 +1600,27 @@ namespace Simple {
             // Scenarios
 
                 void fromColorVec4f(const vec4f &_col) {
-                    wrap.color;
-                    wrap.color.float32;
                     wrap.color.float32[0] = _col.x;
                     wrap.color.float32[1] = _col.y;
                     wrap.color.float32[2] = _col.z;
                     wrap.color.float32[3] = _col.w;
                 }
                 void fromColorVec4i(const vec4i &_col) {
-                    wrap.color;
-                    wrap.color.int32;
                     wrap.color.int32[0] = _col.x;
                     wrap.color.int32[1] = _col.y;
                     wrap.color.int32[2] = _col.z;
                     wrap.color.int32[3] = _col.w;
                 }
                 void fromColorVec4u(const vec4u &_col) {
-                    wrap.color;
-                    wrap.color.uint32;
                     wrap.color.uint32[0] = _col.x;
                     wrap.color.uint32[1] = _col.y;
                     wrap.color.uint32[2] = _col.z;
                     wrap.color.uint32[3] = _col.w;
                 }
                 void fromDepthStencil(float _depth, uint32_t _stencil) {
-                    wrap = VkClearValue{ .depthStencil = {_depth, _stencil} };
+                    wrap = VkClearValue{};
+                    wrap.depthStencil.depth   = _depth;
+                    wrap.depthStencil.stencil = _stencil;
                 }
 
             // Static
@@ -1652,7 +1650,9 @@ namespace Simple {
                     return __res;
                 }
                 static VkClearValue DepthStencil(float _depth, uint32_t _stencil) {
-                    VkClearValue __res{ .depthStencil = {_depth, _stencil} };
+                    VkClearValue __res{};
+                    __res.depthStencil.depth   = _depth;
+                    __res.depthStencil.stencil = _stencil;
                     return __res;
                 }
             }; // StructWrap<VkClearValue> END
@@ -1702,13 +1702,12 @@ namespace Simple {
                                                  resolve_attachments;
                 std::vector<uint32_t>           preserve_attachments;
 
-                StructWrap() {}
+                StructWrap() { clear(); }
                ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSubpassDescription{};
-                    depth_stencil_attachment = VkAttachmentReference{};
-                    wrap.pDepthStencilAttachment = &depth_stencil_attachment;
+                    depth_stencil_attachment = VkAttachmentReference{VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED};
 
                     color_attachments   .clear();
                     input_attachments   .clear();
@@ -1716,6 +1715,7 @@ namespace Simple {
                     preserve_attachments.clear();
                 }
 
+                // Note: pointers to members are set here (and not in 'clear()'), because the structure can be copied/moved (e.g. by std::vector)
                 void updateWrap() {
                     wrap.    colorAttachmentCount =    color_attachments.size();
                     wrap.   pColorAttachments     =    color_attachments.data();
@@ -1723,7 +1723,8 @@ namespace Simple {
                     wrap.   pInputAttachments     =    input_attachments.data();
                     wrap. preserveAttachmentCount = preserve_attachments.size();
                     wrap.pPreserveAttachments     = preserve_attachments.data();
-                    wrap. pResolveAttachments     =  resolve_attachments.data();
+                    wrap. pResolveAttachments     =  resolve_attachments.empty() ? nullptr : resolve_attachments.data();
+                    wrap.pDepthStencilAttachment  = depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED ? &depth_stencil_attachment : nullptr;
                 }
 
             // Scenarios
@@ -1795,6 +1796,7 @@ namespace Simple {
                 void clear() {
                     wrap = VkSpecializationInfo{};
                     map_entries.clear();
+                    data.clear();
                 }
 
                 void updateWrap() {
@@ -2015,7 +2017,7 @@ namespace Simple {
 
                 void setQueueCount(uint32_t _queue_count, const std::vector<float> &_priorities = {1.0f}) {
                     priorities = _priorities;
-                    priorities.resize(_queue_count, _priorities.back());
+                    priorities.resize(_queue_count, _priorities.empty() ? 1.0f : _priorities.back());
                 }
             }; // StructWrap<VkDeviceQueueCreateInfo> END
 
@@ -2086,10 +2088,12 @@ namespace Simple {
                     queue_families.clear();
                 }
 
+                // Note: concurrent sharing mode requires at least 2 unique queue families
                 void updateWrap() {
-                    wrap.imageSharingMode = queue_families.size() ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
-                    wrap.queueFamilyIndexCount = queue_families.size();
-                    wrap.pQueueFamilyIndices = queue_families.data();
+                    const bool __concurrent = queue_families.size() > 1u;
+                    wrap.imageSharingMode = __concurrent ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+                    wrap.queueFamilyIndexCount = __concurrent ? queue_families.size() : 0u;
+                    wrap.pQueueFamilyIndices   = __concurrent ? queue_families.data() : nullptr;
                 }
 
             // Scenarios
@@ -2134,8 +2138,9 @@ namespace Simple {
                 bool checkSetExtent(vec2u _extent) {
                     wrap.imageExtent = { _extent.x, _extent.y };
 
-                    if (capabilities.currentExtent.width  != UINT32_MAX &&
-                        capabilities.currentExtent.height != UINT32_MAX) {
+                    // Note: (UINT32_MAX, UINT32_MAX) current extent means that the extent is determined by the swapchain, so it must be clamped
+                    if (capabilities.currentExtent.width  == UINT32_MAX &&
+                        capabilities.currentExtent.height == UINT32_MAX) {
                         wrap.imageExtent = { Math::clampCL(_extent.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width ),
                                              Math::clampCL(_extent.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height) };
                     }
@@ -2182,7 +2187,7 @@ namespace Simple {
                         }
                     }
 
-                    if (__curr_ind > __formats.size())
+                    if (__curr_ind >= __formats.size())
                         throw std::runtime_error(SVKFW_WRAPERR("VKFW::Struct::StructWrap<VkSwapchainCreateInfoKHR> :: pickFormat (2)", "could not choose format"));
                     printf(SVKFW_WRAPINFO("VKFW::Struct::StructWrap<VkSwapchainCreateInfoKHR> :: pickFormat (2)", "Format: %d, color space: %d\n"),
                             uint32_t(__formats[__curr_ind].format), uint32_t(__formats[__curr_ind].colorSpace));
@@ -2614,6 +2619,7 @@ namespace Simple {
                 // If 'descriptor_count' is 0, using max size among 'buffer_infos', 'image_infos' and 'texel_buf_views' vectors
                 void setScalars(VkDescriptorSet _dst_descr_set, VkDescriptorType _descr_type, uint32_t _dst_binding,
                                 uint32_t _descriptor_count = 0u, uint32_t _dst_arr_elem = 0u) {
+                    wrap.descriptorCount = _descriptor_count;
                     wrap.dstSet          = _dst_descr_set;
                     wrap.descriptorType  =    _descr_type;
                     wrap.dstBinding      =   _dst_binding;
@@ -2621,11 +2627,11 @@ namespace Simple {
                 }
 
                 void addBufferInfo(VkBuffer _buffer, VkDeviceSize _offset = 0ul, VkDeviceSize _range = VK_WHOLE_SIZE) {
-                    buffer_infos.push_back(VkDescriptorBufferInfo{ .buffer = _buffer, .offset = _offset, .range = _range });
+                    buffer_infos.push_back(VkDescriptorBufferInfo{ _buffer, _offset, _range });
                 }
 
                 void addImageInfo(VkSampler _sampler, VkImageView _image_view, VkImageLayout _image_layout) {
-                    image_infos.push_back(VkDescriptorImageInfo{ .sampler = _sampler, .imageView = _image_view, .imageLayout = _image_layout });
+                    image_infos.push_back(VkDescriptorImageInfo{ _sampler, _image_view, _image_layout });
                 }
             }; // StructWrap<VkWriteDescriptorSet> END
 
@@ -2829,20 +2835,26 @@ namespace Simple {
             struct StructWrap<VkRayTracingShaderGroupCreateInfoKHR> {
                 VkRayTracingShaderGroupCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
 
+                // Note: data is owned by vector, so the structure can be safely copied (previously raw 'new[]' pointer was double-deleted on copies)
+                std::vector<unsigned char> capture_replay_handle;
+
                 StructWrap() {}
                ~StructWrap() { clear(); }
 
                 void clear() {
-                    safeDeleteVoidArr<unsigned char>(wrap.pShaderGroupCaptureReplayHandle);
+                    capture_replay_handle.clear();
                     wrap = VkRayTracingShaderGroupCreateInfoKHR{VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
                 }
 
-                void updateWrap() {}
+                void updateWrap() {
+                    wrap.pShaderGroupCaptureReplayHandle = capture_replay_handle.empty() ? nullptr : capture_replay_handle.data();
+                }
 
             // Scenarios
 
                 void getData(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count) {
-                    wrap.pShaderGroupCaptureReplayHandle = Func::GetRayTracingCaptureReplayShaderGroupHandlesKHR(_phys_device, _device, _pipeline, _first_group, _group_count);
+                    Func::GetRayTracingCaptureReplayShaderGroupHandlesKHR(_phys_device, _device, _pipeline, _first_group, _group_count, capture_replay_handle);
+                    updateWrap();
                 }
             }; // StructWrap<VkRayTracingShaderGroupCreateInfoKHR> END
 
@@ -3452,7 +3464,7 @@ namespace Simple {
                ~StructWrap() { clear(); }
 
                 void clear() {
-                    wrap = VkPhysicalDeviceMemoryProperties2{};
+                    wrap = VkPhysicalDeviceMemoryProperties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
                 }
 
                 void updateWrap() {}
@@ -4024,10 +4036,12 @@ namespace Simple {
                 };
 
                 Pipeline() {}
-                Pipeline(const Pipeline &_obj_pip) : handle{_obj_pip.handle}, pipeline_type{_obj_pip.pipeline_type} {
+                Pipeline(const Pipeline &_obj_pip) : handle{_obj_pip.handle} {
+                    setPipelineType(_obj_pip.pipeline_type);
                     setPipelineFromCopy(_obj_pip);
                 }
-                Pipeline(Pipeline &&_obj_pip) : handle{_obj_pip.handle}, pipeline_type{_obj_pip.pipeline_type} {
+                Pipeline(Pipeline &&_obj_pip) : handle{_obj_pip.handle} {
+                    setPipelineType(_obj_pip.pipeline_type);
                     setPipelineFromCopy(_obj_pip);
                     _obj_pip.deletePipelineWrap();
                     _obj_pip.handle = VK_NULL_HANDLE;
@@ -4341,7 +4355,7 @@ namespace Simple {
             // Scenarios
 
                 void updateWriteSparse(const std::vector<uint32_t> &_write_set_ids) {
-                    write_sets.resize(_write_set_ids.size());
+                    write_sets.resize(write_sets_wrap.size());
                     for (uint32_t i : _write_set_ids) {
                         write_sets_wrap[i].updateWrap();
                         write_sets[i] = write_sets_wrap[i].wrap;
@@ -4349,7 +4363,7 @@ namespace Simple {
                 }
 
                 void updateCopySparse(const std::vector<uint32_t> &_copy_set_ids) {
-                    copy_sets. resize(_copy_set_ids.size());
+                    copy_sets. resize(copy_sets_wrap.size());
                     for (uint32_t i : _copy_set_ids) {
                         copy_sets_wrap[i].updateWrap();
                         copy_sets[i] = copy_sets_wrap[i].wrap;
@@ -4405,6 +4419,7 @@ namespace Simple {
             // Scenarios
 
                 void updateWrapSparse(const std::vector<uint32_t> &_viewport_ids) {
+                    viewports.resize(viewports_wrap.size());
                     for (uint32_t i : _viewport_ids) {
                         viewports_wrap[i].updateWrap();
                         viewports[i] = viewports_wrap[i].wrap;
@@ -4432,7 +4447,9 @@ namespace Simple {
             // Scenarios
 
                 void updateWrapSparse(const std::vector<uint32_t> &_scissor_ids) {
+                    scissors.resize(scissors_wrap.size());
                     for (uint32_t i : _scissor_ids) {
+
                         scissors_wrap[i].updateWrap();
                         scissors[i] = scissors_wrap[i].wrap;
                     }

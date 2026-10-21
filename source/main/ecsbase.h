@@ -31,7 +31,7 @@ namespace Simple {
         GetT   getData() const { return *((GetT*)p_data); }
 
         bool   isValid() const { return tag != TagID::TAG_DELETED && entity != EntityID(TAG_NO_COMPONENT); }
-        size_t getHash() const { return (uint32_t(entity) << 32) | (uint32_t)tag; }
+        uint64_t getHash() const { return (uint64_t(uint32_t(entity)) << 32) | (uint32_t)tag; }
 
         bool operator<(const Component& _comp) { return getHash() < _comp.getHash(); }
 

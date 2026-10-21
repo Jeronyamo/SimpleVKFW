@@ -712,7 +712,7 @@ namespace Simple {
 
             ArgDescription() {}
             ArgDescription(const std::string &_arg_name, const std::string &_arg_alias, const std::vector<uint32_t> &_arg_counts)
-                            : arg_name{_arg_name}, arg_alias{_arg_alias}, arg_counts{arg_counts}, arg_description{} {
+                            : arg_name{_arg_name}, arg_alias{_arg_alias}, arg_description{}, arg_counts{_arg_counts} {
                 ValidateName(arg_name);
                 ValidateAlias(arg_alias);
                 ValidateCounts(arg_name, arg_counts);
@@ -773,7 +773,7 @@ namespace Simple {
                 for (uint32_t i = 0u; i < arguments.size(); ++i) {
                     if (arguments[i].arg_name  == _arg_name)
                         throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgNamespace :: addArgument", "Argument name '"  + _arg_name  + "' is already used"));
-                    if (arguments[i].arg_alias == _arg_alias)
+                    if (!_arg_alias.empty() && arguments[i].arg_alias == _arg_alias)
                         throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: ArgNamespace :: addArgument", "Argument alias '" + _arg_alias + "' is already used"));
                 }
                 arguments.push_back(__new_arg);
@@ -891,7 +891,7 @@ namespace Simple {
             for (uint32_t i = 0u; i < arguments.size(); ++i) {
                 if (arguments[i].arg_name  == _arg_name)
                     throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: addArgument", "Argument name '"  + _arg_name  + "' is already used"));
-                if (arguments[i].arg_alias == _arg_alias)
+                if (!_arg_alias.empty() && arguments[i].arg_alias == _arg_alias)
                     throw std::invalid_argument(SVKFW_WRAPERR("ArgParser :: addArgument", "Argument alias '" + _arg_alias + "' is already used"));
             }
             arguments.push_back(__new_arg);
@@ -956,8 +956,8 @@ namespace Simple {
 
                 SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector2)",
                                 "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
-                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1]);
+                const std::vector<std::string> &__values = argument_values[__arg_first_parse[0]].second[_arg_value_id];
+                __res = { argumentCaster<T>(__values[0]), argumentCaster<T>(__values[1]) };
             }
             return __res;
         }
@@ -968,15 +968,14 @@ namespace Simple {
 
             uint32_t __arg_descr = getArgDescriptionIdByName(_arg_name);
             if (__arg_descr != UINT32_MAX && arguments[__arg_descr].arg_counts.size() > _arg_value_id) {
-                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 2u, std::runtime_error, "Simple::ArgParser :: castArgument(vector3)",
+                SVKFW_ASSERT(arguments[__arg_descr].arg_counts[_arg_value_id] == 3u, std::runtime_error, "Simple::ArgParser :: castArgument(vector3)",
                                 "vector3/argument value mismatch");
                 std::vector<uint32_t> __arg_first_parse = getArgParseIdsByName(_arg_name);
 
                 SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector3)",
                                 "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
-                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][2]);
+                const std::vector<std::string> &__values = argument_values[__arg_first_parse[0]].second[_arg_value_id];
+                __res = { argumentCaster<T>(__values[0]), argumentCaster<T>(__values[1]), argumentCaster<T>(__values[2]) };
             }
             return __res;
         }
@@ -993,10 +992,9 @@ namespace Simple {
 
                 SVKFW_ASSERT(!__arg_first_parse.empty(), std::runtime_error, "Simple::ArgParser :: castArgument(vector4)",
                                 "argument " + arguments[__arg_descr].getArgNamePrint() + "wasn't passed to the program");
-                __res = argumentCaster<T>(argument_values[__arg_first_parse[0]].second[_arg_value_id][0],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][1],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][2],
-                                          argument_values[__arg_first_parse[0]].second[_arg_value_id][3]);
+                const std::vector<std::string> &__values = argument_values[__arg_first_parse[0]].second[_arg_value_id];
+                __res = { argumentCaster<T>(__values[0]), argumentCaster<T>(__values[1]), argumentCaster<T>(__values[2]), argumentCaster<T>(__values[3]) };
+
             }
             return __res;
         }

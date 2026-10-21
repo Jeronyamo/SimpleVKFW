@@ -9,8 +9,8 @@
 COMPILER_C="$1"
 COMPILER_CXX="$2"
 BUILD_TYPE="Debug"
-if (( $# > 3 )); then
-    BUILD_TYPE= $3
+if (( $# >= 3 )); then
+    BUILD_TYPE="$3"
 fi
 
 if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then

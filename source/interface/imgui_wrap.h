@@ -47,7 +47,6 @@ namespace Simple {
                 memcpy(text, _text.data(), (_text.size()+1)*sizeof(std::string::value_type));
             }
             WidgetText(const WidgetText &_widget) {
-                safeDeleteArr(text);
                 if (_widget.text != nullptr) {
                     size_t __text_len = std::strlen(_widget.text)+1;
                     text = new char[__text_len];
@@ -58,7 +57,7 @@ namespace Simple {
 
             virtual bool      begin() override { return true; }
             virtual void        end() override {}
-            virtual void     render() override { ImGui::Text(text); }
+            virtual void     render() override { ImGui::TextUnformatted(text); } // Note: 'ImGui::Text(text)' treats text as a format string
             virtual void renderFull() override { render(); }
         }; // WidgetText END
 
@@ -222,7 +221,7 @@ namespace Simple {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetInputFloat Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetInputFloat(const WidgetInputFloat &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+            WidgetInputFloat(const WidgetInputFloat &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, step{_widget.step},
                                                                 step_fast{_widget.step_fast}, val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -294,14 +293,14 @@ namespace Simple {
             uint32_t val_count = 0u; // 1 to 4
             ImGuiInputTextFlags flags = 0; // Does not support 'ImGuiInputTextFlags_CharsHexadecimal' flag. If value is expected to be hexadecimal, use 'format' = "%08X" instead
 
-            WidgetInputUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%d",
+            WidgetInputUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%u",
                               ActionItf *_action = nullptr, ImGuiInputTextFlags _flags = 0, uint32_t _step = 1u, uint32_t _step_fast = 100u)
                             : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format},
                               action{_action}, flags{_flags}, step{_step}, step_fast{_step_fast} {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetInputUint32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetInputUint32(const WidgetInputUint32 &_widget) : value{_widget.value}, action{_widget.action}, step{_widget.step},
+            WidgetInputUint32(const WidgetInputUint32 &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, step{_widget.step},
                                                                   step_fast{_widget.step_fast}, val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -346,7 +345,7 @@ namespace Simple {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetSliderFloat Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetSliderFloat(const WidgetSliderFloat &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetSliderFloat(const WidgetSliderFloat &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, limits{_widget.limits},
                                                                 val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -386,7 +385,7 @@ namespace Simple {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetSliderInt32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetSliderInt32(const WidgetSliderInt32 &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetSliderInt32(const WidgetSliderInt32 &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, limits{_widget.limits},
                                                                 val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -420,12 +419,12 @@ namespace Simple {
             ImGuiSliderFlags flags = 0;
 
             WidgetSliderUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, uint32_t _lim_min = 0u,
-                               uint32_t _lim_max = 100u, const char *_format = "%d", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
-                            : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, action{_action}, flags{_flags}, limits{_lim_min, _lim_max} {
+                               uint32_t _lim_max = 100u, const char *_format = "%u", ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
+                            : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format}, action{_action}, flags{_flags}, limits{_lim_min, _lim_max} {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetSliderUint32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetSliderUint32(const WidgetSliderUint32 &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetSliderUint32(const WidgetSliderUint32 &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, limits{_widget.limits},
                                                                 val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -470,7 +469,7 @@ namespace Simple {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetDragFloat Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetDragFloat(const WidgetDragFloat &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetDragFloat(const WidgetDragFloat &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, speed{_widget.speed}, limits{_widget.limits},
                                                               val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -511,7 +510,7 @@ namespace Simple {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetDragInt32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetDragInt32(const WidgetDragInt32 &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetDragInt32(const WidgetDragInt32 &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, speed{_widget.speed}, limits{_widget.limits},
                                                                 val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -545,14 +544,14 @@ namespace Simple {
             uint32_t val_count = 0u; // 1 to 4
             ImGuiSliderFlags flags = 0;
 
-            WidgetDragUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%d",
+            WidgetDragUint32(const std::string &_name, uint32_t _val_count, vec4u32 _default_value = {0u}, const char *_format = "%u",
                              uint32_t _lim_min = 0u, uint32_t _lim_max = 100u, float _speed = 1.f, ActionItf *_action = nullptr, ImGuiSliderFlags _flags = 0)
                             : name{new char[_name.size()+1]}, val_count{_val_count}, value{_default_value}, format{_format},
                               action{_action}, flags{_flags}, limits{_lim_min, _lim_max}, speed{_speed} {
                 SVKFW_WASSERT(val_count > 0 && val_count < 5, "ImGUI:: WidgetDragUint32 Constructor", "expected 'val_count' values are [1,4]\n");
                 memcpy(name, _name.data(), (_name.size()+1)*sizeof(std::string::value_type));
             }
-            WidgetDragUint32(const WidgetDragUint32 &_widget) : value{_widget.value}, action{_widget.action}, limits{_widget.limits},
+            WidgetDragUint32(const WidgetDragUint32 &_widget) : format{_widget.format}, action{_widget.action}, value{_widget.value}, speed{_widget.speed}, limits{_widget.limits},
                                                                 val_count{_widget.val_count}, flags{_widget.flags} {
                 safeDeleteArr(name);
                 uint32_t __name_len = std::strlen(_widget.name)+1;
@@ -562,12 +561,11 @@ namespace Simple {
             virtual ~WidgetDragUint32() override { safeDeleteArr(name); }
 
             virtual bool begin() override {
-                const char *__format = "%d";
                 switch (val_count) {
-                    case 1: return ImGui::DragScalar (name, ImGuiDataType_U32, &value.x,            speed, &limits.x, &limits.y, __format, flags);
+                    case 1: return ImGui::DragScalar (name, ImGuiDataType_U32, &value.x,            speed, &limits.x, &limits.y, format, flags);
                     case 2:
                     case 3:
-                    case 4: return ImGui::DragScalarN(name, ImGuiDataType_U32, &value.x, val_count, speed, &limits.x, &limits.y, __format, flags);
+                    case 4: return ImGui::DragScalarN(name, ImGuiDataType_U32, &value.x, val_count, speed, &limits.x, &limits.y, format, flags);
                     default: break;
                 }
                 return false;
@@ -606,6 +604,13 @@ namespace Simple {
         // TODO: ImGui::Combo(), ImGui::ListBox(), ImGui::Selectable()
 
 
+        // Custom widgets
+
+        struct WidgetAudioPlayer : WidgetItf {
+            
+        }; // WidgetAudioPlayer END
+
+
         // Menu widgets
 
         struct WidgetMenuItem : WidgetItf {
@@ -625,12 +630,25 @@ namespace Simple {
                 memcpy(    name,     _name.data(), (    name_len+1)*sizeof(std::string::value_type));
                 memcpy(shortcut, _shortcut.data(), (shortcut_len+1)*sizeof(std::string::value_type));
             }
-            WidgetMenuItem(const WidgetMenuItem &_menu_item) : name_len{_menu_item.name_len}, shortcut_len{_menu_item.shortcut_len} {
-                safeDeleteArr(name);
+            WidgetMenuItem(const WidgetMenuItem &_menu_item) : is_selected{_menu_item.is_selected}, is_enabled{_menu_item.is_enabled},
+                                                                name_len{_menu_item.name_len}, shortcut_len{_menu_item.shortcut_len} {
                 name = new char[name_len + shortcut_len + 2];
                 shortcut = name + name_len + 1;
                 memcpy(    name, _menu_item.    name, (    name_len+1)*sizeof(char));
                 memcpy(shortcut, _menu_item.shortcut, (shortcut_len+1)*sizeof(char));
+            }
+            WidgetMenuItem& operator=(const WidgetMenuItem &_menu_item) {
+                if (this == &_menu_item) return *this;
+                safeDeleteArr(name);
+                name_len     = _menu_item.name_len;
+                shortcut_len = _menu_item.shortcut_len;
+                is_selected  = _menu_item.is_selected;
+                is_enabled   = _menu_item.is_enabled;
+                name = new char[name_len + shortcut_len + 2];
+                shortcut = name + name_len + 1;
+                memcpy(    name, _menu_item.    name, (    name_len+1)*sizeof(char));
+                memcpy(shortcut, _menu_item.shortcut, (shortcut_len+1)*sizeof(char));
+                return *this;
             }
             virtual ~WidgetMenuItem() override { safeDeleteArr(name); }
 
@@ -662,7 +680,7 @@ namespace Simple {
             }
             virtual void render() override {
                 for (auto &ia : item_action) {
-                    if (ia.second != nullptr && ia.first.begin())
+                    if (ia.first.begin() && ia.second != nullptr)
                         ia.second->action();
                 }
             }
@@ -789,6 +807,8 @@ namespace Simple {
             uint32_t min_image_count = 2u;
             uint32_t descr_pool_size = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
             std::vector<WidgetItf*> widgets; // Main Menu Bar or Window widgets
+            bool backends_initialized = false;
+
 
             ImGuiHandler() {  createContext(); }
            ~ImGuiHandler() { destroyContext(); }
@@ -806,20 +826,24 @@ namespace Simple {
                 if (context != nullptr) {
                     imgui_io    = nullptr;
                     imgui_style = nullptr;
-                    ImGui_ImplVulkan_Shutdown();
-                    ImGui_ImplGlfw_Shutdown();
+                    // Note: backends can't be shut down if they weren't initialized
+                    if (backends_initialized) {
+                        ImGui_ImplVulkan_Shutdown();
+                        ImGui_ImplGlfw_Shutdown();
+                        backends_initialized = false;
+                    }
                     ImGui::DestroyContext(context);
                     context = nullptr;
                 }
             }
 
             void enableForSVKFWWindow(const Window &_w, bool _install_callbacks) {
-                ImGui_ImplGlfw_InitForVulkan(_w.window, _install_callbacks);
-                ImGui_ImplVulkan_Init(&imgui_info);
+                enableForGLFWwindow(_w.window, _install_callbacks);
             }
             void enableForGLFWwindow(GLFWwindow *_w, bool _install_callbacks) {
                 ImGui_ImplGlfw_InitForVulkan(_w, _install_callbacks);
                 ImGui_ImplVulkan_Init(&imgui_info);
+                backends_initialized = true;
             }
 
             void setDefaultStyleSVKFW() {
@@ -879,11 +903,12 @@ namespace Simple {
                 return descr_pool_size;
             }
 
+            // Note: 'WantCapture*' flags are set by ImGui when the input must not be passed to the application
             bool isGUIHovered() {
-                return ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+                return imgui_io != nullptr && imgui_io->WantCaptureMouse;
             }
             bool isKeyboardInUse() {
-                return ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+                return imgui_io != nullptr && imgui_io->WantCaptureKeyboard;
             }
         }; // ImGuiHandler END
     }; // ImGUI END

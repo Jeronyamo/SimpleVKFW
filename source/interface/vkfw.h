@@ -38,6 +38,8 @@ namespace Simple {
                 ContextCore(VulkanContext* _cxt_ptr) : cxt_debug{_cxt_ptr} {
                     SVKFW_ASSERT(volkInitialize() == VK_SUCCESS, std::runtime_error, "VKFW::VulkanContext :: ContextCore constructor",
                                     "volk initialization failed");
+                    // Note: members are constructed before volkInitialize(), so the version was computed without 'vkEnumerateInstanceVersion'
+                    instance.create_info.app_info_wrap.setAvailableVersionAPI();
                 }
                ~ContextCore() { destroyContext(); }
 
@@ -227,6 +229,10 @@ namespace Simple {
                     destroySwapchain();
                 }
 
+                uint32_t getSwapchainImageCount() {
+                    return image_views.size();
+                }
+
                 void pickSwapchainImageFormat(const Util::SurfaceFormatTestFunc _test_func = Util::SelectSurfaceFormat::DefaultFormatTest) {
                     swapchain.create_info.pickFormat(cxt_core->phys_device.handle, surface.handle, _test_func);
                 }
@@ -371,6 +377,8 @@ namespace Simple {
                     switch (pipelines[_pipeline_ci].pipeline_type) {
                         case VKFW_PIPELINE_TYPE_GRAPHICS:
                             pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.renderPass = cxt_core->render_pass.handle;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.subpass    = _subpass;
+
                             pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
                             pipelines[_pipeline_ci].  graphics_create_info_wrap.updateWrap(); break;
                         case VKFW_PIPELINE_TYPE_COMPUTE:
@@ -416,7 +424,7 @@ namespace Simple {
                 void setLayoutDescriptorSetLayouts(ContextIndex _ci_layout, const std::vector<ContextIndex> &_ci_descr_set_layouts) {
                     layouts[_ci_layout].create_info.layouts.resize(_ci_descr_set_layouts.size(), VK_NULL_HANDLE);
                     for (uint32_t i = 0u; i < _ci_descr_set_layouts.size(); ++i)
-                        layouts[_ci_layout].create_info.layouts[i] = cxt_core->cxt_debug.cxt_ptr->cxt_descriptor.layouts[_ci_descr_set_layouts[0]].handle;
+                        layouts[_ci_layout].create_info.layouts[i] = cxt_core->cxt_debug.cxt_ptr->cxt_descriptor.layouts[_ci_descr_set_layouts[i]].handle;
                 }
 
                 void addLayoutPushConstant(ContextIndex _ci_layout, VkShaderStageFlags _stage_flags, uint32_t _offset, uint32_t _size) {
@@ -525,17 +533,16 @@ namespace Simple {
 
                             // printf("Buffer %d alignment: %d, CPU size: %d, GPU size: %d\n", ci, __mem_req_i.alignment, buffer_maps[ci].range, __mem_req_i.size);
                             __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
-                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
                             __mem_req.size += __additional_offset;
                             buffer_maps[ci].offset = __mem_req.size;
 
-                            // Note: from VkMemoryRequirements description, I believe this offset is always 0
-                            // __additional_offset = (__mem_req_i.alignment - (buffer_maps[ci].range % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += buffer_maps[ci].range;
+                            // Note: the device may require more memory than requested by user ('range'), so the max is used
+                            __mem_req.size += std::max(buffer_maps[ci].range, __mem_req_i.size);
                         }
                         // Align last buffer
                         if (!buffers.empty()) {
-                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
                             __mem_req.size += __additional_offset;
                         }
 
@@ -546,24 +553,23 @@ namespace Simple {
                                             "No suitable memory type left for image " + std::to_string(ci));
 
                             __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
-                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
                             __mem_req.size += __additional_offset;
                             image_maps[ci].offset = __mem_req.size;
 
-                            // Note: from VkMemoryRequirements description, I believe this offset is always 0
-                            // __additional_offset = (__mem_req_i.alignment - (image_maps[ci].range % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += buffer_maps[ci].range;
+                            // Note: the device may require more memory than requested by user ('range'), so the max is used
+                            __mem_req.size += std::max(image_maps[ci].range, __mem_req_i.size);
                         }
                         // Align last image
                         if (!images.empty()) {
-                            uint32_t __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
+                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
                             __mem_req.size += __additional_offset;
                         }
 
                         uint32_t __supported_mem_type_index = VK_MAX_MEMORY_TYPES;
                         for (uint32_t i = 0u; i < _allowed_size.memoryTypeCount; ++i) {
                             bool __use_memtype = true;
-                            __use_memtype &= (__mem_req.memoryTypeBits & (1 << i)) != 0u; // can represent
+                            __use_memtype &= (__mem_req.memoryTypeBits & (1u << i)) != 0u; // can represent
                             __use_memtype &= (_allowed_size.memoryTypes[i].propertyFlags & required_flags) == required_flags; // complies the user requirements
                             __use_memtype &= __mem_req.size <= _allowed_size.memoryHeaps[_allowed_size.memoryTypes[i].heapIndex].size; // can fit
 
@@ -585,13 +591,13 @@ namespace Simple {
                         VkResult __func_res = VK_SUCCESS;
                         for (ContextIndex ci = 0u; ci < buffers.size(); ++ci) {
                             __func_res = vkBindBufferMemory(cxt_core->device.handle, buffers[ci].handle, memory.handle, buffer_maps[ci].offset);
-                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind buffer error, code %d" + std::to_string(__func_res));
+                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind buffer error, code " + std::to_string(__func_res));
                         }
 
                         // Bind all images to created memory
                         for (ContextIndex ci = 0u; ci < images.size(); ++ci) {
                             __func_res = vkBindImageMemory(cxt_core->device.handle, images[ci].handle, memory.handle, image_maps[ci].offset);
-                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind image error, code %d" + std::to_string(__func_res));
+                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind image error, code " + std::to_string(__func_res));
                         }
                     }
 
@@ -670,8 +676,8 @@ namespace Simple {
 
                 void createChunkBuffer(ContextIndex2 _ci2_buffer) { memory_chunks[_ci2_buffer.first].createBuffer(_ci2_buffer.second); }
                 void createChunkImage (ContextIndex2 _ci2_image ) { memory_chunks[_ci2_image .first].createImage (_ci2_image .second); }
-                void createChunkBufferView(ContextIndex2 _ci2_buf_view) { memory_chunks[_ci2_buf_view.first].createBuffer(_ci2_buf_view.second); }
-                void createChunkImageView (ContextIndex2 _ci2_img_view) { memory_chunks[_ci2_img_view.first].createImage (_ci2_img_view.second); }
+                void createChunkBufferView(ContextIndex2 _ci2_buffer, ContextIndex2 _ci2_buf_view) { memory_chunks[_ci2_buf_view.first].createBufferView(_ci2_buf_view.second, _ci2_buffer.second); }
+                void createChunkImageView (ContextIndex2 _ci2_image , ContextIndex2 _ci2_img_view) { memory_chunks[_ci2_img_view.first].createImageView (_ci2_img_view.second, _ci2_image .second); }
 
             // Scenarios
 
@@ -682,7 +688,7 @@ namespace Simple {
 
                     std::vector<VkfwQueueFamily> __qfamilies((size_t)_ci_qfamilies.size());
                     for (uint32_t i = 0u; i < _ci_qfamilies.size(); ++i)
-                        __qfamilies[i] = cxt_core->queue_families[i].handle;
+                        __qfamilies[i] = cxt_core->queue_families[_ci_qfamilies[i]].handle;
                     memory_chunks[_ci2_buffer.first].buffers[_ci2_buffer.second].create_info.setWholeStruct(__qfamilies, _sharing_mode, _usage_flags, memory_chunks[_ci2_buffer.first].buffer_maps[_ci2_buffer.second].range);
                 }
             } cxt_memory; // ContextMemory END
@@ -1090,9 +1096,11 @@ namespace Simple {
 
         struct MemoryMapHandler {
             std::pair<void *, ContextIndex> mem_handle{nullptr, VKFW_CI_IGNORE};
+            VkDeviceSize mapped_offset = 0u; // offset of the mapped range in the device memory (offsets in 'buf_maps'/'img_maps' are relative to it)
             std::vector<std::pair<ContextIndex2, VulkanContext::ContextMemory::MemoryMapping>> buf_maps, img_maps;
 
             ObjGetterHandler cxt_handler;
+            mutable VkDeviceSize non_coherent_atom_size = 0u; // loaded on demand
 
             MemoryMapHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
            ~MemoryMapHandler() {
@@ -1101,51 +1109,72 @@ namespace Simple {
             }
 
             void MapMemory(ContextIndex _ci_memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
+                UnmapMemory(); // memory object can't be mapped twice
                 mem_handle = { Func::MapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(_ci_memory), _offset, _size), _ci_memory };
+                mapped_offset = _offset;
             }
 
             void UnmapMemory() {
                 if (mem_handle.second != VKFW_CI_IGNORE)
                     Func::UnmapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(mem_handle.second));
+                mem_handle = {nullptr, VKFW_CI_IGNORE};
+                mapped_offset = 0u;
             }
 
             void clear() {
                 mem_handle = {nullptr, VKFW_CI_IGNORE};
+                mapped_offset = 0u;
                 buf_maps.clear();
                 img_maps.clear();
             }
 
         // Memory Functions
 
-            void FlushMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+            // Converts ranges relative to the mapped memory into absolute VkMappedMemoryRange aligned to 'nonCoherentAtomSize'
+            std::vector<VkMappedMemoryRange> getMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+                if (non_coherent_atom_size == 0u) {
+                    VkPhysicalDeviceProperties __properties{};
+                    vkGetPhysicalDeviceProperties(cxt_handler.getObjPhysicalDevice(), &__properties);
+                    non_coherent_atom_size = std::max(__properties.limits.nonCoherentAtomSize, VkDeviceSize(1u));
+                }
+                const VkDeviceSize __alloc_size = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].memory.allocate_info.wrap.allocationSize;
+
                 std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size(), VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE});
                 for (uint32_t i = 0u; i < __mem_ranges.size(); ++i) {
-                    __mem_ranges[i].memory =  cxt_handler.getObjDeviceMemory(mem_handle.second);
-                    __mem_ranges[i].offset = _mem_ranges[i].offset;
-                    __mem_ranges[i].size   = _mem_ranges[i].range;
-                }
+                    VkDeviceSize __offset = mapped_offset + _mem_ranges[i].offset;
+                    VkDeviceSize __aligned_offset = __offset - __offset % non_coherent_atom_size;
 
-                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), __mem_ranges);
+                    __mem_ranges[i].memory = cxt_handler.getObjDeviceMemory(mem_handle.second);
+                    __mem_ranges[i].offset = __aligned_offset;
+                    __mem_ranges[i].size   = VK_WHOLE_SIZE;
+                    if (_mem_ranges[i].range != VK_WHOLE_SIZE) {
+                        VkDeviceSize __end = __offset + _mem_ranges[i].range;
+                        __end += (non_coherent_atom_size - __end % non_coherent_atom_size) % non_coherent_atom_size;
+                        if (__end < __alloc_size)
+                            __mem_ranges[i].size = __end - __aligned_offset;
+                    }
+                }
+                return __mem_ranges;
             }
 
-            void InvalidateMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
-                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size(), VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE});
-                for (uint32_t i = 0u; i < __mem_ranges.size(); ++i) {
-                    __mem_ranges[i].memory =  cxt_handler.getObjDeviceMemory(mem_handle.second);
-                    __mem_ranges[i].offset = _mem_ranges[i].offset;
-                    __mem_ranges[i].size   = _mem_ranges[i].range;
-                }
+            // Note: offsets are relative to the start of the mapped memory
+            void FlushMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), getMappedMemoryRanges(_mem_ranges));
+            }
 
-                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), __mem_ranges);
+            // Note: offsets are relative to the start of the mapped memory
+            void InvalidateMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), getMappedMemoryRanges(_mem_ranges));
             }
 
         // Scenarios
-        
+
             void mapMemoryFromBuffer(ContextIndex2 _buffer_ci, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
                 auto __buffer_mapping = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_buffer_ci.first].buffer_maps[_buffer_ci.second];
-                SVKFW_ASSERT(_offset         < __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer",          "'offset' is out of buffer range: " + std::to_string(_offset        ) + " < " + std::to_string(__buffer_mapping.range));
-                if (_size != VK_WHOLE_SIZE)
-                    SVKFW_ASSERT(_offset + _size < __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer", "'size' + 'offset' is out of buffer range: " + std::to_string(_offset + _size) + " < " + std::to_string(__buffer_mapping.range));
+                SVKFW_ASSERT(_offset         <  __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer",          "'offset' is out of buffer range: " + std::to_string(_offset        ) + " >= " + std::to_string(__buffer_mapping.range));
+                if (_size == VK_WHOLE_SIZE)
+                    _size = __buffer_mapping.range - _offset;
+                SVKFW_ASSERT(_offset + _size <= __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer", "'size' + 'offset' is out of buffer range: " + std::to_string(_offset + _size) + " > " + std::to_string(__buffer_mapping.range));
 
                 __buffer_mapping.offset += _offset;
                 __buffer_mapping.range   =   _size;
@@ -1155,9 +1184,10 @@ namespace Simple {
 
             void mapMemoryFromImage(ContextIndex2 _image_ci, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
                 auto __image_mapping = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_image_ci.first].image_maps[_image_ci.second];
-                SVKFW_ASSERT(_offset         < __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage",          "'offset' is out of image range: " + std::to_string(_offset        ) + " < " + std::to_string(__image_mapping.range));
-                if (_size != VK_WHOLE_SIZE)
-                    SVKFW_ASSERT(_offset + _size < __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage", "'size' + 'offset' is out of image range: " + std::to_string(_offset + _size) + " < " + std::to_string(__image_mapping.range));
+                SVKFW_ASSERT(_offset         <  __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage",          "'offset' is out of image range: " + std::to_string(_offset        ) + " >= " + std::to_string(__image_mapping.range));
+                if (_size == VK_WHOLE_SIZE)
+                    _size = __image_mapping.range - _offset;
+                SVKFW_ASSERT(_offset + _size <= __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage", "'size' + 'offset' is out of image range: " + std::to_string(_offset + _size) + " > " + std::to_string(__image_mapping.range));
 
                 __image_mapping.offset += _offset;
                 __image_mapping.range   =   _size;
@@ -1169,7 +1199,7 @@ namespace Simple {
                 SVKFW_ASSERT(!_ci_bufs.empty() || !_ci_imgs.empty(), std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
                                 "Both buffer and image arrays are empty");
 
-                vec2u __mapping_loc{~0u, 0u};
+                VkDeviceSize __mapping_begin = UINT64_MAX, __mapping_end = 0u;
                 ContextIndex __ci_device_mem = VKFW_CI_IGNORE;
                 if (!_ci_bufs.empty()) __ci_device_mem = _ci_bufs[0].first;
                 if (!_ci_imgs.empty()) __ci_device_mem = _ci_imgs[0].first;
@@ -1180,8 +1210,8 @@ namespace Simple {
                                     "buffer memory chunk mismatch: " + std::to_string(_ci_bufs[i].first) + " and " + std::to_string(__ci_device_mem));
                     buf_maps[i].first  = _ci_bufs[i];
                     buf_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_ci_bufs[i].first].buffer_maps[_ci_bufs[i].second];
-                    __mapping_loc.x = std::min(__mapping_loc.x, uint32_t(buf_maps[i].second.offset));
-                    __mapping_loc.y = std::max(__mapping_loc.y, uint32_t(buf_maps[i].second.offset + buf_maps[i].second.range));
+                    __mapping_begin = std::min(__mapping_begin, buf_maps[i].second.offset);
+                    __mapping_end   = std::max(__mapping_end  , buf_maps[i].second.offset + buf_maps[i].second.range);
                 }
 
                 img_maps.resize(_ci_imgs.size());
@@ -1190,70 +1220,71 @@ namespace Simple {
                                     "image memory chunk mismatch: " + std::to_string(_ci_imgs[i].first) + " and " + std::to_string(__ci_device_mem) + (_ci_bufs.empty() ? " (image)" : " (buffer)"));
                     img_maps[i].first  = _ci_imgs[i];
                     img_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_ci_imgs[i].first].image_maps[_ci_imgs[i].second];
-                    __mapping_loc.x = std::min(__mapping_loc.x, uint32_t(img_maps[i].second.offset));
-                    __mapping_loc.y = std::max(__mapping_loc.y, uint32_t(img_maps[i].second.offset + img_maps[i].second.range));
+                    __mapping_begin = std::min(__mapping_begin, img_maps[i].second.offset);
+                    __mapping_end   = std::max(__mapping_end  , img_maps[i].second.offset + img_maps[i].second.range);
                 }
 
                 for (auto& buf_map : buf_maps)
-                    buf_map.second.offset -= __mapping_loc.x;
+                    buf_map.second.offset -= __mapping_begin;
                 for (auto& img_map : img_maps)
-                    img_map.second.offset -= __mapping_loc.x;
-                __mapping_loc.y -= __mapping_loc.x;
+                    img_map.second.offset -= __mapping_begin;
 
-                MapMemory(__ci_device_mem, __mapping_loc.x, __mapping_loc.y);
+                MapMemory(__ci_device_mem, __mapping_begin, __mapping_end - __mapping_begin);
             }
 
-            void copyToBufferMap(ContextIndex2 _ci_buf, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                bool __success = false;
-                for (const auto &buf_map : buf_maps) {
-                    if (buf_map.first == _ci_buf) {
-                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = buf_map.second.range;
-                        // printf("Copying %ld bytes to mapped buffer: [%d, %d)\n", _mem_size, buf_map.second.offset, buf_map.second.offset + buf_map.second.range);
-                        memcpy((uint8_t*)mem_handle.first + buf_map.second.offset + _mem_offset, _data_ptr, _mem_size);
-                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-                            FlushMappedMemoryRanges({ {buf_map.second.offset + _mem_offset, _mem_size} });
-                        __success = true;
-                        break;
-                    }
-                }
+            // Returns false if the buffer isn't mapped
+            bool copyToBufferMap(ContextIndex2 _ci_buf, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                return copyToMap_(buf_maps, _ci_buf, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyToBufferMap");
             }
 
-            void copyToImageMap(ContextIndex2 _ci_img, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                bool __success = false;
-                for (const auto &img_map : img_maps) {
-                    if (img_map.first == _ci_img) {
-                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = img_map.second.range;
-                        memcpy((uint8_t*)mem_handle.first + img_map.second.offset + _mem_offset, _data_ptr, _mem_size);
-                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-                            FlushMappedMemoryRanges({ {img_map.second.offset + _mem_offset, _mem_size} });
-                        __success = true;
-                        break;
-                    }
-                }
+            // Returns false if the image isn't mapped
+            bool copyToImageMap(ContextIndex2 _ci_img, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                return copyToMap_(img_maps, _ci_img, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyToImageMap");
             }
 
-            void copyFromBufferMap(ContextIndex2 _ci_buf, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                bool __success = false;
-                for (const auto &buf_map : buf_maps) {
-                    if (buf_map.first == _ci_buf) {
-                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-                            InvalidateMappedMemoryRanges({ {buf_map.second.offset + _mem_offset, _mem_size} });
-                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + buf_map.second.offset + _mem_offset, _mem_size);
-                        __success = true;
-                    }
-                }
+            // Returns false if the buffer isn't mapped
+            bool copyFromBufferMap(ContextIndex2 _ci_buf, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                return copyFromMap_(buf_maps, _ci_buf, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyFromBufferMap");
             }
 
-            void copyFromImageMap(ContextIndex2 _ci_img, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                bool __success = false;
-                for (const auto &img_map : img_maps) {
-                    if (img_map.first == _ci_img) {
-                        if (!(cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-                            InvalidateMappedMemoryRanges({ {img_map.second.offset + _mem_offset, _mem_size} });
-                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + img_map.second.offset + _mem_offset, _mem_size);
-                        __success = true;
+            // Returns false if the image isn't mapped
+            bool copyFromImageMap(ContextIndex2 _ci_img, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
+                return copyFromMap_(img_maps, _ci_img, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyFromImageMap");
+            }
+
+        private:
+            typedef std::vector<std::pair<ContextIndex2, VulkanContext::ContextMemory::MemoryMapping>> MapsVec_;
+
+            bool isMemoryCoherent_() const {
+                return cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            }
+
+            bool copyToMap_(const MapsVec_ &_maps, ContextIndex2 _ci, const void* _data_ptr, int64_t _mem_offset, VkDeviceSize _mem_size, const char *_where) const {
+                for (const auto &map : _maps) {
+                    if (map.first == _ci) {
+                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = map.second.range - _mem_offset;
+                        memcpy((uint8_t*)mem_handle.first + map.second.offset + _mem_offset, _data_ptr, _mem_size);
+                        if (!isMemoryCoherent_())
+                            FlushMappedMemoryRanges({ {map.second.offset + _mem_offset, _mem_size} });
+                        return true;
                     }
                 }
+                fprintf(svkfwwarn, "%s: (%u, %u) in %s\n", SVKFW_WRAPWARN("VKFW::MemoryMapHandler", "resource is not mapped"), _ci.first, _ci.second, _where);
+                return false;
+            }
+
+            bool copyFromMap_(const MapsVec_ &_maps, ContextIndex2 _ci, void* _data_ptr, int64_t _mem_offset, VkDeviceSize _mem_size, const char *_where) const {
+                for (const auto &map : _maps) {
+                    if (map.first == _ci) {
+                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = map.second.range - _mem_offset;
+                        if (!isMemoryCoherent_())
+                            InvalidateMappedMemoryRanges({ {map.second.offset + _mem_offset, _mem_size} });
+                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + map.second.offset + _mem_offset, _mem_size);
+                        return true;
+                    }
+                }
+                fprintf(svkfwwarn, "%s: (%u, %u) in %s\n", SVKFW_WRAPWARN("VKFW::MemoryMapHandler", "resource is not mapped"), _ci.first, _ci.second, _where);
+                return false;
             }
         }; // MemoryMapHandler END
 
@@ -1319,6 +1350,7 @@ namespace Simple {
                     case VKFW_PIPELINE_TYPE_GRAPHICS   : __pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS       ; break;
                     case VKFW_PIPELINE_TYPE_COMPUTE    : __pipeline_type = VK_PIPELINE_BIND_POINT_COMPUTE        ; break;
                     case VKFW_PIPELINE_TYPE_RAY_TRACING: __pipeline_type = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
+                    default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::CommandHandler :: CmdBindPipeline", "pipeline type is not set"));
                 }
                 vkCmdBindPipeline(cmd_buffer, __pipeline_type, cxt_handler.getObjPipeline(_pipeline_ci));
             }
@@ -1472,12 +1504,14 @@ namespace Simple {
                 VkResult __result = vkAcquireNextImageKHR(cxt_handler.getObjDevice(), cxt_handler.getObjSwapchainKHR(),
                                                           _timeout, cxt_handler.getObjSemaphore(_semaphore_ci), __fence, &__image_index);
 
-                if (__result == VK_SUBOPTIMAL_KHR || __result == VK_ERROR_OUT_OF_DATE_KHR) {
+                // Note: with VK_SUBOPTIMAL_KHR the image is acquired and the semaphore/fence will be signaled,
+                //       so the frame is rendered as usual; the swapchain is recreated after presentation.
+                if (__result == VK_ERROR_OUT_OF_DATE_KHR) {
                     waitForRequiredQueues(_timeout);
                     cxt_handler.cxt_ptr->cxt_swapchain.recreate();
                     __image_index = UINT32_MAX;
                 }
-                else if (__result != VK_SUCCESS)
+                else if (__result != VK_SUCCESS && __result != VK_SUBOPTIMAL_KHR)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::SwapchainHandler :: AcquireNextImageKHR", "Failed to acquire next swapchain image"));
 
                 return __image_index;
@@ -1485,6 +1519,10 @@ namespace Simple {
 
             void UpdateDescriptorSets() {
                 update_descr_sets.callFunction(cxt_handler.getObjDevice());
+            }
+            
+            uint32_t GetSwapchainImagesKHR() {
+                return cxt_handler.cxt_ptr->cxt_swapchain.getSwapchainImageCount();
             }
 
         // Scenarios
@@ -1528,7 +1566,8 @@ namespace Simple {
 
                 VkMappedMemoryRange __mem_range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
                 __mem_range.memory = cxt_handler.getObjDeviceMemory(_staging_buffer_ci2.first);
-                VkBufferCopy __copy_region{ .dstOffset = _dst_offset };
+                VkBufferCopy __copy_region{};
+                __copy_region.dstOffset = _dst_offset;
 
                 while (_copy_size > 0u) {
                     size_t __curr_copy_size = std::min(__staging_buffer_map_size, _copy_size);

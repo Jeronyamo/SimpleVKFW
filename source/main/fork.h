@@ -12,9 +12,9 @@ namespace Simple {
         FORK_CHILD_R = 1,
         FORK_CHILD_W = 2,
         FORK_CHILD_RW = 3,
-        FORK_CHILD_R = 4,
-        FORK_CHILD_W = 8,
-        FORK_CHILD_RW = 12
+        FORK_PARENT_R = 4,
+        FORK_PARENT_W = 8,
+        FORK_PARENT_RW = 12
     } ForkPipeDescriptorsUsed; // ForkPipeDescriptorsUsed END
 
 

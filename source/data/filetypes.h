@@ -421,11 +421,12 @@ namespace Simple {
                 BiquadCoeffs c1 = makeLowpassBiquad(_freq_sample_hz, _freq_cutout_hz, Q1);
                 BiquadCoeffs c2 = makeLowpassBiquad(_freq_sample_hz, _freq_cutout_hz, Q2);
                 vec3f seed = _is_forward ? data.front() : data.back();
+                // Steady state for constant input 'seed' (DC gain is 1, so output == input): z2 = (b2-a2)*x, z1 = (b1-a1)*x + z2
                 for (int k = 0; k < 3; ++k) {
-                    s1[k].z1 = (c1.b1 - c1.a1) * seed[k];
                     s1[k].z2 = (c1.b2 - c1.a2) * seed[k];
-                    s2[k].z1 = (c2.b1 - c2.a1) * seed[k];
+                    s1[k].z1 = (c1.b1 - c1.a1) * seed[k] + s1[k].z2;
                     s2[k].z2 = (c2.b2 - c2.a2) * seed[k];
+                    s2[k].z1 = (c2.b1 - c2.a1) * seed[k] + s2[k].z2;
                 }
                 for (int step = 0; step < data.size(); ++step) {
                     int i = _is_forward ? step : (data.size() - 1 - step);
@@ -470,6 +471,25 @@ namespace Simple {
             }
 
             void reinterpolateBone(const std::string &_raw_bone_name) {
+                // Reinterpolate existing Bezier curves
+                std::vector<uint32_t> __bone_kframe_ids;
+                std::vector<vec3f> __kframe_data; // in_vel, out_vel, do_keep
+
+                // for (uint32_t i = 0u; i < keyframes_bone.size(); ++i) {
+                //     if (keyframes_bone[i].bone_name == _raw_bone_name)
+                //         __bone_kframe_ids.push_back(i);
+                // }
+                // if (__bone_kframe_ids.size() <= 2) return;
+                // __kframe_data.resize(__bone_kframe_ids.size());
+
+                // for (uint32_t i = 1u; i < __kframe_data.size() - 1u; ++i) {
+                //     // TODO:
+                // }
+
+                __kframe_data.clear();
+                __bone_kframe_ids.clear();
+
+
                 std::vector<BoneKeyframe> __bone_keyframes;
 
                 // Obtain/Interpolate every keyframe (30 FPS)
@@ -479,7 +499,8 @@ namespace Simple {
                         const uint32_t __first_ind = __bone_keyframes.size() - 1;
                         const uint32_t __new_kframes = bone_kframe.frame_id - __bone_keyframes[__first_ind].frame_id;
                         const vec3b __update_pos = __bone_keyframes[__first_ind].position != bone_kframe.position;
-                        const InterpolationInfo __int_info =  GetInterpolation(__bone_keyframes[__first_ind]);
+                        // Note: interpolation curve of the segment A->B is stored in the keyframe B
+                        const InterpolationInfo __int_info =  GetInterpolation(bone_kframe);
 
                         __bone_keyframes.resize(__bone_keyframes.size() + __new_kframes);
                         if (Math::dot(__bone_keyframes[__first_ind].rotation, bone_kframe.rotation) < 1e-6f)
@@ -494,17 +515,17 @@ namespace Simple {
                             if (__update_pos.x) {
                                 // Pos X
                                 __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_x["xy"].cast<float>(), __int_info.mov_x["zw"].cast<float>());
-                                __bone_keyframes[__first_ind + i].position.x = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.x, bone_kframe.position.x);
+                                __bone_keyframes[__first_ind + i].position.x = Interpolation::BezierLinear<float>::Interpolate(__interp_t, __bone_keyframes[__first_ind].position.x, bone_kframe.position.x);
                             }
                             if (__update_pos.y) {
                                 // Pos Y
                                 __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_y["xy"].cast<float>(), __int_info.mov_y["zw"].cast<float>());
-                                __bone_keyframes[__first_ind + i].position.y = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.y, bone_kframe.position.y);
+                                __bone_keyframes[__first_ind + i].position.y = Interpolation::BezierLinear<float>::Interpolate(__interp_t, __bone_keyframes[__first_ind].position.y, bone_kframe.position.y);
                             }
                             if (__update_pos.z) {
                                 // Pos Z
                                 __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.mov_z["xy"].cast<float>(), __int_info.mov_z["zw"].cast<float>());
-                                __bone_keyframes[__first_ind + i].position.z = Interpolation::BezierLinear<float>::Interpolate(float(i) / __new_kframes, __bone_keyframes[__first_ind].position.z, bone_kframe.position.z);
+                                __bone_keyframes[__first_ind + i].position.z = Interpolation::BezierLinear<float>::Interpolate(__interp_t, __bone_keyframes[__first_ind].position.z, bone_kframe.position.z);
                             }
                             // Rot
                             __interp_t = interpolateForMMD(float(i) / __new_kframes, __int_info.rot["xy"].cast<float>(), __int_info.rot["zw"].cast<float>());
@@ -513,7 +534,6 @@ namespace Simple {
                     }
                     else __bone_keyframes.insert(__bone_keyframes.end(), bone_kframe);
                 }
-                if (__bone_keyframes.size() < 2) return;
 
                 // Remove old keyframes
                 for (int i = keyframes_bone.size() - 1; i >= 0; --i)
@@ -522,26 +542,16 @@ namespace Simple {
 
                 // Convert quaternion rotations into tangent-space vectors
                 std::vector<vec3f> __tangent_vecs(__bone_keyframes.size());
-                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i) {
-                    __tangent_vecs[i] = {};
-                    float __theta = std::acos(__bone_keyframes[i].rotation.s);
-                    if (std::abs(std::sin(__theta)) > 1e-5f) {
-                        __tangent_vecs[i] = (__theta / std::sin(__theta)) * __bone_keyframes[i].rotation.vecPart();
-                    }
-                }
+                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i)
+                    __tangent_vecs[i] = Affine::Rotation::quaternion2tangent(__bone_keyframes[i].rotation);
 
                 // Apply Butterworth low-pass filter
                 butterworthLowpass4(__tangent_vecs, 30.f, 4.f,  true);
                 butterworthLowpass4(__tangent_vecs, 30.f, 4.f, false);
 
                 // Convert vectors back to quaternions
-                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i) {
-                    __bone_keyframes[i].rotation = {};
-                    float __theta = __tangent_vecs[i].norm();
-                    if (std::abs(std::sin(__theta)) > 1e-4f) {
-                        __bone_keyframes[i].rotation = { std::cos(__theta), std::sin(__theta) / __theta * __tangent_vecs[i] };
-                    }
-                }
+                for (uint32_t i = 0u; i < __tangent_vecs.size(); ++i)
+                    __bone_keyframes[i].rotation = Affine::Rotation::tangent2quaternion(__tangent_vecs[i]).normalize();
 
                 // Add new keyframes
                 keyframes_bone.insert(keyframes_bone.end(), __bone_keyframes.begin(), __bone_keyframes.end());
@@ -569,6 +579,104 @@ namespace Simple {
                 sortBoneKeyframes();
             }
 
+            // pos, tangent, fov, dist;
+            typedef vec4f CRDataT;
+            struct CRDataP {
+                vec3f pos, tangent;
+                float fov, dist;
+
+                CRDataP() {}
+                CRDataP(const CameraKeyframe &_cam_kframe) {
+                    pos = _cam_kframe.position;
+                    tangent = Affine::Rotation::quaternion2tangent(Affine::Rotation::ypr2quaternion(_cam_kframe.rotation));
+                    fov = _cam_kframe.fov;
+                    dist = _cam_kframe.distance;
+                }
+                CRDataP(const vec3f &_pos, const vec3f &_tang, float _fov, float _dist)
+                                : pos{_pos}, tangent{_tang}, fov{_fov}, dist{_dist} {}
+
+                ContentVMD::CRDataP operator+(const ContentVMD::CRDataP&_op)
+                    { return { pos + _op.pos, tangent + _op.tangent, fov + _op.fov, dist + _op.dist }; }
+                ContentVMD::CRDataP operator-(const ContentVMD::CRDataP&_op)
+                    { return { pos - _op.pos, tangent - _op.tangent, fov - _op.fov, dist - _op.dist }; }
+                ContentVMD::CRDataP operator*(const ContentVMD::CRDataP&_op)
+                    { return { pos * _op.pos, tangent * _op.tangent, fov * _op.fov, dist * _op.dist }; }
+                ContentVMD::CRDataP operator/(const ContentVMD::CRDataP&_op)
+                    { return { pos / _op.pos, tangent / _op.tangent, fov / _op.fov, dist / _op.dist }; }
+                ContentVMD::CRDataP operator+(const ContentVMD::CRDataT&_op)
+                    { return { pos + _op.x, tangent + _op.y, fov + _op.z, dist + _op.w }; }
+                ContentVMD::CRDataP operator-(const ContentVMD::CRDataT&_op)
+                    { return { pos - _op.x, tangent - _op.y, fov - _op.z, dist - _op.w }; }
+                ContentVMD::CRDataP operator*(const ContentVMD::CRDataT&_op)
+                    { return { pos * _op.x, tangent * _op.y, fov * _op.z, dist * _op.w }; }
+                ContentVMD::CRDataP operator/(const ContentVMD::CRDataT&_op)
+                    { return { pos / _op.x, tangent / _op.y, fov / _op.z, dist / _op.w }; }
+            };
+
+            static vec4f DataPtoT(CRDataP _data_new, CRDataP _data_old) {
+                return { (_data_new.pos     - _data_old.pos    ).norm(),
+                         (_data_new.tangent - _data_old.tangent).norm(),
+                         std::sqrt(std::abs(_data_new.fov  - _data_old.fov )),
+                         std::sqrt(std::abs(_data_new.dist - _data_old.dist))};
+            }
+
+            void reinterpolateCamera(bool _bake_path = false) {
+                if (keyframes_camera.size() < 2) return;
+                const vec2f x{ 1.f/3, 2.f/3 };
+                CRDataT t[4]{};
+                CRDataP m[2]{}, p[4]{ keyframes_camera[0], keyframes_camera[0],
+                                      keyframes_camera[1], keyframes_camera[keyframes_camera.size() < 3 ? 1 : 2], };
+
+                CRDataT __delta0, __delta1;
+                __delta0 = DataPtoT(p[2], p[1]);
+                __delta1 = DataPtoT(p[3], p[2]);
+                t[1] = DataPtoT(p[1], p[0]);
+                t[2] = t[1] + __delta0;
+                t[3] = t[2] + __delta1;
+
+                // Note: control points' Y can be outside of [0, 1], but VMD stores them in [0, 127]
+                auto __toInterpBytes = [&x](float _y1, float _y2) -> vec4u8 {
+                    return (vec4f(x[0], Math::clampCL(_y1, 0.f, 1.f), x[1], Math::clampCL(_y2, 0.f, 1.f)) * 127.f + 0.5f).cast<uint8_t>();
+                };
+
+                // Note: the segment p[1]->p[2] is processed at each iteration; it's curve is stored in its end keyframe (p[2], i+1)
+                InterpolationInfo __interp_info;
+                for (uint32_t i = 0u; i + 1u < keyframes_camera.size(); ++i) {
+                    m[0] = (p[2] - p[0]) / (t[2] - t[0]);
+                    m[1] = (p[3] - p[1]) / (t[3] - t[1]);
+
+                    CRDataP y1 = m[0] * (t[2] - t[1]) / ((p[2] - p[1]) * 3.f),
+                            y2 = m[1] *-(t[2] - t[1]) / ((p[2] - p[1]) * 3.f) + 1.f;
+
+                    __interp_info = GetInterpolation(keyframes_camera[i+1]);
+                    if (__delta0.x > 1e-4f) {
+                        if (std::isfinite(y1.pos.x) && std::isfinite(y2.pos.x))
+                            __interp_info.mov_x = __toInterpBytes(y1.pos.x, y2.pos.x);
+                        if (std::isfinite(y1.pos.y) && std::isfinite(y2.pos.y))
+                            __interp_info.mov_y = __toInterpBytes(y1.pos.y, y2.pos.y);
+                        if (std::isfinite(y1.pos.z) && std::isfinite(y2.pos.z))
+                            __interp_info.mov_z = __toInterpBytes(y1.pos.z, y2.pos.z);
+                    }
+                    if (__delta0.z > 1e-4f)
+                        if (std::isfinite(y1.fov ) && std::isfinite(y2.fov ))
+                            __interp_info.fov  = __toInterpBytes(y1.fov,  y2.fov );
+                    if (__delta0.w > 1e-4f)
+                        if (std::isfinite(y1.dist) && std::isfinite(y2.dist))
+                            __interp_info.dist = __toInterpBytes(y1.dist, y2.dist);
+                    SetInterpolation(keyframes_camera[i+1], __interp_info);
+
+
+                    // Shift the window: p = { k[i], k[i+1], k[i+2], k[i+3] } for the next iteration
+                    p[0] = p[1]; p[1] = p[2]; p[2] = p[3];
+                    p[3] = keyframes_camera[std::min(i+3u, (uint32_t)keyframes_camera.size()-1u)];
+                    __delta0 = DataPtoT(p[2], p[1]);
+                    __delta1 = DataPtoT(p[3], p[2]);
+
+                    t[0] = t[1]; t[1] = t[2]; t[2] = t[3];
+                    t[3] = t[2] + __delta1 * (__delta1 > 1e-4f);
+                }
+            }
+
             void mixCamera(const ContentVMD &_other_camera, const std::vector<uint32_t> &_switch_frame_ids) {
                 std::vector<CameraKeyframe> __tmp_keyframes_camera;
 
@@ -589,6 +697,12 @@ namespace Simple {
                     if (!__correct_kframe && __ind_from)
                         fprintf(svkfwwarn, "%s%d\n", SVKFW_WRAPWARN("ContentVMD :: mixCamera", "Incorrect keyframe: "), __ind_from);
                 }
+
+                // Last segment: from the last switch frame to the end
+                __ind_from = __ind_to;
+                for (const auto& cam_kframe : (_switch_frame_ids.size() & 1 ? _other_camera.keyframes_camera : keyframes_camera))
+                    if (__ind_from <= cam_kframe.frame_id)
+                        __tmp_keyframes_camera.push_back(cam_kframe);
 
                 keyframes_camera = std::move(__tmp_keyframes_camera);
             }
@@ -616,8 +730,12 @@ namespace Simple {
                 // 12-15:    Rot.0x,   Rot.1x,   Rot.0y,   Rot.1y
                 // 16-19:   Dist.0x,  Dist.1x,  Dist.0y,  Dist.1y
                 // 20-23:    FOV.0x,   FOV.1x,   FOV.0y,   FOV.1y
+                // Note: file order is (0x, 1x, 0y, 1y), InterpolationInfo order is (0x, 0y, 1x, 1y) - same as in SetInterpolation()
                 InterpolationInfo __res;
-                std::memcpy(&__res, _cam_kframe.int_info, 24);
+                vec4u8 *__res_info[6] = { &__res.mov_x, &__res.mov_y, &__res.mov_z, &__res.rot, &__res.dist, &__res.fov };
+                for (uint32_t i = 0u; i < 6u; ++i)
+                    *__res_info[i] = { _cam_kframe.int_info[4*i + 0], _cam_kframe.int_info[4*i + 2],
+                                       _cam_kframe.int_info[4*i + 1], _cam_kframe.int_info[4*i + 3] };
                 return __res;
             }
             // Interpolation example - mov_x: x = 0.x, y = 0.y, z = 1.x, w = 1.y 
@@ -672,18 +790,28 @@ namespace Simple {
                 __int_info[0] = _int_info.mov_x["xzyw"];
                 __int_info[1] = _int_info.mov_y["xzyw"];
                 __int_info[2] = _int_info.mov_z["xzyw"];
-                __int_info[3] =   _int_info.rot["xzyw"];
-                __int_info[4] =  _int_info.dist["xzyw"];
-                __int_info[5] =   _int_info.fov["xzyw"];
+                __int_info[3] = _int_info.  rot["xzyw"];
+                __int_info[4] = _int_info. dist["xzyw"];
+                __int_info[5] = _int_info.  fov["xzyw"];
             }
 
             static void SetNameFromMapping(BoneKeyframe &_bone_kframe, std::string _mapping_str);
-            static void  ModifyData(const std::string &_vmd_path, bool _fix_blink = true, bool _make_reflected = true, bool _reinterpolate = true);
+            static void   ModifyData(const std::string &_vmd_path, bool _fix_blink = true, bool _make_reflected = true, bool _reinterpolate = true);
+            static void ModifyCamera(const std::string &_vmd_path, bool _reinterpolate = true);
             static void CreateMixed(const std::string &_motion_vmd_path, const std::string &_camera_vmd_path,
                                     const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
                                     const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset,
                                     const AttrAdjust &_camera2_scale, const AttrAdjust &_camera2_offset, bool _fix_blink = true);
         }; // ContentVMD END
+
+        // ContentVMD::CRDataP operator+(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
+        //     { return { _op1.x + _op2.pos, _op1.y + _op2.tangent, _op1.z + _op2.fov, _op1.w + _op2.dist }; }
+        // ContentVMD::CRDataP operator-(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
+        //     { return { _op1.x - _op2.pos, _op1.y - _op2.tangent, _op1.z - _op2.fov, _op1.w - _op2.dist }; }
+        // ContentVMD::CRDataP operator*(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
+        //     { return { _op1.x * _op2.pos, _op1.y * _op2.tangent, _op1.z * _op2.fov, _op1.w * _op2.dist }; }
+        // ContentVMD::CRDataP operator/(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
+        //     { return { _op1.x / _op2.pos, _op1.y / _op2.tangent, _op1.z / _op2.fov, _op1.w / _op2.dist }; }
 
 
         struct ReaderWriterVMD : FiletypeReaderWriterItf {
@@ -695,6 +823,7 @@ namespace Simple {
                 // Open file
                 FileReader __ftype_file{_fpath};
                 if (!__ftype_file.isOpen()) return false;
+                file_content.is_old_format = false;
 
                 // Header
                 const uint32_t header_len = 30;
@@ -716,7 +845,7 @@ namespace Simple {
                 const uint32_t __model_name_len = file_content.is_old_format ? 10 : 20;
                 __ftype_file.read(file_content.model, __model_name_len);
 
-                printf(SVKFW_WRAPINFO("VMD Reader : Model name", "'%s'\n"), file_content.model);
+                printf(SVKFW_WRAPINFO("VMD Reader : Model name", "'%.*s'\n"), int(__model_name_len), file_content.model); // not null-terminated
 
                 // Bone/Motion keyframes
                 const uint32_t __bone_name_len = 15;
@@ -757,7 +886,9 @@ namespace Simple {
 
                 // Face/Morph keyframes
                 const uint32_t __morph_name_len = 15;
+                __keyframes_count = 0u; // stays 0 if the section is missing (EOF)
                 __ftype_file.readBinary(__keyframes_count);
+
                 file_content.keyframes_morph.resize(__keyframes_count);
                 printf("\n" SVKFW_WRAPINFO("VMD Reader : Morph keyframes total", "%d\n"), __keyframes_count);
 
@@ -785,7 +916,9 @@ namespace Simple {
 
                 // Camera keyframes
                 const uint32_t __camera_interp_info_len = 24;
+                __keyframes_count = 0u; // stays 0 if the section is missing (EOF)
                 __ftype_file.readBinary(__keyframes_count);
+
                 file_content.keyframes_camera.resize(__keyframes_count);
                 printf("\n" SVKFW_WRAPINFO("VMD Reader : Camera keyframes total", "%d\n"), __keyframes_count);
 
@@ -799,12 +932,12 @@ namespace Simple {
                     file_content.keyframes_camera[i].perspect = __ftype_file.readBinary<uint8_t>(); // reading 1 byte is super effective, duh
                 }
                 printf(SVKFW_WRAPINFO("VMD Reader : Read", "Read END\n"));
-                return true;
+                return __ftype_file.isValid() || __ftype_file.isEOF();
             }
 
             virtual bool write(const std::string &_fpath) override {
-                // Open file
-                FileWriter __ftype_file{_fpath};
+                // Open file (existing file is truncated)
+                FileWriter __ftype_file{_fpath, true};
                 if (!__ftype_file.isOpen()) return false;
 
                 // Header
@@ -1197,7 +1330,11 @@ namespace Simple {
         }
 
         void ContentVMD::ModifyData(const std::string &_vmd_path, bool _fix_blink, bool _make_reflected, bool _reinterpolate) {
-            ReaderWriterVMD __vmd_file{_vmd_path};
+            ReaderWriterVMD __vmd_file{};
+            if (!__vmd_file.read(_vmd_path)) {
+                fprintf(svkfwwarn, "%s '%s'\n", SVKFW_WRAPWARN("File :: ContentVMD :: ModifyData", "could not read VMD file"), _vmd_path.c_str());
+                return;
+            }
             std::string __vmd_path_no_ext = pathRemoveExtension(_vmd_path), __suffix = "";
 
             if (_fix_blink) {
@@ -1221,6 +1358,22 @@ namespace Simple {
             }
         }
 
+        void ContentVMD::ModifyCamera(const std::string &_vmd_path, bool _reinterpolate) {
+            ReaderWriterVMD __vmd_file{};
+            if (!__vmd_file.read(_vmd_path)) {
+                fprintf(svkfwwarn, "%s '%s'\n", SVKFW_WRAPWARN("File :: ContentVMD :: ModifyCamera", "could not read VMD file"), _vmd_path.c_str());
+                return;
+            }
+            std::string __vmd_path_no_ext = pathRemoveExtension(_vmd_path), __suffix = "";
+
+            if (_reinterpolate) {
+                __vmd_file.file_content.reinterpolateCamera();
+                __suffix += "_reinterp";
+                __vmd_file.write(__vmd_path_no_ext + __suffix + ".vmd");
+                printf(SVKFW_WRAPINFO("File :: ContentVMD :: ModifyCamera", "Saved reinterpolated camera to:\n%s%s.vmd\n"), __vmd_path_no_ext.c_str(), __suffix.c_str());
+            }
+        }
+
         void ContentVMD::CreateMixed(const std::string &_motion_vmd_path, const std::string &_camera_vmd_path,
                                      const std::vector<uint32_t> &_split_frame_ids, const AttrAdjust &_motion1_offset,
                                      const AttrAdjust &_camera1_scale, const AttrAdjust &_camera1_offset,
@@ -1228,7 +1381,9 @@ namespace Simple {
             // Reflected motion
             std::string __motion_vmd_path_no_ext = pathRemoveExtension(_motion_vmd_path);
             std::string __camera_vmd_path_no_ext = pathRemoveExtension(_camera_vmd_path);
-            ReaderWriterVMD __vmd_file{__motion_vmd_path_no_ext + ".vmd"};
+            ReaderWriterVMD __vmd_file{};
+            if (!__vmd_file.read(__motion_vmd_path_no_ext + ".vmd"))
+                throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "could not read motion VMD file"));
 
             if (!__vmd_file.file_content.keyframes_camera.empty())
                 throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "motion VMD file has camera keyframes"));
@@ -1268,8 +1423,9 @@ namespace Simple {
 
 
             // Reflected camera
-            __vmd_file.read(__camera_vmd_path_no_ext + ".vmd");
-            ReaderWriterVMD __vmd_file2{__camera_vmd_path_no_ext + ".vmd"};
+            ReaderWriterVMD __vmd_file2{};
+            if (!__vmd_file.read(__camera_vmd_path_no_ext + ".vmd") || !__vmd_file2.read(__camera_vmd_path_no_ext + ".vmd"))
+                throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "could not read camera VMD file"));
 
             if (__vmd_file.file_content.keyframes_camera.empty())
                 throw std::invalid_argument(SVKFW_WRAPERR("ContentVMD :: CreateMixed", "camera VMD file has no camera keyframes"));
@@ -1320,7 +1476,6 @@ namespace Simple {
 
                 while (__ftype_file.isValid()) {
                     ContentOGG::PageOGG __tmp_ogg_page{};
-                    sizeof(__tmp_ogg_page);
 
                     // Find 'OggS'
                     char __oggs[5]{};
@@ -1329,7 +1484,7 @@ namespace Simple {
                     SVKFW_WASSERT_CMD(__is_complete, "File::ReaderWriterOGG :: read", "Page " + std::to_string(file_content.pages.size()) + " - Error while beginning to read OGG page\n", break);
 
                     while (__ftype_file.isValid() && std::strcmp(__oggs, "OggS")) {
-                        fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ReaderWriterOGG :: read", "Page %d - OggS capture position mismatch!\n"), file_content.pages.size());
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ReaderWriterOGG :: read", "Page %u - OggS capture position mismatch!\n"), unsigned(file_content.pages.size()));
                         __oggs[0] = __oggs[1];
                         __oggs[1] = __oggs[2];
                         __oggs[2] = __oggs[3];
@@ -1359,16 +1514,16 @@ namespace Simple {
                     // printf("\n");
 
                     __tmp_ogg_page.segment_data.resize(__page_data_size, 0u);
-                    SVKFW_WASSERT(__ftype_file.readBinaryArray<uint8_t>(__tmp_ogg_page.segment_data.data(), __page_data_size), "File::ReaderWriterOGG :: read", "Error reading segment data\n");
-                    file_content.pages.emplace_back(__tmp_ogg_page);
+                    SVKFW_WASSERT_CMD(__ftype_file.readBinaryArray<uint8_t>(__tmp_ogg_page.segment_data.data(), __page_data_size), "File::ReaderWriterOGG :: read", "Error reading segment data\n", break);
+                    file_content.pages.emplace_back(std::move(__tmp_ogg_page));
                 }
 
-                printf(SVKFW_WRAPINFO("OGG Reader : Read", "Read END, %d OGG pages\n"), file_content.pages.size());
+                printf(SVKFW_WRAPINFO("OGG Reader : Read", "Read END, %u OGG pages\n"), unsigned(file_content.pages.size()));
                 return true;
             }
             virtual bool write(const std::string &_fpath) override {
-                // Open file
-                FileWriter __ftype_file{_fpath};
+                // Open file (existing file is truncated)
+                FileWriter __ftype_file{_fpath, true};
                 if (!__ftype_file.isOpen()) return false;
 
                 for (const auto& page : file_content.pages) {
@@ -1420,7 +1575,7 @@ namespace Simple {
             uint32_t skipWhitespace(const char *_json_str) {
                 uint32_t __res_offset = 0u;
                 if (_json_str != nullptr)
-                    while (std::isspace(_json_str[__res_offset]) && _json_str[__res_offset] != '\0')
+                    while (std::isspace((unsigned char)_json_str[__res_offset]) && _json_str[__res_offset] != '\0')
                         __res_offset += 1;
                 return __res_offset;
             }
@@ -1462,7 +1617,9 @@ namespace Simple {
                 ~JSONNode() { removeValue(); }
 
                 const JSONNode& operator=(const JSONNode& _node) {
+                    if (this == &_node) return *this;
                     removeValue();
+                    node_type = _node.node_type; // Note: 'removeValue()' resets the type, so it must be set after it
 
                     switch (node_type) {
                         case JSON_TYPE_ARR :
@@ -1563,7 +1720,7 @@ namespace Simple {
                     try {
                         __value = std::stod(_json_str, &__res_offset);
                     }
-                    catch (std::exception) { __res_offset = UINT32_MAX; }
+                    catch (const std::exception &) { __res_offset = UINT32_MAX; }
                     setValueNum(__value);
                     return (uint32_t) __res_offset;
 
@@ -1571,16 +1728,32 @@ namespace Simple {
                 uint32_t readValueStr (const char *_json_str) {
                     bool __finish = _json_str == nullptr || _json_str[0] != '"';
                     uint32_t __res_offset = UINT32_MAX;
+                    std::string __res_str;
 
                     for (uint32_t i = 1u; !__finish; ++i) {
                         switch (_json_str[i]) {
-                            case  '"': __res_offset = i+1;
-                            case '\0': __finish = true;
-                            case '\\': ++i;
+                            case  '"': __res_offset = i+1; __finish = true; break;
+                            case '\0':                     __finish = true; break;
+                            case '\\': {
+                                ++i;
+                                switch (_json_str[i]) {
+                                    case 'b': __res_str += '\b'; break;
+                                    case 'f': __res_str += '\f'; break;
+                                    case 'n': __res_str += '\n'; break;
+                                    case 'r': __res_str += '\r'; break;
+                                    case 't': __res_str += '\t'; break;
+                                    case '\0': __finish = true;  break;
+                                    // TODO: '\uXXXX' sequences are kept as is
+                                    case 'u': __res_str += "\\u"; break;
+                                    default : __res_str += _json_str[i]; break; // '"', '\\', '/'
+                                }
+                                break;
+                            }
+                            default: __res_str += _json_str[i]; break;
                         }
                     }
                     if (__res_offset != UINT32_MAX)
-                        setValueStr(std::string(_json_str+1, _json_str+__res_offset-1));
+                        setValueStr(__res_str);
                     return __res_offset;
                 }
                 uint32_t readValueArr (const char *_json_str) {
@@ -1716,12 +1889,30 @@ namespace Simple {
                     return { value_bool ? "true" : "false" };
                 }
                 std::vector<std::string> writeValueNum (uint32_t _indent = 0u) {
-                    long long __decimal_part = (long long)value_num;
-                    return { std::abs(__decimal_part - value_num) < 1e-6 ? std::to_string(__decimal_part) : std::to_string(value_num) };
+                    // Note: shortest of "%.15g"/"%.17g" that keeps the value, integers are written without fractional part
+                    char __buf[32]{};
+                    snprintf(__buf, sizeof(__buf), "%.15g", value_num);
+                    if (std::strtod(__buf, nullptr) != value_num)
+                        snprintf(__buf, sizeof(__buf), "%.17g", value_num);
+                    return { std::string(__buf) };
                 }
                 std::vector<std::string> writeValueStr (uint32_t _indent = 0u) {
-                    return {'"' + value_str + '"'};
+                    std::string __res{'"'};
+                    for (char ch : value_str) {
+                        switch (ch) {
+                            case  '"': __res += "\\\""; break;
+                            case '\\': __res += "\\\\"; break;
+                            case '\b': __res += "\\b";  break;
+                            case '\f': __res += "\\f";  break;
+                            case '\n': __res += "\\n";  break;
+                            case '\r': __res += "\\r";  break;
+                            case '\t': __res += "\\t";  break;
+                            default  : __res += ch;     break;
+                        }
+                    }
+                    return { __res + '"' };
                 }
+
                 std::vector<std::string> writeValueArr (uint32_t _indent = 0u) {
                     const std::string __indent_str = std::string(size_t(_indent), ' ');
                     std::vector<std::string> __res, __tmp_res;

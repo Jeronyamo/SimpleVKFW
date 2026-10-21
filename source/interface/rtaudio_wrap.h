@@ -296,14 +296,14 @@ namespace Simple {
                         uint32_t __inout_dev_id = 0; // use device that has both in and out channels, if such exists
                         for (uint32_t dev_id : rta_handler.getDeviceIds()) {
                             __device_info = rta_handler.getDeviceInfo(dev_id);
-                            if (__device_info.duplexChannels > 0) {
-                                stream_config.device_i.deviceId = dev_id;
-                                stream_config.device_o.deviceId = dev_id;
+                            if (__device_info.duplexChannels > 0) { // duplex device is preferred
+                                __inout_dev_id = dev_id;
                                 break;
                             }
                             if (__device_info.inputChannels > 0 && __device_info.outputChannels > 0)
                                 __inout_dev_id = dev_id;
                         }
+
 
                         stream_config.device_i.deviceId = __inout_dev_id;
                         stream_config.device_o.deviceId = __inout_dev_id;
@@ -590,9 +590,8 @@ namespace Simple {
             // Write interleaved audio data.
             AudioStreamConfig *__config = (AudioStreamConfig*)_config;
 
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
-            __outbuf_wrap.buffer = _o_buffer;
-            __outbuf_wrap.buffer_frames = _n_buf_frames;
+            // Note: not static - buffer pointer, frame count and stream parameters may change between calls
+            StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
 
             __outbuf_wrap.setSignalForAllChannels(&__config->audio_sampler);
             return 0;
@@ -606,9 +605,8 @@ namespace Simple {
             // Write interleaved audio data.
             AudioStreamConfig *__config = (AudioStreamConfig*)_config;
 
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
-            __outbuf_wrap.buffer = _o_buffer;
-            __outbuf_wrap.buffer_frames = _n_buf_frames;
+            // Note: not static - buffer pointer, frame count and stream parameters may change between calls
+            StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
 
             __outbuf_wrap.setSignalFor2Channels(&__config->audio_sampler);
             return 0;
@@ -617,14 +615,15 @@ namespace Simple {
         int rtacbSawNoRepeat(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             AudioStreamConfig *__config = (AudioStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
+            // Note: not static - buffer pointer, frame count and stream parameters may change between calls
+            StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 0.000002f };
 
             rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
             for (uint32_t i = 0; i < _n_buf_frames; ++i) {
-                for (uint32_t j = 0; j < 2; ++j) {
+                for (uint32_t j = 0; j < __outbuf_wrap.channels; ++j) {
                     __outbuf_wrap.setValForChannel(__config->getMaxVolume() * __last_val[0], i, j);
                 }
 
@@ -644,14 +643,15 @@ namespace Simple {
         int rtacbSawPulse(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             AudioStreamConfig *__config = (AudioStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
+            // Note: not static - buffer pointer, frame count and stream parameters may change between calls
+            StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[3] = { -1.f, 0.000001f, 1.00006f };
 
             rtacbCallbackWarningCheck(_status);
 
             // Write interleaved audio data.
             for (uint32_t i = 0; i < _n_buf_frames; ++i) {
-                for (uint32_t j = 0; j < 2; ++j) {
+                for (uint32_t j = 0; j < __outbuf_wrap.channels; ++j) {
                     __outbuf_wrap.setValForChannel(__config->getMaxVolume() * __last_val[0], i, j);
                 }
 
@@ -673,7 +673,8 @@ namespace Simple {
         int rtacbSaw(void *_o_buffer, void *inputBuffer, unsigned int _n_buf_frames,
                       double _stream_t, RtAudioStreamStatus _status, void *_config) {
             AudioStreamConfig *__config = (AudioStreamConfig*)_config;
-            static StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
+            // Note: not static - buffer pointer, frame count and stream parameters may change between calls
+            StreamBuffer __outbuf_wrap{_o_buffer, _n_buf_frames, __config->device_o.nChannels, __config};
             static float __last_val[2] = { -1.f, 0.02f };
             static Audio::Sample::SmpSaw __saw_sample;
             static Audio::AudioSampler  __audio_sampler{ {&__saw_sample} };

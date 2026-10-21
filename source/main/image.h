@@ -37,21 +37,27 @@ namespace Simple {
             ImgSampleType sample_type = SAMPLE_TYPE_BILINEAR;
             ImgExtensionType ext_type = EXT_TYPE_REPEAT;
 
+            // Returns { uv (in [0, 1)), offset sign to the next pixel }
             vec4f validateUV(vec2f _uv) const {
+                const float __max_uv = 0.99999994f; // largest float < 1, so that 'uv * size' is a valid pixel index
                 vec2f __offset_sign{1.f};
-                int rep_x, rep_y;
                 if ((_uv >= 0.f).all() && (_uv < 1.f).all()) return { _uv, __offset_sign };
 
                 switch (ext_type) {
                     case EXT_TYPE_REPEAT:
-                    case EXT_TYPE_REPEAT_MIRRORED:
-                        rep_x = std::modf(_uv.x, &_uv.x);
-                        rep_y = std::modf(_uv.y, &_uv.y);
-                        _uv.x = (rep_x & ext_type) ? __offset_sign.x=-1.f, 1.f - _uv.x : _uv.x;
-                        _uv.y = (rep_y & ext_type) ? __offset_sign.y=-1.f, 1.f - _uv.y : _uv.y;
+                    case EXT_TYPE_REPEAT_MIRRORED: {
+                        // Note: floor (not modf) keeps the fractional part positive for negative uv
+                        vec2f __rep{std::floor(_uv.x), std::floor(_uv.y)};
+                        _uv -= __rep;
+                        if (ext_type == EXT_TYPE_REPEAT_MIRRORED) {
+                            if (int(__rep.x) & 1) { __offset_sign.x = -1.f; _uv.x = 1.f - _uv.x; }
+                            if (int(__rep.y) & 1) { __offset_sign.y = -1.f; _uv.y = 1.f - _uv.y; }
+                        }
+                        _uv = Math::clampCL(_uv, vec2f{0.f}, vec2f{__max_uv});
                         break;
+                    }
                     case EXT_TYPE_CLAMP:
-                        _uv = Math::clampCL(_uv, {0.f}, {1.f});
+                        _uv = Math::clampCL(_uv, vec2f{0.f}, vec2f{__max_uv});
                         break;
                 }
                 return { _uv, __offset_sign };
@@ -61,7 +67,7 @@ namespace Simple {
 
         template <typename T, int Ch>
         struct Image {
-            static_assert(Ch > 0 && Ch < 5);
+            static_assert(Ch > 0 && Ch < 5, "Img :: Image - number of channels must be in [1, 4]");
             using ColorType = Color::Util::ColorConstructor<T, Ch>;
             using ChannelType = Color::Util::ColorChanType<T>;
             using ChannelOpsType = Color::Util::ColorChanOpsType<T>;
@@ -220,7 +226,7 @@ namespace Simple {
 
             template <typename ResChanT>
             Image<Color::Util::ColorChanType<ResChanT>, 1> imgCastChannels(int _ch1) const {
-                Image<ChannelType, 1> __res{width, height};
+                Image<Color::Util::ColorChanType<ResChanT>, 1> __res{width, height};
                 for (uint32_t pixel_id = 0u; pixel_id < img.size(); ++pixel_id)
                     __res.img[pixel_id]   = Color::Func::convert<Color::Util::ColorChanType<ResChanT>>(Color::Func::getChannel(img[pixel_id], _ch1));
                 return __res;
@@ -340,6 +346,8 @@ namespace Simple {
                 img.resize(width * height);
                 for (uint32_t i = 0u; i < width * height; ++i)
                     img[i] = ((ColorType *)__imgptr)[i];
+
+                stbi_image_free(__imgptr);
             }
         }; // Image END
 
@@ -407,13 +415,13 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img3.width && _img1.height == _img3.height, std::invalid_argument,
                             "Img :: Image :: CombineChannels (3)", "Input images 0 and 2 size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img3.width) + 'x' + std::to_string(_img3.height) + "]\n");
             SVKFW_ASSERT(_img1.width == _img4.width && _img1.height == _img4.height, std::invalid_argument,
-                            "Img :: Image :: CombineChannels (3)", "Input images 0 and 2 size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img4.width) + 'x' + std::to_string(_img4.height) + "]\n");
+                            "Img :: Image :: CombineChannels (3)", "Input images 0 and 3 size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img4.width) + 'x' + std::to_string(_img4.height) + "]\n");
             __res.imgResize(_img1.width, _img1.height);
 
             #pragma omp parallel for collapse(2)
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
-                    __res.img[j*_img1.width + i] = { _img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i], _img3.img[j*_img1.width + i] };
+                    __res.img[j*_img1.width + i] = { _img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i], _img3.img[j*_img1.width + i], _img4.img[j*_img1.width + i] };
             return __res;
         }
 
@@ -425,7 +433,7 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                             "Img :: blendPDOver", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-            __res.resize(_img1.width, _img1.height);
+            __res.imgResize(_img1.width, _img1.height);
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
                     __res.img[j*_img1.width + i] = Color::PorterDuffBlendOver(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
@@ -438,7 +446,7 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                             "Img :: blendPDIn", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-            __res.resize(_img1.width, _img1.height);
+            __res.imgResize(_img1.width, _img1.height);
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
                     __res.img[j*_img1.width + i] = Color::PorterDuffBlendIn(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
@@ -451,7 +459,7 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                             "Img :: blendPDOut", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-            __res.resize(_img1.width, _img1.height);
+            __res.imgResize(_img1.width, _img1.height);
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
                     __res.img[j*_img1.width + i] = Color::PorterDuffBlendOut(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
@@ -464,7 +472,7 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                             "Img :: blendPDAtop", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-            __res.resize(_img1.width, _img1.height);
+            __res.imgResize(_img1.width, _img1.height);
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
                     __res.img[j*_img1.width + i] = Color::PorterDuffBlendAtop(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
@@ -477,7 +485,7 @@ namespace Simple {
             SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                             "Img :: blendPDXor", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-            __res.resize(_img1.width, _img1.height);
+            __res.imgResize(_img1.width, _img1.height);
             for (int j = 0; j < _img1.height; ++j)
                 for (int i = 0; i < _img1.width; ++i)
                     __res.img[j*_img1.width + i] = Color::PorterDuffBlendXor(_img1.img[j*_img1.width + i], _img2.img[j*_img1.width + i]);
@@ -485,17 +493,24 @@ namespace Simple {
         }
         
         namespace Metric {
+            // Note: pixel differences are computed in float - for uchar images 'a - b' would overflow
+            template <typename C> inline float           toFloat_(C _v)                    { return float(_v); }
+            template <typename C> inline Vec2Base<float> toFloat_(const Vec2Base<C> &_v) { return _v.template cast<float>(); }
+            template <typename C> inline Vec3Base<float> toFloat_(const Vec3Base<C> &_v) { return _v.template cast<float>(); }
+            template <typename C> inline Vec4Base<float> toFloat_(const Vec4Base<C> &_v) { return _v.template cast<float>(); }
+
+            // Returns MSE normalized by (max channel value)^2, i.e. in [0, 1]
             template <typename T, int Ch>
             float MSE(const Image<T, Ch> &_img1, const Image<T, Ch> &_img2) {
                 SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                                 "Img :: Metric :: MSE", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-                const float __max_mse   = Color::Util::ChanMax<T>::val;
-                const float __val_count = _img1.width * _img1.height * Ch;
+                const float __max_mse   = float(Color::Util::ChanMax<T>::val) * Color::Util::ChanMax<T>::val;
+                const float __val_count = float(_img1.width) * _img1.height * Ch;
                 float __res_mse = 0.f;
                 for (int j = 0; j < _img1.height; ++j)
                     for (int i = 0; i < _img1.width; ++i) {
-                        auto __elem = _img1.img[j*_img1.width + i] - _img2.img[j*_img1.width + i];
+                        auto __elem = toFloat_(_img1.img[j*_img1.width + i]) - toFloat_(_img2.img[j*_img1.width + i]);
                         __res_mse += Math::dot(__elem, __elem);
                     }
                 
@@ -507,12 +522,12 @@ namespace Simple {
                 SVKFW_ASSERT(_img1.width == _img2.width && _img1.height == _img2.height, std::invalid_argument,
                                 "Img :: Metric :: PSNR", "Input images size mismatch: [" + std::to_string(_img1.width) + 'x' + std::to_string(_img1.height) + "] and [" + std::to_string(_img2.width) + 'x' + std::to_string(_img2.height) + "]\n");
 
-                const float __max_mse2 = Color::Util::ChanMax<T>::val * Color::Util::ChanMax<T>::val;
-                const uint32_t __val_count = _img1.width * _img1.height * Ch;
+                const float __max_mse2 = float(Color::Util::ChanMax<T>::val) * Color::Util::ChanMax<T>::val;
+                const float __val_count = float(_img1.width) * _img1.height * Ch;
                 float __res_mse = 0.f;
                 for (int j = 0; j < _img1.height; ++j)
                     for (int i = 0; i < _img1.width; ++i) {
-                        auto __elem = _img1.img[j*_img1.width + i] - _img2.img[j*_img1.width + i];
+                        auto __elem = toFloat_(_img1.img[j*_img1.width + i]) - toFloat_(_img2.img[j*_img1.width + i]);
                         __res_mse += Math::dot(__elem, __elem);
                     }
 
@@ -578,8 +593,11 @@ namespace Simple {
 
                 // Structure Similarity
                 Util::VecConstructor<float, Ch> __luminance = (2*__avg1*__avg2 + _k.x) / (__avg1*__avg1 + __avg2*__avg2 + _k.x);
-                Util::VecConstructor<float, Ch> __contrast  = (2*__var1*__var2 + _k.y) / (__var1*__var1 + __var2*__var2 + _k.y);
-                Util::VecConstructor<float, Ch> __structure = (__cov12*__cov12 + _k.z) / (__var1*__var2 + _k.z);
+                // Note: __var* are variances (sigma^2), contrast and structure use standard deviations (sigma)
+                Util::VecConstructor<float, Ch> __sigma12   = Math::sqrt(__var1*__var2);
+                Util::VecConstructor<float, Ch> __contrast  = (2*__sigma12 + _k.y) / (__var1 + __var2 + _k.y);
+                Util::VecConstructor<float, Ch> __structure = (__cov12 + _k.z) / (__sigma12 + _k.z);
+
                 Util::VecConstructor<float, Ch> __ssim      = Math::pow(__luminance, _weights.x) * Math::pow(__contrast, _weights.y) * Math::pow(__structure, _weights.z);
                 return __ssim;
             }

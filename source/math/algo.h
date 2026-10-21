@@ -1,7 +1,10 @@
 #ifndef SVKFW_ALGO_H
 #define SVKFW_ALGO_H
 
+#include <cstdint>
+
 #include "common/basic_math.h"
+#include "common/terminal.h"
 
 
 namespace Simple {
@@ -22,7 +25,7 @@ namespace Simple {
             while (__L < __R) {
                 uint32_t __m = (__L >> 1) + (__R >> 1) + uint32_t((__L & 1) && (__R & 1));
 
-                if (__arr[__m] < _val)
+                if (_arr[__m] < _val)
                     __L = __m + 1;
                 else __R = __m;
             }
@@ -43,7 +46,7 @@ namespace Simple {
             while (__L < __R) {
                 uint32_t __m = (__L >> 1) + (__R >> 1) + uint32_t((__L & 1) && (__R & 1));
 
-                if (_val < __arr[__m])
+                if (_val < _arr[__m])
                     __R = __m;
                 else __L = __m + 1;
             }

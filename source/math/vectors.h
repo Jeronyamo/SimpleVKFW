@@ -2,6 +2,7 @@
 #define SVKFW_VECTORS_H
 
 #include <cstring>
+#include <utility>
 
 #include "../common/basic_math.h"
 #include "../common/utilities.h"
@@ -878,7 +879,10 @@ namespace Simple {
         template <typename T, int Ch>
         struct VecConstructorSct {};
         template <typename T>
+        struct VecConstructorSct<T, 1> { using type = T; };
+        template <typename T>
         struct VecConstructorSct<T, 2> { using type = Vec2Base<T>; };
+
         template <typename T>
         struct VecConstructorSct<T, 3> { using type = Vec3Base<T>; };
         template <typename T>
@@ -962,6 +966,26 @@ namespace Simple {
         max(const Vec4Base<Y> &op1, const Vec4Base<Z> &op2)
             { return {op1.x > op2.x ? op1.x : op2.x, op1.y > op2.y ? op1.y : op2.y, op1.z > op2.z ? op1.z : op2.z, op1.w > op2.w ? op1.w : op2.w}; }
 
+        
+        template <typename C>
+        C where(bool wh, const C &op1, const C &op2)
+            { return wh ? op2 : op1; }
+        template <typename C>
+        Vec2Base<C> where(const Vec2Base<bool> &wh, const Vec2Base<C> &op1, const Vec2Base<C> &op2)
+            { return { wh.x ? op2.x : op1.x,
+                       wh.y ? op2.y : op1.y}; }
+        template <typename C>
+        Vec3Base<C> where(const Vec3Base<bool> &wh, const Vec3Base<C> &op1, const Vec3Base<C> &op2)
+            { return { wh.x ? op2.x : op1.x,
+                       wh.y ? op2.y : op1.y,
+                       wh.z ? op2.z : op1.z}; }
+        template <typename C>
+        Vec4Base<C> where(const Vec4Base<bool> &wh, const Vec4Base<C> &op1, const Vec4Base<C> &op2)
+            { return { wh.x ? op2.x : op1.x,
+                       wh.y ? op2.y : op1.y,
+                       wh.z ? op2.z : op1.z,
+                       wh.w ? op2.w : op1.w}; }
+
 
         template <typename C>
         flt_t sum(const C &op1)
@@ -975,6 +999,19 @@ namespace Simple {
         template <typename C>
         flt_t sum(const Vec4Base<C> &op1)
             { return op1.x + op1.y + op1.z + op1.w; }
+
+        template <typename C>
+        flt_t sqrt(const C &op1)
+            { return std::sqrt(op1); }
+        template <typename C>
+        Vec2Base<float> sqrt(const Vec2Base<C> &op1)
+            { return {std::sqrt(op1.x), std::sqrt(op1.y)}; }
+        template <typename C>
+        Vec3Base<float> sqrt(const Vec3Base<C> &op1)
+            { return {std::sqrt(op1.x), std::sqrt(op1.y), std::sqrt(op1.z)}; }
+        template <typename C>
+        Vec4Base<float> sqrt(const Vec4Base<C> &op1)
+            { return {std::sqrt(op1.x), std::sqrt(op1.y), std::sqrt(op1.z), std::sqrt(op1.w)}; }
 
         template <typename C>
         flt_t pow(const C &op1, float _pow)
@@ -1032,11 +1069,11 @@ namespace Simple {
         Vec2Base<T> clampRO(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampRO(_val.y, _left.y, _right.y, _step.y) }; }
         template <typename T>
-        Vec3Base<T> clampRO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
+        Vec3Base<T> clampRO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec3Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampRO(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampRO(_val.z, _left.z, _right.z, _step.z) }; }
         template <typename T>
-        Vec4Base<T> clampRO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
+        Vec4Base<T> clampRO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec4Base<T> _step = 1) { return { clampRO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampRO(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampRO(_val.z, _left.z, _right.z, _step.z),
                                                                                                                        clampRO(_val.w, _left.w, _right.w, _step.w) }; }
@@ -1044,11 +1081,11 @@ namespace Simple {
         Vec2Base<T> clampLO(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampLO(_val.y, _left.y, _right.y, _step.y) }; }
         template <typename T>
-        Vec3Base<T> clampLO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
+        Vec3Base<T> clampLO(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec3Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampLO(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampLO(_val.z, _left.z, _right.z, _step.z) }; }
         template <typename T>
-        Vec4Base<T> clampLO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
+        Vec4Base<T> clampLO(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec4Base<T> _step = 1) { return { clampLO(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampLO(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampLO(_val.z, _left.z, _right.z, _step.z),
                                                                                                                        clampLO(_val.w, _left.w, _right.w, _step.w) }; }
@@ -1056,11 +1093,12 @@ namespace Simple {
         Vec2Base<T> clampOP(Vec2Base<T> _val, Vec2Base<T> _left, Vec2Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampOP(_val.y, _left.y, _right.y, _step.y) }; }
         template <typename T>
-        Vec3Base<T> clampOP(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+        Vec3Base<T> clampOP(Vec3Base<T> _val, Vec3Base<T> _left, Vec3Base<T> _right, Vec3Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
                                                                                                                        clampOP(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampOP(_val.z, _left.z, _right.z, _step.z) }; }
         template <typename T>
-        Vec4Base<T> clampOP(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec2Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+        Vec4Base<T> clampOP(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec4Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
+
                                                                                                                        clampOP(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampOP(_val.z, _left.z, _right.z, _step.z),
                                                                                                                        clampOP(_val.w, _left.w, _right.w, _step.w) }; }
@@ -1097,13 +1135,13 @@ namespace Simple {
         // template <typename Y> Mat2Base<Y> cast() { return *this; }
         template <typename Y> Mat2Base<Util::remove_ref<Y>> cast() const { return *this; }
 
-        void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[1][2], M[2][1]); }
+        void transpose() { std::swap(M[0][1], M[1][0]); }
         Mat2Base <C> T() const { return { M[0][0], M[1][0], M[0][1], M[1][1] }; }
 
         template <typename Y = double>
         Y det() const { return M[0][0] * M[1][1] - M[0][1] * M[1][0]; }
 
-        bool invertible() const { return !Math::closeToZero(this->det(), SVKFW_EPS4); }
+        bool invertible() const { return !Math::closeToZero<double>(this->det(), SVKFW_EPS4); }
 
         template <typename Y = flt_t>
         Mat2Base <Y> inverse() const {
@@ -1168,8 +1206,8 @@ namespace Simple {
         C  operator[](vec2i ind) const { return M[ind.x][ind.y]; }
         Vec2Base<C&> operator[](uint32_t ind)       { return { M[ind][0], M[ind][1] }; }
         Vec2Base<C > operator[](uint32_t ind) const { return { M[ind][0], M[ind][1] }; }
-        Mat2RefBase<C> operator[](Mat::Placeholder) { return {  &M[0][0],  &M[1][1] }; }
-        const Mat2RefBase<const C> operator[](Mat::Placeholder) const { return { &M[0][0], &M[1][1] }; }
+        Mat2RefBase<C> operator[](Mat::Placeholder) { return {  &M[0][0],  &M[0][1] }; }
+        const Mat2RefBase<const C> operator[](Mat::Placeholder) const { return { &M[0][0], &M[0][1] }; }
     }; // Mat2Base END
 
     template <class C>
@@ -1207,7 +1245,7 @@ namespace Simple {
         // template <typename Y> Mat3Base<Y> cast() { return *this; }
         template <typename Y> Mat3Base<Util::remove_ref<Y>> cast() const { return *this; }
 
-        void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[1][2], M[2][1]); }
+        void transpose() { std::swap(M[0][1], M[1][0]); std::swap(M[0][2], M[2][0]); std::swap(M[1][2], M[2][1]); }
         Mat3Base <C> T() const { return { M[0][0], M[1][0], M[2][0], M[0][1], M[1][1], M[2][1], M[0][2], M[1][2], M[2][2] }; }
 
         template <typename Y = double>
@@ -1215,7 +1253,7 @@ namespace Simple {
                                M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
                                M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]); }
 
-        bool invertible() const { return !Math::closeToZero(this->det(), SVKFW_EPS4); }
+        bool invertible() const { return !Math::closeToZero<double>(this->det(), SVKFW_EPS4); }
 
         template <typename Y = flt_t>
         Mat3Base<Y> inverse() const {
@@ -1297,10 +1335,9 @@ namespace Simple {
                     (*tmp.M)[i + j] = (*_m.M)[j] * (*M)[i] + (*_m.M)[j + 3] * (*M)[i + 1] + (*_m.M)[j + 6] * (*M)[i + 2];
             return tmp;
         }
+        // Note: the result is computed into a temporary, because every element depends on the whole row of 'M'
         template <class Y> void operator&=(const Mat3Base<Y> &_m) {
-            for (uint32_t i = 0; i <= 6; i += 3)
-                for (uint32_t j = 0; j < 3; ++j)
-                    (*M)[i + j] = (*_m.M)[j] * (*M)[i] + (*_m.M)[j + 3] * (*M)[i + 1] + (*_m.M)[j + 6] * (*M)[i + 2];
+            *this = Mat3Base<C>(*this & _m);
         }
 
         C& operator[](vec2i ind)       { return M[ind.x][ind.y]; }
@@ -1352,8 +1389,8 @@ namespace Simple {
         // template <typename Y> Mat4Base<Y> cast() { return *this; }
         template <typename Y> Mat4Base<Util::remove_ref<Y>> cast() const { return *this; }
 
-        void transpose() { swap(M[0][1], M[1][0]); swap(M[0][2], M[2][0]); swap(M[0][3], M[3][0]);
-                           swap(M[1][2], M[2][1]); swap(M[1][3], M[3][1]); swap(M[2][3], M[3][2]); }
+        void transpose() { std::swap(M[0][1], M[1][0]); std::swap(M[0][2], M[2][0]); std::swap(M[0][3], M[3][0]);
+                           std::swap(M[1][2], M[2][1]); std::swap(M[1][3], M[3][1]); std::swap(M[2][3], M[3][2]); }
         Mat4Base <C> T() const { return { M[0][0], M[1][0], M[2][0], M[3][0],
                                           M[0][1], M[1][1], M[2][1], M[3][1],
                                           M[0][2], M[1][2], M[2][2], M[3][2],
@@ -1370,11 +1407,11 @@ namespace Simple {
 
             return M[0][0] * ( M[1][1] * A2323 - M[1][2] * A1323 + M[1][3] * A1223 )
                  - M[0][1] * ( M[1][0] * A2323 - M[1][2] * A0323 + M[1][3] * A0223 )
-                 + M[0][2] * ( M[1][0] * A1223 - M[1][1] * A0223 + M[1][2] * A0123 )
+                 + M[0][2] * ( M[1][0] * A1323 - M[1][1] * A0323 + M[1][3] * A0123 )
                  - M[0][3] * ( M[1][0] * A1223 - M[1][1] * A0223 + M[1][2] * A0123 );
         }
 
-        bool invertible() const { return !Math::closeToZero(this->det(), SVKFW_EPS4); }
+        bool invertible() const { return !Math::closeToZero<double>(this->det(), SVKFW_EPS4); }
 
         template <typename Y = flt_t>
         Mat4Base<Y> inverse() const {
@@ -1505,11 +1542,9 @@ namespace Simple {
                                       (*_m.M)[j + 8] * (*M)[i + 2] + (*_m.M)[j + 12] * (*M)[i + 3];
             return tmp;
         }
+        // Note: the result is computed into a temporary, because every element depends on the whole row of 'M'
         template <class Y> void operator&=(const Mat4Base<Y> &_m) {
-            for (uint32_t i = 0; i <= 12; i += 4)
-                for (uint32_t j = 0; j < 4; ++j)
-                    (*M)[i + j] = (*_m.M)[j    ] * (*M)[i    ] + (*_m.M)[j +  4] * (*M)[i + 1] +
-                                  (*_m.M)[j + 8] * (*M)[i + 2] + (*_m.M)[j + 12] * (*M)[i + 3];
+            *this = Mat4Base<C>(*this & _m);
         }
 
         C& operator[](vec2i ind)       { return M[ind.x][ind.y]; }

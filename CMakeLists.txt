@@ -10,7 +10,7 @@ set(SVKFW_MSG_PREFIX ">>>  SimpleVKFW: ")
 
 ## Global CMake Variables
 
-option(SVKFW_OVERRIDE_RES_LOCATION On)
+option(SVKFW_OVERRIDE_RES_LOCATION "Place build results into build_<type>/<os>" ON)
 
 if(SVKFW_OVERRIDE_RES_LOCATION)
     set(SVKFW_BUILD_DIR ${PROJECT_SOURCE_DIR}/build_${CMAKE_BUILD_TYPE})
@@ -19,9 +19,9 @@ if(SVKFW_OVERRIDE_RES_LOCATION)
         set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS On)
         set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${SVKFW_BUILD_DIR}/win)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
-        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${PROJECT_SOURCE_DIR}/linux)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${SVKFW_BUILD_DIR}/linux)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${PROJECT_SOURCE_DIR}/mac)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${SVKFW_BUILD_DIR}/mac)
     endif()
 
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib)
@@ -62,7 +62,7 @@ function(svkfw_set_definitions SVKFW_TARGET)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
         target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_MAC PRIVATE SVKFW_CM_ANSI_ESC)
     endif()
-    if (${RTAUDIO_API_ASIO} STREQUAL ON)
+    if (RTAUDIO_API_ASIO)
         target_compile_definitions(${SVKFW_TARGET} PRIVATE RTA_ASIO)
     endif()
     if(MINGW)
@@ -122,6 +122,10 @@ set(SVKFW_ALL_INCULDES
 
 ## GLFW
 set(GLFW_LIBRARY_TYPE STATIC)
+# Note: GLFW install/uninstall targets aren't needed. GLFW's "uninstall" target conflicts with RtAudio's one,
+#       which is also named "uninstall" on the first configuration: RtAudio declares RTAUDIO_TARGETNAME_UNINSTALL
+#       as a cache entry, so a normal variable set here is ignored until the cache entry exists.
+set(GLFW_INSTALL OFF CACHE BOOL "Generate installation target" FORCE)
 add_subdirectory(${EXTERN_SRC_GLFW_DIR})
 
 
@@ -174,7 +178,10 @@ set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
 
 add_subdirectory(${EXTERN_SRC_RTAUDIO_DIR})
 set_target_properties(rtaudio PROPERTIES FOLDER "RtAudio")
-set_target_properties(${RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")
+# Note: the actual target name is stored in the cache (see the GLFW note above)
+if(TARGET $CACHE{RTAUDIO_TARGETNAME_UNINSTALL})
+    set_target_properties($CACHE{RTAUDIO_TARGETNAME_UNINSTALL} PROPERTIES FOLDER "RtAudio")
+endif()
 
 
 ## Opus

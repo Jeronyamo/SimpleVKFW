@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
     using Simple::VKFW::ContextIndex2;
 
 // Config
-    const uint32_t FRAMES_IN_FLIGHT = 3u;
+    const uint32_t FRAMES_IN_FLIGHT = 4u;
     const uint32_t STAGING_BUFFER_SIZE = 16 * 1024*1024; //  16 MB for now
 
 // Scene info
@@ -87,7 +87,8 @@ int main(int argc, char **argv) {
     // Instance
     Simple::VKFW::cxt_vkfw.cxt_core.setDefaultApplicationInfo();
     Simple::VKFW::cxt_vkfw.cxt_core.activateDebug();
-    Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addLayers({{"VK_LAYER_LUNARG_monitor"}});
+    if (Simple::VKFW::Util::allInstanceLayersAvailable({{"VK_LAYER_LUNARG_monitor"}})) // the layer isn't shipped with newer SDKs
+        Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addLayers({{"VK_LAYER_LUNARG_monitor"}});
     Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addExtGLFW();
     Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addExtensions({{ VK_KHR_SURFACE_EXTENSION_NAME }});
     Simple::VKFW::cxt_vkfw.cxt_core.createInstance();
@@ -168,7 +169,7 @@ int main(int argc, char **argv) {
 
     // Subpass dependency
     ContextIndex ci_subpass_dep = Simple::VKFW::cxt_vkfw.cxt_core.addSctRenderPassSubpassDependency();
-    auto         ce_subpass_dep = vkfw_getter.shortcutSctRenderPassSubpassDependency(ci_subpass_descr);
+    auto         ce_subpass_dep = vkfw_getter.shortcutSctRenderPassSubpassDependency(ci_subpass_dep);
     ce_subpass_dep->setSubpasses(VK_SUBPASS_EXTERNAL, 0u);
     ce_subpass_dep->setSrcMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
     ce_subpass_dep->setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
@@ -367,13 +368,15 @@ int main(int argc, char **argv) {
 
 // Sync objects:
     // Semaphores
-    ContextIndex ci_sem_image_available[FRAMES_IN_FLIGHT]{},
-                 ci_sem_render_finished[FRAMES_IN_FLIGHT]{};
+    // Note: 'image_available' semaphores are used per frame in flight, 'render_finished' - per swapchain image
+    //       (swapchain may contain more images than 'FRAMES_IN_FLIGHT', and the image count may change after recreation)
+    ContextIndex ci_sem_image_available[FRAMES_IN_FLIGHT]{};
+    std::vector<ContextIndex> ci_sem_render_finished;
 
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_sem_image_available[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore();
-    for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
-        ci_sem_render_finished[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore();
+    while (ci_sem_render_finished.size() < Simple::VKFW::cxt_vkfw.cxt_swapchain.getSwapchainImageCount())
+        ci_sem_render_finished.push_back(Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore());
 
     // Fences
     ContextIndex ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
@@ -427,15 +430,20 @@ int main(int argc, char **argv) {
         main_view_centered_proj.manualFrameUpdate(main_window_handler.frame_time);
 
         barrier_handler.WaitForFences({ci_fen_in_flight[current_frame]});
-        barrier_handler.  ResetFences({ci_fen_in_flight[current_frame]});
 
         image_index = func_handler.AcquireNextImageKHR(ci_sem_image_available[current_frame]); // swapchain recreated in this function if needed
+        // Note: the fence is reset only after successful acquisition, otherwise it would never be signaled again
         if (image_index == UINT32_MAX) continue;
+        barrier_handler.ResetFences({ci_fen_in_flight[current_frame]});
 
-        // Update uniform buffers
+        // Swapchain image count may grow after recreation
+        while (ci_sem_render_finished.size() < Simple::VKFW::cxt_vkfw.cxt_swapchain.getSwapchainImageCount())
+            ci_sem_render_finished.push_back(Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore());
+
+        // Update uniform buffers (per frame in flight: the buffer of this frame is not used by the GPU after the fence wait)
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
-        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[image_index], &ubo_camera, 0, sizeof(ubo_camera));
+        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[current_frame], &ubo_camera, 0, sizeof(ubo_camera));
 
 
         // Set command buffer
@@ -455,7 +463,7 @@ int main(int argc, char **argv) {
         cmd_handler.CmdBindIndexBuffer(ci_buffer_index);
 
         // Bind descriptor set (uniform buffer)
-        cmd_handler.CmdBindDescriptorSets(ci_pip_layout, VK_PIPELINE_BIND_POINT_GRAPHICS, { ci_descr_sets_ubo[image_index] });
+        cmd_handler.CmdBindDescriptorSets(ci_pip_layout, VK_PIPELINE_BIND_POINT_GRAPHICS, { ci_descr_sets_ubo[current_frame] });
 
         // Set viewport, scissor
         cmd_handler.cmdSetViewportScissorFromSwapchainExtent();
@@ -505,7 +513,7 @@ int main(int argc, char **argv) {
     // Destruction
     Simple::VKFW::cxt_vkfw.destroyContext();
     main_window.destroy();
-    Simple::glfw_init.~GLFWInitClass();
+    Simple::glfw_init.terminate();
 
     printf(SVKFW_WRAPINFO("main", "Success\n"));
     return 0;

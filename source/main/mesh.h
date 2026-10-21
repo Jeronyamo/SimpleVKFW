@@ -3,24 +3,25 @@
 
 #include "math/vectors.h"
 #include <vector>
+#include <cstdint>
 
 
 
 namespace Simple {
     struct Mesh {
-        std::vector<Vec3> vertices;
-        std::vector<UVec3> indices;
+        std::vector<vec3> vertices;
+        std::vector<vec3u> indices;
     };
 
     struct Instance {
-        uint MeshID;
-        Mat4 tform;
+        uint32_t MeshID;
+        mat4 tform;
     };
 
     struct Scene {
-        std::vector<Vec3> vertices;
-        std::vector<UVec3> indices;
-        std::vector<UVec2> offsets;
+        std::vector<vec3> vertices;
+        std::vector<vec3u> indices;
+        std::vector<vec2u> offsets;
 
         std::vector<Instance> instances;
     };

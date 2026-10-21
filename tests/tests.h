@@ -60,17 +60,18 @@ namespace Simple {
                     __res_descr = " != ";
                     __res_comp = _val != _thold; break;
                 case TEST_COMP_GE:
-                    __res_descr = " <= ";
-                    __res_comp = _val >= _thold; break;
-                case TEST_COMP_LE:
                     __res_descr = " >= ";
                     __res_comp = _val >= _thold; break;
+                case TEST_COMP_LE:
+                    __res_descr = " <= ";
+                    __res_comp = _val <= _thold; break;
                 case TEST_COMP_G :
                     __res_descr = " >  ";
                     __res_comp = _val >  _thold; break;
                 case TEST_COMP_L :
                     __res_descr = " <  ";
                     __res_comp = _val <  _thold; break;
+                case TEST_COMP_NONE: break;
             }
 
             return { __res_comp, std::to_string(_val) + __res_descr + std::to_string(_thold) };
@@ -202,13 +203,13 @@ namespace Simple {
             }
 
             void printAssertResult(const AssertInfo &_assert_info) {
-                if (_assert_info.assert_op != TEST_COMP_NONE) {
-                    printf("Printing placeholder\n");
-                }
-                else if (!_assert_info.assert_success) {
+                if (!_assert_info.assert_success) {
                     terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_ERROR, "Error"), {" in assertion:"}});
                     terminal_h.print_w("   " + _assert_info.assert_descr);
+                    if (_assert_info.assert_op != TEST_COMP_NONE)
+                        terminal_h.print_w("   " + _assert_info.value_descr + ": " + _assert_info.result_descr + " (" + _assert_info.thold_descr + ")");
                 }
+
 
                 test_asserts.push_back(_assert_info);
             }
@@ -234,9 +235,18 @@ namespace Simple {
                 printTestHeader();
                 test_asserts.clear();
 
-                tests[_test_id]->run();
+                // Note: an exception thrown by a test shouldn't stop the other tests
+                bool __test_crashed = false;
+                try {
+                    tests[_test_id]->run();
+                }
+                catch (const std::exception &_e) {
+                    __test_crashed = true;
+                    terminal_h.print_w({terminal_h.encloseWithStyle(TSTYLE_CRASH, "Exception"), {": "}});
+                    terminal_h.print_w(std::string("   ") + _e.what());
+                }
 
-                printTestResult(false); // Argument not used because Windows can't fork
+                printTestResult(__test_crashed);
             }
 
             void run(const std::vector<std::string> &_test_names, const std::vector<std::string> &_test_groups) {
@@ -261,6 +271,14 @@ namespace Simple {
                         __run_tests.resize(__curr_size + __tmp_tests.size());
                         for (uint32_t j = 0u; j < __tmp_tests.size(); ++j)
                             __run_tests[__curr_size + j] = __tmp_tests[j]->name();
+                    }
+                }
+
+                // Unknown test names are skipped
+                for (int i = __run_tests.size()-1; i >= 0; --i) {
+                    if (findTestIdByName(__run_tests[i]) == UINT32_MAX) {
+                        fprintf(svkfwwarn, "%s '%s'\n", SVKFW_WRAPWARN("Test :: TestSystem :: run", "unknown test:"), __run_tests[i].c_str());
+                        __run_tests.erase(__run_tests.begin()+i);
                     }
                 }
 

@@ -5,6 +5,7 @@ vkfw_enum_beg: str =\
 """#ifndef SVKFW_VKFW_ENUM_H
 #define SVKFW_VKFW_ENUM_H
 
+#include <cstdint>
 #include <map>
 #include <string>
 
@@ -28,9 +29,9 @@ namespace Simple {
                     std::string __res_str = "";
 
                     for (uint32_t i = 0u; i < 32u; ++i) {
-                        if ((_enum_val & (1<<i)) == 0) continue;
+                        if ((_enum_val & (1u << i)) == 0) continue;
 
-                        std::string __curr_str = getName(1 << i);
+                        std::string __curr_str = getName(1u << i);
                         if (!__curr_str.empty()) {
                             if (!__res_str.empty()) __res_str += " | ";
                             __res_str += __curr_str;
@@ -103,7 +104,8 @@ def invertVulkanCoreEnums(vkpath: str, vkfwpath: str) -> None:
                     continue
                 if line.find('//') >= 0 or line.find('#') >= 0: continue
 
-                line = line.strip()[:-1].split(" = ")
+                # Note: the last enumerator has no trailing comma
+                line = line.strip().rstrip(',').split(" = ")
                 assert len(line) == 2
                 enum_strs.append((line[0], line[1]))
 
@@ -127,6 +129,10 @@ if __name__ == "__main__":
     if vk_sdk_path is None:
         print("Error: couldn't find Vulkan SDK path, no enums generated")
         exit(-1)
-    vk_sdk_path = os.path.join(vk_sdk_path, "Include", "vulkan", "vulkan_core.h")
+    # Note: the directory is "Include" in Windows SDK and "include" in Linux/macOS SDK
+    vk_core_path = os.path.join(vk_sdk_path, "Include", "vulkan", "vulkan_core.h")
+    if not os.path.isfile(vk_core_path):
+        vk_core_path = os.path.join(vk_sdk_path, "include", "vulkan", "vulkan_core.h")
+    vk_sdk_path = vk_core_path
     print(f"Found Vulkan core at: '{vk_sdk_path}'")
     invertVulkanCoreEnums(vk_sdk_path, "source/interface/vkfw_enum.h")

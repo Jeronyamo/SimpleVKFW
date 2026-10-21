@@ -20,14 +20,14 @@ namespace Simple {
             uint32_t curr_frame_size = 0u;
 
             struct OpusHead {
-                uint8_t  version;
-                uint8_t  channels;
-                uint16_t preskip;
-                uint32_t sample_rate;
-                uint16_t gain;
-                uint8_t  mapping_family;
-                uint8_t  stream_count;
-                uint8_t  coupled_count;
+                uint8_t  version        = 0u;
+                uint8_t  channels       = 0u;
+                uint16_t preskip        = 0u;
+                uint32_t sample_rate    = 0u;
+                uint16_t gain           = 0u;
+                uint8_t  mapping_family = 0u;
+                uint8_t  stream_count   = 0u;
+                uint8_t  coupled_count  = 0u;
                 std::vector<uint8_t> mapping_table;
 
                 std::string infoString() const {
@@ -105,8 +105,8 @@ namespace Simple {
                 if (__res_success && opus_head.mapping_family) {
                     __res_success &= __opus_reader.readValue(opus_head. stream_count, Bytes::Endianness.is_big_endian);
                     __res_success &= __opus_reader.readValue(opus_head.coupled_count, Bytes::Endianness.is_big_endian);
-                    opus_head.mapping_table.insert(opus_head.mapping_table.end(), __opus_reader.getData(),
-                                                                                  __opus_reader.getData() + opus_head.channels);
+                    opus_head.mapping_table.resize(opus_head.channels);
+                    __res_success &= __opus_reader.readArray(opus_head.mapping_table.data(), opus_head.channels, false);
                 }
 
                 std::string __opushead_info = opus_head.infoString();
@@ -115,6 +115,7 @@ namespace Simple {
                 SVKFW_ASSERT(__res_success, std::runtime_error, "Codec::DecoderOpus :: readOpusHead", "Failed to read");
 
                 int __opus_error = 0;
+                closeDecoder(); // OpusHead may appear again (chained streams)
                 decoder = opus_decoder_create(opus_sample_rate, opus_head.channels, &__opus_error);
                 SVKFW_ASSERT(!__opus_error, std::runtime_error, "Codec::DecoderOpus :: readOpusHead",
                                 "Could not create Opus decoder (Error: " + std::string(opus_strerror(__opus_error)) + ")");
@@ -139,17 +140,19 @@ namespace Simple {
                 __res_success &= __opus_reader.readValue(__vendor_str_len, Bytes::Endianness.is_big_endian);
 
                 opus_tags.vendor.resize(__vendor_str_len);
-                memcpy(&opus_tags.vendor[0], __opus_reader.getData(), __vendor_str_len);
-                __res_success &= __opus_reader.moveOffset(__vendor_str_len);
+                __res_success &= __opus_reader.readArray(&opus_tags.vendor[0], __vendor_str_len, false);
 
                 uint32_t __n_tags = 0u;
                 __res_success &= __opus_reader.readValue(__n_tags, Bytes::Endianness.is_big_endian);
-                for (uint32_t i = 0u; i < __n_tags; ++i) {
+                for (uint32_t i = 0u; __res_success && i < __n_tags; ++i) {
                     uint32_t __tag_str_len = 0u;
                     __res_success &= __opus_reader.readValue(__tag_str_len, Bytes::Endianness.is_big_endian);
 
+                    // Note: readArray checks bounds and moves the stream offset to the next tag
                     std::string __tag_str(size_t(__tag_str_len), '\0');
-                    memcpy(&__tag_str[0], __opus_reader.getData(), __tag_str_len);
+                    __res_success = __res_success && __opus_reader.readArray(&__tag_str[0], __tag_str_len, false);
+                    if (!__res_success) break;
+
                     __tag_str_len = __tag_str.find('=');
                     if (__tag_str_len > __tag_str.size()) {
                         fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: readOpusTags", "Could not separate tag line: '%s'\n"), __tag_str.c_str());
@@ -174,8 +177,14 @@ namespace Simple {
                     if (!std::strcmp(__opus_str, "OpusTags"))
                         return readOpusTags(_opus_packet);
                 }
+                if (decoder == nullptr) {
+                    curr_frame_size = 0u;
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: decodePacket", "Audio packet before 'OpusHead', decoder isn't created\n"));
+                    return false;
+                }
                 int samples_decoded_per_channel = opus_decode(decoder, _opus_packet.data(), _opus_packet.size(),
                                                                         pcm_out.data(), max_frame_size, 0);
+
                 curr_frame_size = samples_decoded_per_channel * opus_head.channels;
                 if (samples_decoded_per_channel < 0) {
                     curr_frame_size = 0u;

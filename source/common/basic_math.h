@@ -5,6 +5,16 @@
 #include <climits>
 #include <stdexcept>
 #include <cfloat>
+#include <type_traits>
+
+
+// Note: M_PI/M_PI_2 aren't part of the C++ standard (e.g. MSVC requires _USE_MATH_DEFINES, GCC requires GNU extensions)
+#ifndef M_PI
+#define M_PI   3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679489661923
+#endif
 
 
 // Absolute epsilon for float check
@@ -25,6 +35,8 @@
 
 #define SVKFW_DEG_TO_RAD float(M_PI / 180)
 #define SVKFW_RAD_TO_DEG float(180 / M_PI)
+#define SVKFW_DEG_TO_RAD_D (M_PI / 180)
+#define SVKFW_RAD_TO_DEG_D (180 / M_PI)
 
 
 namespace Simple {
@@ -55,8 +67,9 @@ namespace Simple {
         // Zero check using absolute epsilon, use if value must be finite when inversed: (1.0 / 'val')
         inline bool notZero (float  _val) { return _val <= -SVKFW_AEPS_FLT || _val >= SVKFW_AEPS_FLT; }
         inline bool notZero (double _val) { return _val <= -SVKFW_AEPS_DBL || _val >= SVKFW_AEPS_DBL; }
+        // Note: for integer types the default epsilon is 1 (SVKFW_EPS would be truncated to 0, making any value "not zero")
         template <class T>
-        inline bool notZero (T _val, T _eps = (T) SVKFW_EPS) { return _val <= -_eps || _val >= _eps; }
+        inline bool notZero (T _val, T _eps = std::is_integral<T>::value ? T(1) : T(SVKFW_EPS)) { return _val <= -_eps || _val >= _eps; }
 
         // Zero check for 'val' and 'eps' > 0
         template <typename T> inline bool closeToZero(T _val) { return _val < SVKFW_EPS && _val > -SVKFW_EPS; }
@@ -94,10 +107,11 @@ namespace Simple {
         T clampOP(T _val, T _left, T _right, T _step = 1) { return _val <= _left ? _left + _step : (_val >= _right ? _right - _step : _val); }
 
 
+        // Returns value in [0, 1]
         template <typename T>
         T smoothstep(T _left, T _val, T _right) {
-            if (_val <=  _left) return  _left;
-            if (_val >= _right) return _right;
+            if (_val <=  _left) return T(0);
+            if (_val >= _right) return T(1);
 
             T __res = (_val - _left) / (_right - _left);
             return __res * __res * (3 - 2 * __res);
@@ -124,9 +138,9 @@ namespace Simple {
     // Basic angle transforms
 
         inline float  toRad(float  _angle_deg) { return _angle_deg * SVKFW_DEG_TO_RAD; }
-        inline double toRad(double _angle_deg) { return _angle_deg * SVKFW_DEG_TO_RAD; }
+        inline double toRad(double _angle_deg) { return _angle_deg * SVKFW_DEG_TO_RAD_D; }
         inline float  toDeg(float  _angle_rad) { return _angle_rad * SVKFW_RAD_TO_DEG; }
-        inline double toDeg(double _angle_rad) { return _angle_rad * SVKFW_RAD_TO_DEG; }
+        inline double toDeg(double _angle_rad) { return _angle_rad * SVKFW_RAD_TO_DEG_D; }
     }; // Math END
 
     template <typename T>
@@ -157,9 +171,12 @@ namespace Simple {
         Range   end() { return    to; }
 
 
+        // Number of values in [from, to) with the step 'step' (0 if 'step' leads away from 'to')
         void calcItersNum() {
-            num = (uint32_t) std::floor((to - from) / step);
+            double __num = std::ceil(double(to - from) / double(step));
+            num = __num > 0. ? (uint32_t) __num : 0u;
         }
+
     }; // Range END
 }; // Simple END
 

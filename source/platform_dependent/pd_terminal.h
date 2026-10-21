@@ -1,6 +1,8 @@
 #ifndef SVKFW_PD_TERMINAL_H
 #define SVKFW_PD_TERMINAL_H
 
+#include <cstdio>
+
 
 //  Assuming ANSI codes are supported -
 //  Linux, Mac or newer Windows

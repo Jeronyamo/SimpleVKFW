@@ -109,11 +109,12 @@ namespace Simple {
         //  Functions
 
         std::string stringStrip(const std::string &_in_str) {
-            long __offset1 = 0, __offset2 = _in_str.size()-1;
-            for (; __offset1 < _in_str.size() && std::isspace(_in_str[__offset1]); ++__offset1);
-            for (; __offset2 >=             0 && std::isspace(_in_str[__offset2]); --__offset2);
-            return _in_str.substr(__offset1, __offset2+1);
+            long __offset1 = 0, __offset2 = long(_in_str.size()) - 1;
+            for (; __offset1 <= __offset2 && std::isspace((unsigned char)_in_str[__offset1]); ++__offset1);
+            for (; __offset2 >= __offset1 && std::isspace((unsigned char)_in_str[__offset2]); --__offset2);
+            return _in_str.substr(__offset1, __offset2 - __offset1 + 1); // second argument is length
         }
+
 
 
         //  Template "shortcuts"
