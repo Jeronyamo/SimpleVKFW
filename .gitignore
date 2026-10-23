@@ -1,6 +1,5 @@
 build/
-build_Debug/
-build_Release/
+build_*/
 
 tests/out/
 !tests/out/.gitkeep

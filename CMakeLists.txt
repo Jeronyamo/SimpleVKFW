@@ -45,6 +45,7 @@ function(svkfw_set_definitions SVKFW_TARGET)
 
     if(CMAKE_SYSTEM_NAME STREQUAL Windows)
         target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_WIN)
+        target_compile_definitions(${SVKFW_TARGET} PRIVATE NOMINMAX)
 
         ## Get Windows build
         string(FIND ${CMAKE_SYSTEM_VERSION} "." WIN_VERSION_LEN REVERSE)
@@ -173,7 +174,8 @@ set(RTAUDIO_API_ALSA   OFF)
 set(RTAUDIO_API_ASIO   OFF)
 set(RTAUDIO_API_PULSE  OFF)
 set(RTAUDIO_API_WASAPI OFF)
-set(BUILD_TESTING Off)
+set(BUILD_TESTING OFF)
+set(RTAUDIO_BUILD_TESTING OFF)
 set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
 
 add_subdirectory(${EXTERN_SRC_RTAUDIO_DIR})
