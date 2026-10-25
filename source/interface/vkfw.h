@@ -502,6 +502,7 @@ namespace Simple {
                     VkMemoryPropertyFlags required_flags; // Flags required by user for this memory chunk
                     std::vector<MemoryMapping> buffer_maps;
                     std::vector<MemoryMapping>  image_maps;
+                    void *mapped_ptr = nullptr; // HOST_VISIBLE chunks stay mapped from allocation to destruction (persistent mapping)
                     // 48 bytes left (2 vectors) for 256 bytes per chunk
 
                     ContextCore *cxt_core = nullptr;
@@ -509,6 +510,9 @@ namespace Simple {
                     MemoryChunk(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
 
                     void destroyChunk() {
+                        if (mapped_ptr != nullptr) Func::UnmapMemory(cxt_core->device.handle, memory.handle);
+                        mapped_ptr = nullptr;
+
                         for (auto& buf_view : buffer_views)
                             buf_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
                         for (auto& img_view :  image_views)
@@ -585,6 +589,10 @@ namespace Simple {
                         memory.allocate_info.wrap.memoryTypeIndex = __supported_mem_type_index;
                         memory.allocate_info.wrap.allocationSize  = __mem_req.size;
                         memory.createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+
+                        // Note: mapping a memory object once and keeping it mapped is allowed and cheaper than mapping it every frame
+                        if (required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                            mapped_ptr = Func::MapMemory(cxt_core->device.handle, memory.handle);
 
                         // Bind all buffers to created memory
                         VkResult __func_res = VK_SUCCESS;
@@ -677,6 +685,17 @@ namespace Simple {
                 void createChunkImage (ContextIndex2 _ci2_image ) { memory_chunks[_ci2_image .first].createImage (_ci2_image .second); }
                 void createChunkBufferView(ContextIndex2 _ci2_buffer, ContextIndex2 _ci2_buf_view) { memory_chunks[_ci2_buf_view.first].createBufferView(_ci2_buf_view.second, _ci2_buffer.second); }
                 void createChunkImageView (ContextIndex2 _ci2_image , ContextIndex2 _ci2_img_view) { memory_chunks[_ci2_img_view.first].createImageView (_ci2_img_view.second, _ci2_image .second); }
+
+                // Returns nullptr if the chunk isn't HOST_VISIBLE or isn't allocated yet
+                void* getMappedChunk (ContextIndex  _ci_memory) const { return memory_chunks[_ci_memory].mapped_ptr; }
+                void* getMappedBuffer(ContextIndex2 _ci2_buffer) const {
+                    const MemoryChunk &__chunk = memory_chunks[_ci2_buffer.first];
+                    return __chunk.mapped_ptr == nullptr ? nullptr : (uint8_t*)__chunk.mapped_ptr + __chunk.buffer_maps[_ci2_buffer.second].offset;
+                }
+                void* getMappedImage (ContextIndex2 _ci2_image) const {
+                    const MemoryChunk &__chunk = memory_chunks[_ci2_image.first];
+                    return __chunk.mapped_ptr == nullptr ? nullptr : (uint8_t*)__chunk.mapped_ptr + __chunk.image_maps[_ci2_image.second].offset;
+                }
 
             // Scenarios
 
@@ -901,18 +920,18 @@ namespace Simple {
 
         // Getters (Core)
 
-            std::vector<VkfwQueueFamily> getObjsQueueFamily(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkfwQueueFamily> getObjsQueueFamily(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkfwQueueFamily> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queue_families[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkQueue> getObjsQueue(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkQueue> getObjsQueue(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkQueue> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queues[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
                 return __res;
             }
-            std::vector<VkQueue> getObjsQueue(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkQueue> getObjsQueue(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkQueue> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_core.queues[_objs_ci1].handles[_objs_ci2[ci]];
                 return __res;
@@ -920,13 +939,13 @@ namespace Simple {
 
         // Getters (Swapchain)
 
-            std::vector<VkImageView> getObjsSwapchainImageView(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkImageView> getObjsSwapchainImageView(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkImageView> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.image_views[_objs_ci[ci]];
                 return __res;
             }
 
-            std::vector<VkFramebuffer> getObjsSwapchainFramebuffer(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkFramebuffer> getObjsSwapchainFramebuffer(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkFramebuffer> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.framebuffers[_objs_ci[ci]];
                 return __res;
@@ -934,24 +953,24 @@ namespace Simple {
 
         // Getters (Descriptor)
 
-            std::vector<VkDescriptorSetLayout> getObjsDescriptorSetLayout(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkDescriptorSetLayout> getObjsDescriptorSetLayout(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkDescriptorSetLayout> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.layouts[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkDescriptorPool> getObjsDescriptorPool(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkDescriptorPool> getObjsDescriptorPool(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkDescriptorPool> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.pools[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkDescriptorSet> getObjsDescriptorSet(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkDescriptorSet> getObjsDescriptorSet(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkDescriptorSet> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.sets[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
                 return __res;
             }
-            std::vector<VkDescriptorSet> getObjsDescriptorSet(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkDescriptorSet> getObjsDescriptorSet(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkDescriptorSet> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_descriptor.sets[_objs_ci1].handles[_objs_ci2[ci]];
                 return __res;
@@ -959,19 +978,19 @@ namespace Simple {
 
         // Getters (Pipeline)
 
-            std::vector<VkPipeline> getObjsPipeline(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkPipeline> getObjsPipeline(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkPipeline> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.pipelines[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkPipelineCache> getObjsPipelineCache(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkPipelineCache> getObjsPipelineCache(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkPipelineCache> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.caches[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkPipelineLayout> getObjsPipelineLayout(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkPipelineLayout> getObjsPipelineLayout(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkPipelineLayout> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_pipeline.layouts[_objs_ci[ci]].handle;
                 return __res;
@@ -979,18 +998,18 @@ namespace Simple {
 
         // Getters (Command)
 
-            std::vector<VkCommandPool> getObjsCommandPool(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkCommandPool> getObjsCommandPool(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkCommandPool> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_pools[_objs_ci[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkCommandBuffer> getObjsCommandBuffer(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkCommandBuffer> getObjsCommandBuffer(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkCommandBuffer> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_buffers[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
                 return __res;
             }
-            std::vector<VkCommandBuffer> getObjsCommandBuffer(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkCommandBuffer> getObjsCommandBuffer(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkCommandBuffer> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_command.cmd_buffers[_objs_ci1].handles[_objs_ci2[ci]];
                 return __res;
@@ -998,51 +1017,51 @@ namespace Simple {
 
         // Getters (Device Memory)
 
-            std::vector<VkDeviceMemory> getObjsDeviceMemory(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkDeviceMemory> getObjsDeviceMemory(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkDeviceMemory> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci[ci]].memory.handle;
                 return __res;
             }
 
-            std::vector<VkBuffer> getObjsBuffer(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkBuffer> getObjsBuffer(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkBuffer> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].buffers[_objs_ci2[ci].second].handle;
                 return __res;
             }
-            std::vector<VkBuffer> getObjsBuffer(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkBuffer> getObjsBuffer(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkBuffer> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].buffers[_objs_ci2[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkImage> getObjsImage(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkImage> getObjsImage(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkImage> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].images[_objs_ci2[ci].second].handle;
                 return __res;
             }
-            std::vector<VkImage> getObjsImage(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkImage> getObjsImage(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkImage> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].images[_objs_ci2[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkBufferView> getObjsBufferView(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkBufferView> getObjsBufferView(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkBufferView> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].buffer_views[_objs_ci2[ci].second].handle;
                 return __res;
             }
-            std::vector<VkBufferView> getObjsBufferView(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkBufferView> getObjsBufferView(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkBufferView> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].buffer_views[_objs_ci2[ci]].handle;
                 return __res;
             }
 
-            std::vector<VkImageView> getObjsImageView(const std::vector<ContextIndex2> &_objs_ci2) const {
+            std::vector<VkImageView> getObjsImageView(Span<ContextIndex2> _objs_ci2) const {
                 std::vector<VkImageView> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].image_views[_objs_ci2[ci].second].handle;
                 return __res;
             }
-            std::vector<VkImageView> getObjsImageView(ContextIndex _objs_ci1, const std::vector<ContextIndex> &_objs_ci2) const {
+            std::vector<VkImageView> getObjsImageView(ContextIndex _objs_ci1, Span<ContextIndex> _objs_ci2) const {
                 std::vector<VkImageView> __res(_objs_ci2.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) __res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci1].image_views[_objs_ci2[ci]].handle;
                 return __res;
@@ -1050,22 +1069,44 @@ namespace Simple {
 
         // Getters (Barrier)
 
-            std::vector<VkSemaphore> getObjsSemaphore(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkSemaphore> getObjsSemaphore(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkSemaphore> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.semaphores[_objs_ci[ci]];
                 return __res;
             }
 
-            std::vector<VkFence> getObjsFence(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkFence> getObjsFence(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkFence> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.fences[_objs_ci[ci]];
                 return __res;
             }
 
-            std::vector<VkEvent> getObjsEvent(const std::vector<ContextIndex> &_objs_ci) const {
+            std::vector<VkEvent> getObjsEvent(Span<ContextIndex> _objs_ci) const {
                 std::vector<VkEvent> __res(_objs_ci.size(), 0u);
                 for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_barrier.events[_objs_ci[ci]];
                 return __res;
+            }
+
+        // Multiple object getters into an inline array (no memory allocation for up to VKFW_INLINE_ARRAY_SIZE objects)
+
+            void fillObjsDescriptorSet(Span<ContextIndex2> _objs_ci2, InlineArray<VkDescriptorSet> &_res) const {
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) _res[ci] = cxt_ptr->cxt_descriptor.sets[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
+            }
+
+            void fillObjsCommandBuffer(Span<ContextIndex2> _objs_ci2, InlineArray<VkCommandBuffer> &_res) const {
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) _res[ci] = cxt_ptr->cxt_command.cmd_buffers[_objs_ci2[ci].first].handles[_objs_ci2[ci].second];
+            }
+
+            void fillObjsBuffer(Span<ContextIndex2> _objs_ci2, InlineArray<VkBuffer> &_res) const {
+                for (uint32_t ci = 0u; ci < _objs_ci2.size(); ++ci) _res[ci] = cxt_ptr->cxt_memory.memory_chunks[_objs_ci2[ci].first].buffers[_objs_ci2[ci].second].handle;
+            }
+
+            void fillObjsSemaphore(Span<ContextIndex> _objs_ci, InlineArray<VkSemaphore> &_res) const {
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) _res[ci] = cxt_ptr->cxt_barrier.semaphores[_objs_ci[ci]];
+            }
+
+            void fillObjsFence(Span<ContextIndex> _objs_ci, InlineArray<VkFence> &_res) const {
+                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) _res[ci] = cxt_ptr->cxt_barrier.fences[_objs_ci[ci]];
             }
         }; // ObjGetterHandler END
 
@@ -1079,13 +1120,15 @@ namespace Simple {
 
         // Functions
 
-            void WaitForFences(const std::vector<ContextIndex> &_fences_ci, VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
-                std::vector<VkFence> __fences = cxt_handler.getObjsFence(_fences_ci);
+            void WaitForFences(Span<ContextIndex> _fences_ci, VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
+                InlineArray<VkFence> __fences(_fences_ci.size());
+                cxt_handler.fillObjsFence(_fences_ci, __fences);
                 Func::WaitForFences(cxt_handler.getObjDevice(), __fences, _wait_all, _wait_time);
             }
 
-            void ResetFences(const std::vector<ContextIndex> &_fences_ci) {
-                std::vector<VkFence> __fences = cxt_handler.getObjsFence(_fences_ci);
+            void ResetFences(Span<ContextIndex> _fences_ci) {
+                InlineArray<VkFence> __fences(_fences_ci.size());
+                cxt_handler.fillObjsFence(_fences_ci, __fences);
                 Func::ResetFences(cxt_handler.getObjDevice(), __fences);
             }
         }; // BarrierHandler END
@@ -1107,14 +1150,18 @@ namespace Simple {
                 clear();
             }
 
+            // Note: persistently mapped chunks (see 'MemoryChunk::mapped_ptr') are not mapped again, only the pointer is offset
             void MapMemory(ContextIndex _ci_memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
                 UnmapMemory(); // memory object can't be mapped twice
-                mem_handle = { Func::MapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(_ci_memory), _offset, _size), _ci_memory };
+                void *__persistent_ptr = cxt_handler.cxt_ptr->cxt_memory.getMappedChunk(_ci_memory);
+                void *__mapped_ptr = __persistent_ptr != nullptr ? (uint8_t*)__persistent_ptr + _offset
+                                                                 : Func::MapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(_ci_memory), _offset, _size);
+                mem_handle = { __mapped_ptr, _ci_memory };
                 mapped_offset = _offset;
             }
 
             void UnmapMemory() {
-                if (mem_handle.second != VKFW_CI_IGNORE)
+                if (mem_handle.second != VKFW_CI_IGNORE && cxt_handler.cxt_ptr->cxt_memory.getMappedChunk(mem_handle.second) == nullptr)
                     Func::UnmapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(mem_handle.second));
                 mem_handle = {nullptr, VKFW_CI_IGNORE};
                 mapped_offset = 0u;
@@ -1130,7 +1177,13 @@ namespace Simple {
         // Memory Functions
 
             // Converts ranges relative to the mapped memory into absolute VkMappedMemoryRange aligned to 'nonCoherentAtomSize'
-            std::vector<VkMappedMemoryRange> getMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
+            std::vector<VkMappedMemoryRange> getMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
+                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size());
+                fillMappedMemoryRanges(_mem_ranges, __mem_ranges.data());
+                return __mem_ranges;
+            }
+
+            void fillMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges, VkMappedMemoryRange *_res) const {
                 if (non_coherent_atom_size == 0u) {
                     VkPhysicalDeviceProperties __properties{};
                     vkGetPhysicalDeviceProperties(cxt_handler.getObjPhysicalDevice(), &__properties);
@@ -1138,8 +1191,9 @@ namespace Simple {
                 }
                 const VkDeviceSize __alloc_size = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].memory.allocate_info.wrap.allocationSize;
 
-                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size(), VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE});
-                for (uint32_t i = 0u; i < __mem_ranges.size(); ++i) {
+                VkMappedMemoryRange *__mem_ranges = _res;
+                for (uint32_t i = 0u; i < _mem_ranges.size(); ++i) {
+                    __mem_ranges[i] = VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
                     VkDeviceSize __offset = mapped_offset + _mem_ranges[i].offset;
                     VkDeviceSize __aligned_offset = __offset - __offset % non_coherent_atom_size;
 
@@ -1153,17 +1207,20 @@ namespace Simple {
                             __mem_ranges[i].size = __end - __aligned_offset;
                     }
                 }
-                return __mem_ranges;
             }
 
             // Note: offsets are relative to the start of the mapped memory
-            void FlushMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
-                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), getMappedMemoryRanges(_mem_ranges));
+            void FlushMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
+                InlineArray<VkMappedMemoryRange> __vk_ranges(_mem_ranges.size());
+                fillMappedMemoryRanges(_mem_ranges, __vk_ranges.data());
+                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), __vk_ranges);
             }
 
             // Note: offsets are relative to the start of the mapped memory
-            void InvalidateMappedMemoryRanges(const std::vector<VulkanContext::ContextMemory::MemoryMapping> &_mem_ranges) const {
-                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), getMappedMemoryRanges(_mem_ranges));
+            void InvalidateMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
+                InlineArray<VkMappedMemoryRange> __vk_ranges(_mem_ranges.size());
+                fillMappedMemoryRanges(_mem_ranges, __vk_ranges.data());
+                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), __vk_ranges);
             }
 
         // Scenarios
@@ -1334,8 +1391,9 @@ namespace Simple {
                 vkCmdEndRenderPass(cmd_buffer);
             }
 
-            void CmdBindDescriptorSets(ContextIndex _ci_pip_layout, VkPipelineBindPoint _pip_bind_pt, const std::vector<ContextIndex2> &_ci2_descr_sets, const std::vector<uint32_t> &_dynamic_descr = {}) {
-                auto __obj_descr_sets = cxt_handler.getObjsDescriptorSet(_ci2_descr_sets);
+            void CmdBindDescriptorSets(ContextIndex _ci_pip_layout, VkPipelineBindPoint _pip_bind_pt, Span<ContextIndex2> _ci2_descr_sets, Span<uint32_t> _dynamic_descr = {}) {
+                InlineArray<VkDescriptorSet> __obj_descr_sets(_ci2_descr_sets.size());
+                cxt_handler.fillObjsDescriptorSet(_ci2_descr_sets, __obj_descr_sets);
                 vkCmdBindDescriptorSets(cmd_buffer, _pip_bind_pt, cxt_handler.getObjPipelineLayout(_ci_pip_layout), 0u, __obj_descr_sets.size(), __obj_descr_sets.data(), _dynamic_descr.size(), _dynamic_descr.data());
             }
 
@@ -1354,11 +1412,15 @@ namespace Simple {
                 vkCmdBindPipeline(cmd_buffer, __pipeline_type, cxt_handler.getObjPipeline(_pipeline_ci));
             }
 
-            void CmdBindVertexBuffers(const std::vector<ContextIndex2> &_ci_buffers, std::vector<VkDeviceSize> &&_offsets = {}) {
-                std::vector<VkBuffer> __obj_buffers = cxt_handler.getObjsBuffer(_ci_buffers);
-                _offsets.resize(_ci_buffers.size(), 0u);
+            // Note: missing offsets are set to 0
+            void CmdBindVertexBuffers(Span<ContextIndex2> _ci_buffers, Span<VkDeviceSize> _offsets = {}) {
+                InlineArray<VkBuffer>     __obj_buffers(_ci_buffers.size());
+                InlineArray<VkDeviceSize> __offsets    (_ci_buffers.size());
+                cxt_handler.fillObjsBuffer(_ci_buffers, __obj_buffers);
+                for (uint32_t i = 0u; i < __offsets.size(); ++i)
+                    __offsets[i] = i < _offsets.size() ? _offsets[i] : 0u;
 
-                vkCmdBindVertexBuffers(cmd_buffer, 0u, __obj_buffers.size(), __obj_buffers.data(), _offsets.empty() ? nullptr : _offsets.data());
+                vkCmdBindVertexBuffers(cmd_buffer, 0u, __obj_buffers.size(), __obj_buffers.data(), __offsets.data());
             }
 
             void CmdClearAttachments() {
@@ -1379,21 +1441,21 @@ namespace Simple {
             //     vkCmdClearColorImage()
             // }
 
-            void CmdCopyBuffer(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_buffer_ci2, const std::vector<VkBufferCopy> &_copy_regions) {
+            void CmdCopyBuffer(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_buffer_ci2, Span<VkBufferCopy> _copy_regions) {
                 VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_ci2);
                 VkBuffer __dst_buffer = cxt_handler.getObjBuffer(_dst_buffer_ci2);
 
                 vkCmdCopyBuffer(cmd_buffer, __src_buffer, __dst_buffer, (uint32_t) _copy_regions.size(), _copy_regions.data());
             }
 
-            void CmdCopyImage(ContextIndex2 _src_image_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout1, VkImageLayout _layout2, const std::vector<VkImageCopy> &_copy_regions) {
+            void CmdCopyImage(ContextIndex2 _src_image_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout1, VkImageLayout _layout2, Span<VkImageCopy> _copy_regions) {
                 VkImage __src_image = cxt_handler.getObjImage(_src_image_ci2);
                 VkImage __dst_image = cxt_handler.getObjImage(_dst_image_ci2);
 
                 vkCmdCopyImage(cmd_buffer, __src_image, _layout1, __dst_image, _layout2, (uint32_t) _copy_regions.size(), _copy_regions.data());
             }
 
-            void CmdCopyBufferToImage(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout, const std::vector<VkBufferImageCopy> &_copy_regions) {
+            void CmdCopyBufferToImage(ContextIndex2 _src_buffer_ci2, ContextIndex2 _dst_image_ci2, VkImageLayout _layout, Span<VkBufferImageCopy> _copy_regions) {
                 VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_ci2);
                 VkImage  __dst_image  = cxt_handler.getObjImage ( _dst_image_ci2);
 
@@ -1419,11 +1481,11 @@ namespace Simple {
                vkCmdSetLineWidth(cmd_buffer, _line_width); 
             }
 
-            void CmdSetScissor(const std::vector<VkRect2D> &_scissors) {
+            void CmdSetScissor(Span<VkRect2D> _scissors) {
                 vkCmdSetScissor(cmd_buffer, 0, _scissors.size(), _scissors.data());
             }
 
-            void CmdSetViewport(const std::vector<VkViewport> &_viewports) {
+            void CmdSetViewport(Span<VkViewport> _viewports) {
                 vkCmdSetViewport(cmd_buffer, 0, _viewports.size(), _viewports.data());
             }
 
@@ -1485,12 +1547,15 @@ namespace Simple {
                 }
             }
 
-            inline void QueueSubmit(ContextIndex2 _ci2_queue, const std::vector<ContextIndex2> &_ci2_cmdbuf, const std::vector<uint32_t> &_active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
-                QueueSubmit(cxt_handler.getObjQueue(_ci2_queue), cxt_handler.getObjsCommandBuffer(_ci2_cmdbuf), _active_submits, _fence_ci);
+            inline void QueueSubmit(ContextIndex2 _ci2_queue, Span<ContextIndex2> _ci2_cmdbuf, Span<uint32_t> _active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
+                InlineArray<VkCommandBuffer> __obj_cmdbuf(_ci2_cmdbuf.size());
+                cxt_handler.fillObjsCommandBuffer(_ci2_cmdbuf, __obj_cmdbuf);
+                QueueSubmit(cxt_handler.getObjQueue(_ci2_queue), __obj_cmdbuf, _active_submits, _fence_ci);
             }
-            void QueueSubmit(VkQueue _obj_queue, const std::vector<VkCommandBuffer> &_obj_cmdbuf, const std::vector<uint32_t> &_active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
+            void QueueSubmit(VkQueue _obj_queue, Span<VkCommandBuffer> _obj_cmdbuf, Span<uint32_t> _active_submits, ContextIndex _fence_ci = VKFW_CI_IGNORE) {
+                // Note: 'assign' reuses the vector capacity, so there are no allocations after the first frames
                 for (uint32_t i : _active_submits)
-                    queue_submit_wrap.wraps[i].command_buffers = _obj_cmdbuf;
+                    queue_submit_wrap.wraps[i].command_buffers.assign(_obj_cmdbuf.begin(), _obj_cmdbuf.end());
 
                 queue_submit_wrap.setActiveSubmits(_active_submits);
                 queue_submit_wrap.callFunction(_obj_queue, cxt_handler.getObjFence(_fence_ci));
@@ -1531,10 +1596,11 @@ namespace Simple {
                 for (auto queue : __obj_queues)  vkQueueWaitIdle(queue);
             }
 
-            void setWholeQueuePresentStruct(const std::vector<ContextIndex> &_ci_wait_semaphores,
-                                            const std::vector<uint32_t> &_image_indices, bool _use_results = false) {
-                auto __obj_semaphores = cxt_handler.getObjsSemaphore(_ci_wait_semaphores);
-                queue_present_wrap.wrap.setWholeStruct(__obj_semaphores, {cxt_handler.getObjSwapchainKHR()}, _image_indices, _use_results);
+            void setWholeQueuePresentStruct(Span<ContextIndex> _ci_wait_semaphores,
+                                            Span<uint32_t> _image_indices, bool _use_results = false) {
+                InlineArray<VkSemaphore> __obj_semaphores(_ci_wait_semaphores.size());
+                cxt_handler.fillObjsSemaphore(_ci_wait_semaphores, __obj_semaphores);
+                queue_present_wrap.wrap.setWholeStruct(__obj_semaphores, cxt_handler.getObjSwapchainKHR(), _image_indices, _use_results);
             }
 
             void writeBufferMemory(CommandHandler &_cmd_handler, ContextIndex2 _ci2_queue_transfer, ContextIndex2 _buffer_ci2, ContextIndex2 _staging_buffer_ci2, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {

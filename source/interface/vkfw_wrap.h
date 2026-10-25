@@ -161,12 +161,12 @@ namespace Simple {
                 }
             }
 
-            inline void WaitForFences(VkDevice _device, const std::vector<VkFence> &_fences,
+            inline void WaitForFences(VkDevice _device, Span<VkFence> _fences,
                                VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
                 vkWaitForFences(_device, _fences.size(), _fences.data(), _wait_all, _wait_time);
             }
 
-            inline void ResetFences(VkDevice _device, const std::vector<VkFence> &_fences) {
+            inline void ResetFences(VkDevice _device, Span<VkFence> _fences) {
                 vkResetFences(_device, _fences.size(), _fences.data());
             }
 
@@ -175,7 +175,7 @@ namespace Simple {
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: BeginCommandBuffer", "Failed to begin recording command buffer"));
             }
 
-            inline void QueueSubmit(VkQueue _queue, const std::vector<VkSubmitInfo> &_submits, VkFence _fence = VK_NULL_HANDLE) {
+            inline void QueueSubmit(VkQueue _queue, Span<VkSubmitInfo> _submits, VkFence _fence = VK_NULL_HANDLE) {
                 if (vkQueueSubmit(_queue, _submits.size(), _submits.data(), _fence) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: QueueSubmit", "Failed to submit to queue"));
             }
@@ -246,12 +246,12 @@ namespace Simple {
                     vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, _data.data());
             }
 
-            inline void FlushMappedMemoryRanges(VkDevice _device, const std::vector<VkMappedMemoryRange> &_mem_ranges) {
+            inline void FlushMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
                 if (vkFlushMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FlushMappedMemoryRanges", "Failed to flush mapped memory ranges"));
             }
 
-            inline void InvalidateMappedMemoryRanges(VkDevice _device, const std::vector<VkMappedMemoryRange> &_mem_ranges) {
+            inline void InvalidateMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
                 if (vkInvalidateMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: InvalidateMappedMemoryRanges", "Failed to invalidate mapped memory ranges"));
             }
@@ -623,7 +623,7 @@ namespace Simple {
                 vkDestroyDescriptorPool(_device, _pool, _destroy_cb);
             }
 
-            inline void FreeDescriptorSets(VkDevice _device, VkDescriptorPool _descriptor_pool, const std::vector<VkDescriptorSet> _sets) {
+            inline void FreeDescriptorSets(VkDevice _device, VkDescriptorPool _descriptor_pool, Span<VkDescriptorSet> _sets) {
                 if (vkFreeDescriptorSets(_device, _descriptor_pool, _sets.size(), _sets.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FreeDescriptorSets","failed to free descriptor sets"));
             }
@@ -655,7 +655,7 @@ namespace Simple {
 
 //  == === ==== >   Command Buffer Commands
 
-            inline void CmdSetViewport(VkCommandBuffer _command_buffer, const std::vector<VkViewport> &_viewports) {
+            inline void CmdSetViewport(VkCommandBuffer _command_buffer, Span<VkViewport> _viewports) {
                 vkCmdSetViewport(_command_buffer, 0u, (uint32_t)_viewports.size(), _viewports.data());
             }
 
@@ -3524,12 +3524,13 @@ namespace Simple {
 
             // Scenarios
 
-                void setWholeStruct(const std::vector<VkSemaphore> &_wait_semaphores,
-                                    const std::vector<VkSwapchainKHR> &_swapchains,
-                                    const std::vector<uint32_t> &_image_indices, bool _use_results = false) {
-                    wait_semaphores = _wait_semaphores;
-                    swapchains = _swapchains;
-                    image_indices = _image_indices;
+                // Note: 'assign' reuses the vector capacity, so per-frame calls don't allocate memory
+                void setWholeStruct(Span<VkSemaphore> _wait_semaphores,
+                                    Span<VkSwapchainKHR> _swapchains,
+                                    Span<uint32_t> _image_indices, bool _use_results = false) {
+                    wait_semaphores.assign(_wait_semaphores.begin(), _wait_semaphores.end());
+                    swapchains     .assign(     _swapchains.begin(),      _swapchains.end());
+                    image_indices  .assign(  _image_indices.begin(),   _image_indices.end());
                     use_results = _use_results;
                     updateWrap();
                 }
@@ -4268,8 +4269,8 @@ namespace Simple {
 
             // Scenarios
 
-                void setActiveSubmits(const std::vector<uint32_t> &_active_submits) {
-                    active_submits = _active_submits;
+                void setActiveSubmits(Span<uint32_t> _active_submits) {
+                    active_submits.assign(_active_submits.begin(), _active_submits.end());
                     updateWrap();
                 }
             }; // QueueSubmit END

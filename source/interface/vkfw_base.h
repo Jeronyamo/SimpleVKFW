@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <initializer_list>
 
 #include "common/memory.h"
 #include "interface/glfwrap.h"
@@ -45,6 +46,56 @@ namespace Simple {
 
 
 // Utilities
+
+        // Note: non-owning view of a contiguous array (pointer + size), used instead of 'const std::vector<T>&' parameters,
+        //       so calls with '{ a, b }', a single value, a C array or a std::vector don't allocate memory.
+        //       The viewed data must outlive the Span: don't store a Span created from a braced list.
+        template <typename T>
+        struct Span {
+            const T *ptr = nullptr;
+            uint32_t count = 0u;
+
+            Span() {}
+            Span(const T &_one) : ptr{&_one}, count{1u} {}
+            Span(const T *_ptr, uint32_t _count) : ptr{_ptr}, count{_count} {}
+            Span(std::initializer_list<T> _list) : ptr{_list.begin()}, count{(uint32_t)_list.size()} {}
+            template <typename A>
+            Span(const std::vector<T, A> &_vec) : ptr{_vec.data()}, count{(uint32_t)_vec.size()} {}
+            template <size_t N>
+            Span(const T (&_arr)[N]) : ptr{_arr}, count{(uint32_t)N} {}
+
+            uint32_t size() const { return count; }
+            bool    empty() const { return count == 0u; }
+            const T* data() const { return count ? ptr : nullptr; }
+            const T* begin() const { return ptr; }
+            const T*   end() const { return ptr + count; }
+            const T& operator[](uint32_t _id) const { return ptr[_id]; }
+        }; // Span END
+
+        #define VKFW_INLINE_ARRAY_SIZE 32u
+
+        // Note: array of a fixed size, set in the constructor; elements are stored inline (on the stack) if there are
+        //       at most 'N' of them, otherwise in a std::vector. Used to convert context indices into Vulkan handles.
+        template <typename T, uint32_t N = VKFW_INLINE_ARRAY_SIZE>
+        struct InlineArray {
+            explicit InlineArray(uint32_t _count) : count{_count} { if (count > N) heap.resize(count); }
+
+            uint32_t size() const { return count; }
+                  T* data()       { return count > N ? heap.data() : (count ? local : nullptr); }
+            const T* data() const { return count > N ? heap.data() : (count ? local : nullptr); }
+                  T& operator[](uint32_t _id)       { return data()[_id]; }
+            const T& operator[](uint32_t _id) const { return data()[_id]; }
+
+            operator Span<T>() const { return { data(), count }; }
+
+        private:
+            T local[N];
+            std::vector<T> heap;
+            uint32_t count;
+
+            InlineArray(const InlineArray &);
+            InlineArray& operator=(const InlineArray &);
+        }; // InlineArray END
 
         enum class CompareOp : uint8_t {
             NE, // not equal
