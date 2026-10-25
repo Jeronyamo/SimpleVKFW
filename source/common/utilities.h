@@ -108,7 +108,7 @@ namespace Simple {
 
         //  Functions
 
-        std::string stringStrip(const std::string &_in_str) {
+        inline std::string stringStrip(const std::string &_in_str) {
             long __offset1 = 0, __offset2 = long(_in_str.size()) - 1;
             for (; __offset1 <= __offset2 && std::isspace((unsigned char)_in_str[__offset1]); ++__offset1);
             for (; __offset2 >= __offset1 && std::isspace((unsigned char)_in_str[__offset2]); --__offset2);

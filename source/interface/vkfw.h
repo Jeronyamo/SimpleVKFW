@@ -507,7 +507,6 @@ namespace Simple {
                     ContextCore *cxt_core = nullptr;
 
                     MemoryChunk(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
-                   ~MemoryChunk() {}
 
                     void destroyChunk() {
                         for (auto& buf_view : buffer_views)

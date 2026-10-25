@@ -18,8 +18,8 @@ namespace Simple {
         typedef uint32_t    ContextIndex;
         typedef std::pair<uint32_t, uint32_t> ContextIndex2;
 
-        bool shouldIgnoreCI(ContextIndex   _ci_check) { return _ci_check == VKFW_CI_IGNORE; }
-        bool shouldIgnoreCI(ContextIndex2 _ci2_check) { return _ci2_check.first == VKFW_CI_IGNORE || _ci2_check.second == VKFW_CI_IGNORE; }
+        inline bool shouldIgnoreCI(ContextIndex   _ci_check) { return _ci_check == VKFW_CI_IGNORE; }
+        inline bool shouldIgnoreCI(ContextIndex2 _ci2_check) { return _ci2_check.first == VKFW_CI_IGNORE || _ci2_check.second == VKFW_CI_IGNORE; }
 
         template <typename T>
         struct ContextEntity {
@@ -56,7 +56,7 @@ namespace Simple {
         }; // CompareOp END
 
         namespace VulkanAPIVersion {
-            uint32_t available(uint32_t *_variant = nullptr) {
+            inline uint32_t available(uint32_t *_variant = nullptr) {
                 uint32_t _version = VK_API_VERSION_1_0;
 
                 if (vkEnumerateInstanceVersion != nullptr)
