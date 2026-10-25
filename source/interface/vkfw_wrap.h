@@ -1501,9 +1501,22 @@ namespace Simple {
 //  == === ==== ============================== ==== === ==  \\
 
         namespace Struct {
+        // Note: 'wrap' is private. Fill the structure through 'edit()' and pass it to Vulkan through 'get()'.
+        //       'get()' calls 'updateWrap()' first, so the counts and pointers that the wrapper manages are always current;
+        //       writing such a field through 'edit()' has no effect, use the wrapper's members instead.
+        //       'peek()' reads the structure as it is, without updating it.
+        #define VKFW_STRUCT_WRAP_ACCESS(T_)                                   \
+            public:                                                           \
+                typedef T_ WrapType;                                          \
+                const WrapType &get()        { updateWrap(); return wrap; }   \
+                const WrapType &peek() const { return wrap; }                 \
+                      WrapType &edit()       { return wrap; }
+
             // Template interface
             template <typename T> struct StructWrap {
+            private:
                 T wrap;
+                VKFW_STRUCT_WRAP_ACCESS(T)
                 void clear() {}
                 void updateWrap() {}
             };
@@ -1517,7 +1530,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkViewport> {
+            private:
                 VkViewport wrap{ 0.f, 0.f, 0.f, 0.f, 0.f, 1.f };
+                VKFW_STRUCT_WRAP_ACCESS(VkViewport)
 
                 // Note: VkViewport fields order - x, y, width, height, minDepth, maxDepth
                 StructWrap(const VkExtent2D &_extent, float _x = 0.f, float _y = 0.f, float _depthMin = 0.f, float _depthMax = 1.f) :
@@ -1548,7 +1563,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRect2D> {
+            private:
                 VkRect2D wrap{ {0, 0}, {0u, 0u} };
+                VKFW_STRUCT_WRAP_ACCESS(VkRect2D)
 
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
@@ -1578,7 +1595,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkClearValue> {
+            private:
                 VkClearValue wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkClearValue)
 
                 StructWrap() {}
                 StructWrap(float    _v0, float    _v1, float    _v2, float    _v3) { fromColorVec4f({_v0, _v1, _v2, _v3}); }
@@ -1654,7 +1673,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkAttachmentDescription> {
+            private:
                 VkAttachmentDescription wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkAttachmentDescription)
 
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
@@ -1688,7 +1709,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSubpassDescription> {
+            private:
                 VkSubpassDescription wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkSubpassDescription)
 
                 VkAttachmentReference      depth_stencil_attachment;
                 std::vector<VkAttachmentReference> color_attachments,
@@ -1745,7 +1768,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSubpassDependency> {
+            private:
                 VkSubpassDependency wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkSubpassDependency)
 
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
@@ -1777,7 +1802,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSpecializationInfo> {
+            private:
                 VkSpecializationInfo wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkSpecializationInfo)
 
                 std::vector<VkSpecializationMapEntry> map_entries;
                 std::vector<unsigned char> data;
@@ -1807,7 +1834,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDescriptorSetLayoutBinding> {
+            private:
                 VkDescriptorSetLayoutBinding wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetLayoutBinding)
 
                 std::vector<VkSampler> immutable_samplers;
 
@@ -1842,7 +1871,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkApplicationInfo> {
+            private:
                 VkApplicationInfo wrap{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkApplicationInfo)
 
                 std::string app_name, engine_name;
                 vec3u app_version, engine_version;
@@ -1887,7 +1918,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkInstanceCreateInfo> {
+            private:
                 VkInstanceCreateInfo wrap{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkInstanceCreateInfo)
 
                 Util::StringVec layers, extensions;
 
@@ -1905,8 +1938,7 @@ namespace Simple {
                 }
 
                 void updateWrap() {
-                    app_info_wrap.updateWrap();
-                    wrap.pApplicationInfo = &app_info_wrap.wrap;
+                    wrap.pApplicationInfo = &app_info_wrap.get();
                     wrap.enabledLayerCount = layers.count();
                     wrap.ppEnabledLayerNames = layers.getEntries();
                     wrap.enabledExtensionCount = extensions.count();
@@ -1946,7 +1978,9 @@ namespace Simple {
 
             template<>
             struct StructWrap<VkDebugUtilsMessengerCreateInfoEXT> {
+            private:
                 VkDebugUtilsMessengerCreateInfoEXT wrap{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+                VKFW_STRUCT_WRAP_ACCESS(VkDebugUtilsMessengerCreateInfoEXT)
 
                 StructWrap() { clear(); }
 
@@ -1981,7 +2015,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDeviceQueueCreateInfo> {
+            private:
                 VkDeviceQueueCreateInfo wrap{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkDeviceQueueCreateInfo)
 
                 VkfwQueueFamily queue_family = UINT32_MAX;
                 std::vector<float> priorities;
@@ -2009,7 +2045,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDeviceCreateInfo> {
+            private:
                 VkDeviceCreateInfo wrap{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkDeviceCreateInfo)
 
                 VkPhysicalDeviceFeatures req_features{};
                 std::vector<VkDeviceQueueCreateInfo> queue_info;
@@ -2055,7 +2093,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSwapchainCreateInfoKHR> {
+            private:
                 VkSwapchainCreateInfoKHR wrap{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkSwapchainCreateInfoKHR)
 
                 VkSurfaceCapabilitiesKHR capabilities;
                 std::vector<uint32_t>  queue_families;
@@ -2199,7 +2239,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkImageCreateInfo> {
+            private:
                 VkImageCreateInfo wrap{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkImageCreateInfo)
 
                 std::vector<uint32_t> queue_families;
 
@@ -2219,7 +2261,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkImageViewCreateInfo> {
+            private:
                 VkImageViewCreateInfo wrap{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkImageViewCreateInfo)
 
                 StructWrap() {}
 
@@ -2251,7 +2295,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkBufferCreateInfo> {
+            private:
                 VkBufferCreateInfo wrap{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkBufferCreateInfo)
 
                 std::vector<VkfwQueueFamily> queue_families;
 
@@ -2282,7 +2328,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkBufferViewCreateInfo> {
+            private:
                 VkBufferViewCreateInfo wrap{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkBufferViewCreateInfo)
 
                 StructWrap() {}
 
@@ -2304,7 +2352,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkMemoryAllocateInfo> {
+            private:
                 VkMemoryAllocateInfo wrap{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkMemoryAllocateInfo)
 
                 StructWrap() {}
 
@@ -2341,7 +2391,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkShaderModuleCreateInfo> {
+            private:
                 VkShaderModuleCreateInfo wrap{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkShaderModuleCreateInfo)
                 std::vector<char> buffer;
 
                 StructWrap() {}
@@ -2398,7 +2450,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRenderPassCreateInfo> {
+            private:
                 VkRenderPassCreateInfo wrap{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkRenderPassCreateInfo)
 
                 std::vector<StructWrap<VkAttachmentDescription>> attachments_wrap;
                 std::vector<StructWrap<VkSubpassDescription>>      subpasses_wrap;
@@ -2423,20 +2477,17 @@ namespace Simple {
                 void updateWrap() {
                     attachments.resize(attachments_wrap.size());
                     for (uint32_t i = 0u; i < attachments.size(); ++i) {
-                        attachments_wrap[i].updateWrap();
-                        attachments[i] = attachments_wrap[i].wrap;
+                        attachments[i] = attachments_wrap[i].get();
                     }
 
                     subpasses.resize(subpasses_wrap.size());
                     for (uint32_t i = 0u; i < subpasses.size(); ++i) {
-                        subpasses_wrap[i].updateWrap();
-                        subpasses[i] = subpasses_wrap[i].wrap;
+                        subpasses[i] = subpasses_wrap[i].get();
                     }
 
                     dependencies.resize(dependencies_wrap.size());
                     for (uint32_t i = 0u; i < dependencies.size(); ++i) {
-                        dependencies_wrap[i].updateWrap();
-                        dependencies[i] = dependencies_wrap[i].wrap;
+                        dependencies[i] = dependencies_wrap[i].get();
                     }
 
                     wrap.attachmentCount =  attachments.size();
@@ -2460,7 +2511,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkFramebufferCreateInfo> {
+            private:
                 VkFramebufferCreateInfo wrap{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkFramebufferCreateInfo)
 
                 std::vector<VkImageView> attachments;
 
@@ -2505,7 +2558,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSemaphoreCreateInfo> {
+            private:
                 VkSemaphoreCreateInfo wrap{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkSemaphoreCreateInfo)
 
                 StructWrap() {}
 
@@ -2518,7 +2573,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkFenceCreateInfo> {
+            private:
                 VkFenceCreateInfo wrap{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkFenceCreateInfo)
 
                 StructWrap() {}
 
@@ -2538,7 +2595,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkEventCreateInfo> {
+            private:
                 VkEventCreateInfo wrap{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkEventCreateInfo)
 
                 StructWrap() {}
 
@@ -2561,38 +2620,78 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkWriteDescriptorSet> {
+            private:
                 VkWriteDescriptorSet wrap{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                VKFW_STRUCT_WRAP_ACCESS(VkWriteDescriptorSet)
 
                 std::vector<VkDescriptorBufferInfo> buffer_infos;
                 std::vector<VkDescriptorImageInfo >  image_infos;
                 std::vector<VkBufferView>        texel_buf_views;
 
+                // If 0, 'descriptorCount' is the size of the info array that 'descriptorType' uses
+                uint32_t descriptor_count = 0u;
+
                 StructWrap() {}
 
                 void clear() {
                     wrap = VkWriteDescriptorSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                    descriptor_count = 0u;
 
                     buffer_infos.clear();
                     image_infos.clear();
                     texel_buf_views.clear();
                 }
 
-                // If 'descriptor_count' is 0, using max size among 'buffer_infos', 'image_infos' and 'texel_buf_views' vectors
+                // Note: Vulkan reads only one info array, chosen by 'descriptorType', and ignores the other two.
+                //       Types that take their data through 'pNext' (e.g. inline uniform blocks, acceleration structures)
+                //       use no info array, so 'descriptor_count' must be set for them.
                 void updateWrap() {
-                    wrap.descriptorCount = wrap.descriptorCount ? wrap.descriptorCount : Math::maxOf(vec3u((uint32_t)   buffer_infos.size(),
-                                                                                                           (uint32_t)    image_infos.size(),
-                                                                                                           (uint32_t)texel_buf_views.size()));
-                    wrap.pImageInfo       =     image_infos.size() ?     image_infos.data() : nullptr;
-                    wrap.pBufferInfo      =    buffer_infos.size() ?    buffer_infos.data() : nullptr;
-                    wrap.pTexelBufferView = texel_buf_views.size() ? texel_buf_views.data() : nullptr;
+                    wrap.pImageInfo       = nullptr;
+                    wrap.pBufferInfo      = nullptr;
+                    wrap.pTexelBufferView = nullptr;
+
+                    bool     __uses_infos  = true;
+                    uint32_t __infos_count = 0u;
+                    switch (wrap.descriptorType) {
+                        case VK_DESCRIPTOR_TYPE_SAMPLER:
+                        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+                            __infos_count   = image_infos.size();
+                            wrap.pImageInfo = image_infos.empty() ? nullptr : image_infos.data();
+                            break;
+                        case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+                        case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+                            __infos_count         = texel_buf_views.size();
+                            wrap.pTexelBufferView = texel_buf_views.empty() ? nullptr : texel_buf_views.data();
+                            break;
+                        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+                        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                            __infos_count    = buffer_infos.size();
+                            wrap.pBufferInfo = buffer_infos.empty() ? nullptr : buffer_infos.data();
+                            break;
+                        default:
+                            __uses_infos = false;
+                    }
+
+                    wrap.descriptorCount = descriptor_count ? descriptor_count : __infos_count;
+
+                    if (wrap.descriptorCount == 0u)
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW::Struct::StructWrap<VkWriteDescriptorSet> :: updateWrap", "descriptorCount is 0\n"));
+                    else if (__uses_infos && wrap.descriptorCount > __infos_count)
+                        fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW::Struct::StructWrap<VkWriteDescriptorSet> :: updateWrap",
+                                                          "descriptorCount (%u) is larger than the info array (%u)\n"), wrap.descriptorCount, __infos_count);
                 }
 
             // Scenarios
 
-                // If 'descriptor_count' is 0, using max size among 'buffer_infos', 'image_infos' and 'texel_buf_views' vectors
+                // If 'descriptor_count' is 0, 'descriptorCount' is the size of the info array that 'descriptorType' uses
                 void setScalars(VkDescriptorSet _dst_descr_set, VkDescriptorType _descr_type, uint32_t _dst_binding,
                                 uint32_t _descriptor_count = 0u, uint32_t _dst_arr_elem = 0u) {
-                    wrap.descriptorCount = _descriptor_count;
+                    descriptor_count     = _descriptor_count;
                     wrap.dstSet          = _dst_descr_set;
                     wrap.descriptorType  =    _descr_type;
                     wrap.dstBinding      =   _dst_binding;
@@ -2606,11 +2705,17 @@ namespace Simple {
                 void addImageInfo(VkSampler _sampler, VkImageView _image_view, VkImageLayout _image_layout) {
                     image_infos.push_back(VkDescriptorImageInfo{ _sampler, _image_view, _image_layout });
                 }
+
+                void addTexelBufferView(VkBufferView _buffer_view) {
+                    texel_buf_views.push_back(_buffer_view);
+                }
             }; // StructWrap<VkWriteDescriptorSet> END
 
             template <>
             struct StructWrap<VkCopyDescriptorSet> {
+            private:
                 VkCopyDescriptorSet wrap{VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET};
+                VKFW_STRUCT_WRAP_ACCESS(VkCopyDescriptorSet)
 
                 StructWrap() {}
 
@@ -2638,7 +2743,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDescriptorSetLayoutCreateInfo> {
+            private:
                 VkDescriptorSetLayoutCreateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetLayoutCreateInfo)
 
                 std::vector<Struct::StructWrap<VkDescriptorSetLayoutBinding>> bindings_wrap;
 
@@ -2658,8 +2765,7 @@ namespace Simple {
                 void updateWrap() {
                     bindings.resize(bindings_wrap.size());
                     for (uint32_t i = 0u; i < bindings.size(); ++i) {
-                        bindings_wrap[i].updateWrap();
-                        bindings[i] = bindings_wrap[i].wrap;
+                        bindings[i] = bindings_wrap[i].get();
                     }
 
                     wrap.bindingCount = bindings.size();
@@ -2669,7 +2775,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDescriptorPoolCreateInfo> {
+            private:
                 VkDescriptorPoolCreateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkDescriptorPoolCreateInfo)
 
                 std::vector<VkDescriptorPoolSize> pool_sizes;
 
@@ -2700,7 +2808,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkDescriptorSetAllocateInfo> {
+            private:
                 VkDescriptorSetAllocateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetAllocateInfo)
 
                 std::vector<VkDescriptorSetLayout> set_layouts;
 
@@ -2730,7 +2840,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineLayoutCreateInfo> {
+            private:
                 VkPipelineLayoutCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineLayoutCreateInfo)
 
                 std::vector<VkPushConstantRange> constants;
                 std::vector<VkDescriptorSetLayout> layouts;
@@ -2753,7 +2865,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineCacheCreateInfo> {
+            private:
                 VkPipelineCacheCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineCacheCreateInfo)
 
                 std::vector<unsigned char> cache_data;
 
@@ -2780,7 +2894,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineLibraryCreateInfoKHR> {
+            private:
                 VkPipelineLibraryCreateInfoKHR wrap{VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineLibraryCreateInfoKHR)
 
                 std::vector<VkPipeline> libraries;
 
@@ -2799,7 +2915,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRayTracingShaderGroupCreateInfoKHR> {
+            private:
                 VkRayTracingShaderGroupCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkRayTracingShaderGroupCreateInfoKHR)
 
                 // Note: data is owned by vector, so the structure can be safely copied (previously raw 'new[]' pointer was double-deleted on copies)
                 std::vector<unsigned char> capture_replay_handle;
@@ -2825,7 +2943,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRayTracingPipelineInterfaceCreateInfoKHR> {
+            private:
                 VkRayTracingPipelineInterfaceCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_INTERFACE_CREATE_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkRayTracingPipelineInterfaceCreateInfoKHR)
                 // Note: from Gemini, minimal supported 'maxPipelineRayHitAttributeSize' value is 32 bytes
                 StructWrap() {}
 
@@ -2841,7 +2961,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineShaderStageCreateInfo> {
+            private:
                 VkPipelineShaderStageCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineShaderStageCreateInfo)
 
                 StructWrap<VkSpecializationInfo> spec_info_wrap;
 
@@ -2858,10 +2980,8 @@ namespace Simple {
                 }
 
                 void updateWrap() {
-                    spec_info_wrap.updateWrap();
-
                     wrap.pName = name.c_str();
-                    wrap.pSpecializationInfo = spec_info_wrap.wrap.mapEntryCount ? &spec_info_wrap.wrap : nullptr;
+                    wrap.pSpecializationInfo = spec_info_wrap.get().mapEntryCount ? &spec_info_wrap.peek() : nullptr;
                 }
 
             // Scenarios
@@ -2880,7 +3000,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineDynamicStateCreateInfo> {
+            private:
                 VkPipelineDynamicStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineDynamicStateCreateInfo)
 
                 std::vector<VkDynamicState> dynamic_states;
 
@@ -2923,7 +3045,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineVertexInputStateCreateInfo> {
+            private:
                 VkPipelineVertexInputStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineVertexInputStateCreateInfo)
 
                 std::vector<VkVertexInputBindingDescription> bindings;
                 std::vector<VkVertexInputAttributeDescription> attributes;
@@ -2947,7 +3071,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineInputAssemblyStateCreateInfo> {
+            private:
                 VkPipelineInputAssemblyStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineInputAssemblyStateCreateInfo)
 
                 StructWrap() {}
 
@@ -2968,7 +3094,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineViewportStateCreateInfo> {
+            private:
                 VkPipelineViewportStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineViewportStateCreateInfo)
 
                 std::vector<StructWrap<VkViewport>> viewports_wrap;
                 std::vector<StructWrap<VkRect2D>>    scissors_wrap;
@@ -2999,8 +3127,7 @@ namespace Simple {
                     if (!viewports_dynamic_count) {
                         viewports.resize(viewports_wrap.size());
                         for (uint32_t i = 0u; i < viewports.size(); ++i) {
-                            viewports_wrap[i].updateWrap();
-                            viewports[i] = viewports_wrap[i].wrap;
+                            viewports[i] = viewports_wrap[i].get();
                         }
 
                         wrap.viewportCount = viewports.size();
@@ -3012,8 +3139,7 @@ namespace Simple {
                     if (!scissors_dynamic_count) {
                         scissors.resize(scissors_wrap.size());
                         for (uint32_t i = 0u; i < scissors.size(); ++i) {
-                            scissors_wrap[i].updateWrap();
-                            scissors[i] = scissors_wrap[i].wrap;
+                            scissors[i] = scissors_wrap[i].get();
                         }
 
                         wrap.scissorCount  =  scissors.size();
@@ -3044,7 +3170,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineRasterizationStateCreateInfo> {
+            private:
                 VkPipelineRasterizationStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineRasterizationStateCreateInfo)
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_sct) = default;
@@ -3074,7 +3202,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineMultisampleStateCreateInfo> {
+            private:
                 VkPipelineMultisampleStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineMultisampleStateCreateInfo)
 
                 VkSampleMask sample_mask[2] = {VkSampleMask(-1), VkSampleMask(-1)};
 
@@ -3100,7 +3230,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineDepthStencilStateCreateInfo> {
+            private:
                 VkPipelineDepthStencilStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineDepthStencilStateCreateInfo)
 
                 StructWrap() {}
 
@@ -3113,7 +3245,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineColorBlendAttachmentState> {
+            private:
                 VkPipelineColorBlendAttachmentState wrap{};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineColorBlendAttachmentState)
 
                 StructWrap() { clear(); }
 
@@ -3151,7 +3285,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineColorBlendStateCreateInfo> {
+            private:
                 VkPipelineColorBlendStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineColorBlendStateCreateInfo)
 
                 std::vector<StructWrap<VkPipelineColorBlendAttachmentState>> attachments_wrap;
 
@@ -3169,7 +3305,7 @@ namespace Simple {
                 void updateWrap() {
                     attachments.resize(attachments_wrap.size());
                     for (uint32_t i = 0u; i < attachments.size(); ++i) {
-                        attachments[i] = attachments_wrap[i].wrap;
+                        attachments[i] = attachments_wrap[i].get();
                     }
                     wrap.attachmentCount = attachments.size();
                     wrap.pAttachments    = attachments.data();
@@ -3192,7 +3328,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPipelineTessellationStateCreateInfo> {
+            private:
                 VkPipelineTessellationStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineTessellationStateCreateInfo)
 
                 StructWrap() {}
                 // StructWrap(const StructBuilder &_sct) = default;
@@ -3210,7 +3348,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkGraphicsPipelineCreateInfo> {
+            private:
                 VkGraphicsPipelineCreateInfo wrap{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkGraphicsPipelineCreateInfo)
 
                 StructWrap<VkPipelineVertexInputStateCreateInfo>     vertex_input_state_wrap;
                 StructWrap<VkPipelineInputAssemblyStateCreateInfo> input_assembly_state_wrap;
@@ -3240,22 +3380,21 @@ namespace Simple {
                 void updateWrap() {
                     shader_stages.resize(shader_stages_wrap.size());
                     for (uint32_t i = 0u; i < shader_stages.size(); ++i) {
-                        shader_stages_wrap[i].updateWrap();
-                        shader_stages[i] = shader_stages_wrap[i].wrap;
+                        shader_stages[i] = shader_stages_wrap[i].get();
                     }
 
                     wrap.stageCount = shader_stages.size();
                     wrap.pStages    = shader_stages.data();
 
-                    wrap.pVertexInputState   = (active_state_flags & VKFW_PIPELINE_STATE_VERTEX_INPUT_BIT  ) ? (  vertex_input_state_wrap.updateWrap(), &  vertex_input_state_wrap.wrap) : nullptr;
-                    wrap.pInputAssemblyState = (active_state_flags & VKFW_PIPELINE_STATE_INPUT_ASSEMBLY_BIT) ? (input_assembly_state_wrap.updateWrap(), &input_assembly_state_wrap.wrap) : nullptr;
-                    wrap.pTessellationState  = (active_state_flags & VKFW_PIPELINE_STATE_TESSELLATION_BIT  ) ? (  tessellation_state_wrap.updateWrap(), &  tessellation_state_wrap.wrap) : nullptr;
-                    wrap.pViewportState      = (active_state_flags & VKFW_PIPELINE_STATE_VIEWPORT_BIT      ) ? (      viewport_state_wrap.updateWrap(), &      viewport_state_wrap.wrap) : nullptr;
-                    wrap.pRasterizationState = (active_state_flags & VKFW_PIPELINE_STATE_RASTERIZATION_BIT ) ? ( rasterization_state_wrap.updateWrap(), & rasterization_state_wrap.wrap) : nullptr;
-                    wrap.pMultisampleState   = (active_state_flags & VKFW_PIPELINE_STATE_MULTISAMPLE_BIT   ) ? (   multisample_state_wrap.updateWrap(), &   multisample_state_wrap.wrap) : nullptr;
-                    wrap.pDepthStencilState  = (active_state_flags & VKFW_PIPELINE_STATE_DEPTH_STENCIL_BIT ) ? ( depth_stencil_state_wrap.updateWrap(), & depth_stencil_state_wrap.wrap) : nullptr;
-                    wrap.pColorBlendState    = (active_state_flags & VKFW_PIPELINE_STATE_COLOR_BLEND_BIT   ) ? (   color_blend_state_wrap.updateWrap(), &   color_blend_state_wrap.wrap) : nullptr;
-                    wrap.pDynamicState       = (active_state_flags & VKFW_PIPELINE_STATE_DYNAMIC_BIT       ) ? (       dynamic_state_wrap.updateWrap(), &       dynamic_state_wrap.wrap) : nullptr;
+                    wrap.pVertexInputState   = (active_state_flags & VKFW_PIPELINE_STATE_VERTEX_INPUT_BIT  ) ?     &vertex_input_state_wrap.get() : nullptr;
+                    wrap.pInputAssemblyState = (active_state_flags & VKFW_PIPELINE_STATE_INPUT_ASSEMBLY_BIT) ?   &input_assembly_state_wrap.get() : nullptr;
+                    wrap.pTessellationState  = (active_state_flags & VKFW_PIPELINE_STATE_TESSELLATION_BIT  ) ?     &tessellation_state_wrap.get() : nullptr;
+                    wrap.pViewportState      = (active_state_flags & VKFW_PIPELINE_STATE_VIEWPORT_BIT      ) ?         &viewport_state_wrap.get() : nullptr;
+                    wrap.pRasterizationState = (active_state_flags & VKFW_PIPELINE_STATE_RASTERIZATION_BIT ) ?    &rasterization_state_wrap.get() : nullptr;
+                    wrap.pMultisampleState   = (active_state_flags & VKFW_PIPELINE_STATE_MULTISAMPLE_BIT   ) ?      &multisample_state_wrap.get() : nullptr;
+                    wrap.pDepthStencilState  = (active_state_flags & VKFW_PIPELINE_STATE_DEPTH_STENCIL_BIT ) ?    &depth_stencil_state_wrap.get() : nullptr;
+                    wrap.pColorBlendState    = (active_state_flags & VKFW_PIPELINE_STATE_COLOR_BLEND_BIT   ) ?      &color_blend_state_wrap.get() : nullptr;
+                    wrap.pDynamicState       = (active_state_flags & VKFW_PIPELINE_STATE_DYNAMIC_BIT       ) ?          &dynamic_state_wrap.get() : nullptr;
                 }
 
             // Scenarios
@@ -3272,7 +3411,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkComputePipelineCreateInfo> {
+            private:
                 VkComputePipelineCreateInfo wrap{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkComputePipelineCreateInfo)
 
                 StructWrap<VkPipelineShaderStageCreateInfo>  shader_stage_wrap;
 
@@ -3285,8 +3426,7 @@ namespace Simple {
                 }
 
                 void updateWrap() {
-                    shader_stage_wrap.updateWrap();
-                    wrap.stage = shader_stage_wrap.wrap;
+                    wrap.stage = shader_stage_wrap.get();
                 }
 
             // Scenarios
@@ -3299,7 +3439,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRayTracingPipelineCreateInfoKHR> {
+            private:
                 VkRayTracingPipelineCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkRayTracingPipelineCreateInfoKHR)
 
                 StructWrap<VkPipelineDynamicStateCreateInfo>                  dynamic_state_wrap;
                 std::vector<StructWrap<VkPipelineShaderStageCreateInfo>>      shader_stages_wrap;
@@ -3325,14 +3467,12 @@ namespace Simple {
                 void updateWrap() {
                     shader_stages.resize(shader_stages_wrap.size());
                     for (uint32_t i = 0u; i < shader_stages.size(); ++i) {
-                        shader_stages_wrap[i].updateWrap();
-                        shader_stages[i] = shader_stages_wrap[i].wrap;
+                        shader_stages[i] = shader_stages_wrap[i].get();
                     }
 
                     shader_groups.resize(shader_groups_wrap.size());
                     for (uint32_t i = 0u; i < shader_groups.size(); ++i) {
-                        shader_groups_wrap[i].updateWrap();
-                        shader_groups[i] = shader_groups_wrap[i].wrap;
+                        shader_groups[i] = shader_groups_wrap[i].get();
                     }
 
                     wrap.stageCount = shader_stages.size();
@@ -3340,9 +3480,9 @@ namespace Simple {
                     wrap.groupCount = shader_groups.size();
                     wrap.pGroups    = shader_groups.data();
 
-                    wrap.pLibraryInfo      = (wrap.flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) ? &lib_info_wrap.wrap : nullptr;
-                    wrap.pLibraryInterface = (wrap.flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) ? &lib_interface_wrap.wrap : nullptr;
-                    wrap.pDynamicState     = (active_state_flags & VKFW_PIPELINE_STATE_DYNAMIC_BIT) ? &dynamic_state_wrap.wrap : nullptr;
+                    wrap.pLibraryInfo      = (wrap.flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) ? &lib_info_wrap.get() : nullptr;
+                    wrap.pLibraryInterface = (wrap.flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) ? &lib_interface_wrap.get() : nullptr;
+                    wrap.pDynamicState     = (active_state_flags & VKFW_PIPELINE_STATE_DYNAMIC_BIT) ? &dynamic_state_wrap.get() : nullptr;
                 }
 
             // Scenarios
@@ -3362,7 +3502,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkCommandPoolCreateInfo> {
+            private:
                 VkCommandPoolCreateInfo wrap{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkCommandPoolCreateInfo)
 
                 StructWrap() {}
 
@@ -3375,7 +3517,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkCommandBufferAllocateInfo> {
+            private:
                 VkCommandBufferAllocateInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkCommandBufferAllocateInfo)
 
                 StructWrap() {}
 
@@ -3392,7 +3536,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkAllocationCallbacks> {
+            private:
                 VkAllocationCallbacks *wrap = nullptr;
+                VKFW_STRUCT_WRAP_ACCESS(VkAllocationCallbacks*)
 
                 StructWrap() {}
                ~StructWrap() { clear(); }
@@ -3406,7 +3552,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPhysicalDeviceMemoryProperties2> {
+            private:
                 VkPhysicalDeviceMemoryProperties2 wrap{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+                VKFW_STRUCT_WRAP_ACCESS(VkPhysicalDeviceMemoryProperties2)
 
                 StructWrap() {}
 
@@ -3441,7 +3589,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkCommandBufferInheritanceInfo> {
+            private:
                 VkCommandBufferInheritanceInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkCommandBufferInheritanceInfo)
 
                 StructWrap() {}
 
@@ -3454,7 +3604,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkSubmitInfo> {
+            private:
                 VkSubmitInfo wrap{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkSubmitInfo)
 
                 std::vector<VkSemaphore>      wait_semaphores;
                 std::vector<VkPipelineStageFlags> wait_stages;
@@ -3490,7 +3642,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkPresentInfoKHR> {
+            private:
                 VkPresentInfoKHR wrap{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+                VKFW_STRUCT_WRAP_ACCESS(VkPresentInfoKHR)
 
                 std::vector<VkSemaphore> wait_semaphores;
                 std::vector<VkSwapchainKHR> swapchains;
@@ -3538,7 +3692,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkRenderPassBeginInfo> {
+            private:
                 VkRenderPassBeginInfo wrap{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkRenderPassBeginInfo)
 
                 std::vector<StructWrap<VkClearValue>> clear_values_wrap;
                 StructWrap<VkRect2D> render_area_wrap;
@@ -3557,15 +3713,12 @@ namespace Simple {
                 }
 
                 void updateWrap() {
-                    render_area_wrap.updateWrap();
-
                     clear_values.resize(clear_values_wrap.size());
                     for (uint32_t i = 0u; i < clear_values.size(); ++i) {
-                        clear_values_wrap[i].updateWrap();
-                        clear_values[i] = clear_values_wrap[i].wrap;
+                        clear_values[i] = clear_values_wrap[i].get();
                     }
 
-                    wrap.renderArea = render_area_wrap.wrap;
+                    wrap.renderArea = render_area_wrap.get();
                     wrap.clearValueCount = clear_values.size();
                     wrap.pClearValues = clear_values.data();
                 }
@@ -3595,7 +3748,9 @@ namespace Simple {
 
             template <>
             struct StructWrap<VkCommandBufferBeginInfo> {
+            private:
                 VkCommandBufferBeginInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkCommandBufferBeginInfo)
 
                 StructWrap<VkCommandBufferInheritanceInfo> inheritance_info_wrap;
                 VkBool32 use_inheritance_info = false;
@@ -3612,11 +3767,11 @@ namespace Simple {
                     wrap.pInheritanceInfo = nullptr;
 
                     if (use_inheritance_info) {
-                        inheritance_info_wrap.updateWrap();
-                        wrap.pInheritanceInfo = &inheritance_info_wrap.wrap;
+                        wrap.pInheritanceInfo = &inheritance_info_wrap.get();
                     }
                 }
             }; // StructWrap<VkCommandBufferBeginInfo> END
+        #undef VKFW_STRUCT_WRAP_ACCESS
         }; // Struct END
 
 
@@ -3634,7 +3789,7 @@ namespace Simple {
                 Struct::StructWrap<VkInstanceCreateInfo> create_info;
 
                 void createObject(const VkAllocationCallbacks *_create_cb = nullptr, bool _volk_instance_only = false) {
-                    handle = Func::CreateInstance(&create_info.wrap, _create_cb, _volk_instance_only);
+                    handle = Func::CreateInstance(&create_info.get(), _create_cb, _volk_instance_only);
                 }
 
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3651,7 +3806,7 @@ namespace Simple {
                 Struct::StructWrap<VkDebugUtilsMessengerCreateInfoEXT> create_info;
 
                 void createObject(VkInstance _instance, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDebugUtilsMessengerEXT(&create_info.wrap, _instance, _create_cb);
+                    handle = Func::CreateDebugUtilsMessengerEXT(&create_info.get(), _instance, _create_cb);
                 }
 
                 void destroyObject(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3718,7 +3873,7 @@ namespace Simple {
                 Struct::StructWrap<VkDeviceCreateInfo> create_info;
 
                 void createObject(VkPhysicalDevice _phys_device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDevice(&create_info.wrap, _phys_device, _create_cb);
+                    handle = Func::CreateDevice(&create_info.get(), _phys_device, _create_cb);
                 }
 
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3752,7 +3907,7 @@ namespace Simple {
                 Struct::StructWrap<VkSwapchainCreateInfoKHR> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateSwapchainKHR(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateSwapchainKHR(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3769,7 +3924,7 @@ namespace Simple {
                 Struct::StructWrap<VkShaderModuleCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateShaderModule(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateShaderModule(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3786,7 +3941,7 @@ namespace Simple {
                 Struct::StructWrap<VkBufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateBuffer(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateBuffer(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3803,7 +3958,7 @@ namespace Simple {
                 Struct::StructWrap<VkBufferViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateBufferView(&create_info.wrap, _device, _buffer, _create_cb);
+                    handle = Func::CreateBufferView(&create_info.get(), _device, _buffer, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3820,7 +3975,7 @@ namespace Simple {
                 Struct::StructWrap<VkImageCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateImage(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateImage(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3837,7 +3992,7 @@ namespace Simple {
                 Struct::StructWrap<VkImageViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateImageView(&create_info.wrap, _device, _image, _create_cb);
+                    handle = Func::CreateImageView(&create_info.get(), _device, _image, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3854,7 +4009,7 @@ namespace Simple {
                 Struct::StructWrap<VkMemoryAllocateInfo> allocate_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_allocate_cb = nullptr) {
-                    handle = Func::AllocateMemory(&allocate_info.wrap, _device, _allocate_cb);
+                    handle = Func::AllocateMemory(&allocate_info.get(), _device, _allocate_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3871,7 +4026,7 @@ namespace Simple {
                 Struct::StructWrap<VkRenderPassCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateRenderPass(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateRenderPass(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3888,7 +4043,7 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDescriptorSetLayout(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateDescriptorSetLayout(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3905,7 +4060,7 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDescriptorPool(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateDescriptorPool(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3922,11 +4077,11 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetAllocateInfo> alloc_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::AllocateDescriptorSets(&alloc_info.wrap, _device, _create_cb);
+                    handles = Func::AllocateDescriptorSets(&alloc_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device) {
-                    if (!handles.empty()) vkFreeDescriptorSets(_device, alloc_info.wrap.descriptorPool, handles.size(), handles.data());
+                    if (!handles.empty()) vkFreeDescriptorSets(_device, alloc_info.peek().descriptorPool, handles.size(), handles.data());
                     handles.clear();
                 }
             }; // DescriptorSet END
@@ -3939,7 +4094,7 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreatePipelineLayout(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreatePipelineLayout(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3956,7 +4111,7 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineCacheCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreatePipelineCache(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreatePipelineCache(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3995,9 +4150,9 @@ namespace Simple {
                                   VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                   const VkAllocationCallbacks *_create_cb = nullptr) {
                     switch (pipeline_type) {
-                        case VKFW_PIPELINE_TYPE_GRAPHICS:    handle = Func::CreateGraphicsPipelines     (&  graphics_create_info_wrap.wrap, 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
-                        case VKFW_PIPELINE_TYPE_COMPUTE:     handle = Func::CreateComputePipelines      (&   compute_create_info_wrap.wrap, 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
-                        case VKFW_PIPELINE_TYPE_RAY_TRACING: handle = Func::CreateRayTracingPipelinesKHR(&raytracing_create_info_wrap.wrap, 1, _device, _deferred_op,           _pipeline_cache, _create_cb)[0]; break;
+                        case VKFW_PIPELINE_TYPE_GRAPHICS:    handle = Func::CreateGraphicsPipelines     (&  graphics_create_info_wrap.get(), 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
+                        case VKFW_PIPELINE_TYPE_COMPUTE:     handle = Func::CreateComputePipelines      (&   compute_create_info_wrap.get(), 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
+                        case VKFW_PIPELINE_TYPE_RAY_TRACING: handle = Func::CreateRayTracingPipelinesKHR(&raytracing_create_info_wrap.get(), 1, _device, _deferred_op,           _pipeline_cache, _create_cb)[0]; break;
                         case VKFW_PIPELINE_TYPE_UNDEFINED:  break;
                         default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::Object::Pipeline :: createObject", "unknown pipeline type: " + std::to_string(pipeline_type)));
                     };
@@ -4084,7 +4239,7 @@ namespace Simple {
                 Struct::StructWrap<VkFramebufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateFramebuffer(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateFramebuffer(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4102,13 +4257,13 @@ namespace Simple {
                 Struct::StructWrap<VkCommandPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateCommandPool(&create_info.wrap, _device, _create_cb);
+                    handle = Func::CreateCommandPool(&create_info.get(), _device, _create_cb);
                 }
 
                 void createObject(VkDevice _device, VkfwQueueFamily _queue_family, VkCommandPoolCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    create_info.wrap.flags =  _flags;
-                    create_info.wrap.queueFamilyIndex = _queue_family;
-                    handle = Func::CreateCommandPool(&create_info.wrap, _device, _create_cb);
+                    create_info.edit().flags =  _flags;
+                    create_info.edit().queueFamilyIndex = _queue_family;
+                    handle = Func::CreateCommandPool(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4125,28 +4280,28 @@ namespace Simple {
                 Struct::StructWrap<VkCommandBufferAllocateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::AllocateCommandBuffers(&create_info.wrap, _device, _create_cb);
+                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device) {
-                    if (!handles.empty()) vkFreeCommandBuffers(_device, create_info.wrap.commandPool, (uint32_t)handles.size(), handles.data());
+                    if (!handles.empty()) vkFreeCommandBuffers(_device, create_info.peek().commandPool, (uint32_t)handles.size(), handles.data());
                     handles.clear();
                 }
 
             // Scenarios
 
                 void createPrimary  (VkDevice _device, VkCommandPool _command_pool, uint32_t _buffer_count, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    create_info.wrap.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-                    create_info.wrap.commandPool = _command_pool;
-                    create_info.wrap.commandBufferCount = _buffer_count;
-                    handles = Func::AllocateCommandBuffers(&create_info.wrap, _device, _create_cb);
+                    create_info.edit().level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+                    create_info.edit().commandPool = _command_pool;
+                    create_info.edit().commandBufferCount = _buffer_count;
+                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
                 }
 
                 void createSecondary(VkDevice _device, VkCommandPool _command_pool, uint32_t _buffer_count, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    create_info.wrap.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-                    create_info.wrap.commandPool = _command_pool;
-                    create_info.wrap.commandBufferCount = _buffer_count;
-                    handles = Func::AllocateCommandBuffers(&create_info.wrap, _device, _create_cb);
+                    create_info.edit().level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+                    create_info.edit().commandPool = _command_pool;
+                    create_info.edit().commandBufferCount = _buffer_count;
+                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
                 }
             }; // CommandBuffer END
 
@@ -4158,7 +4313,7 @@ namespace Simple {
                 Struct::StructWrap<VkSemaphoreCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateSemaphores(&create_info.wrap, _device, _semaphore_count, _create_cb);
+                    handles = Func::CreateSemaphores(&create_info.get(), _device, _semaphore_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4176,7 +4331,7 @@ namespace Simple {
                 Struct::StructWrap<VkFenceCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateFences(&create_info.wrap, _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4189,12 +4344,12 @@ namespace Simple {
 
                 void createSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(true);
-                    handles = Func::CreateFences(&create_info.wrap, _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
                 }
 
                 void createNotSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(false);
-                    handles = Func::CreateFences(&create_info.wrap, _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
                 }
             }; // Fence END
 
@@ -4206,7 +4361,7 @@ namespace Simple {
                 Struct::StructWrap<VkEventCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateEvents(&create_info.wrap, _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4219,12 +4374,12 @@ namespace Simple {
 
                 void createSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(true);
-                    handles = Func::CreateEvents(&create_info.wrap, _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
                 }
 
                 void createNotSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(false);
-                    handles = Func::CreateEvents(&create_info.wrap, _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
                 }
             }; // Event END
 
@@ -4241,7 +4396,7 @@ namespace Simple {
                 Struct::StructWrap<VkPresentInfoKHR> wrap;
 
                 uint32_t callFunction(VkQueue _queue) {
-                    return Func::QueuePresentKHR(_queue, &wrap.wrap);
+                    return Func::QueuePresentKHR(_queue, &wrap.get());
                 }
 
                 void updateWrap() {
@@ -4262,8 +4417,7 @@ namespace Simple {
                     submit_infos.resize(active_submits.size());
 
                     for (uint32_t i = 0u; i < active_submits.size(); ++i) {
-                        wraps[active_submits[i]].updateWrap();
-                        submit_infos[i] = wraps[active_submits[i]].wrap;
+                        submit_infos[i] = wraps[active_submits[i]].get();
                     }
                 }
 
@@ -4289,14 +4443,12 @@ namespace Simple {
                 void updateWrap() {
                     write_sets.resize(write_sets_wrap.size());
                     for (uint32_t i = 0u; i < write_sets.size(); ++i) {
-                        write_sets_wrap[i].updateWrap();
-                        write_sets[i] = write_sets_wrap[i].wrap;
+                        write_sets[i] = write_sets_wrap[i].get();
                     }
 
                     copy_sets.resize(copy_sets_wrap.size());
                     for (uint32_t i = 0u; i < copy_sets.size(); ++i) {
-                        copy_sets_wrap[i].updateWrap();
-                        copy_sets[i] = copy_sets_wrap[i].wrap;
+                        copy_sets[i] = copy_sets_wrap[i].get();
                     }
                 }
 
@@ -4305,16 +4457,14 @@ namespace Simple {
                 void updateWriteSparse(const std::vector<uint32_t> &_write_set_ids) {
                     write_sets.resize(write_sets_wrap.size());
                     for (uint32_t i : _write_set_ids) {
-                        write_sets_wrap[i].updateWrap();
-                        write_sets[i] = write_sets_wrap[i].wrap;
+                        write_sets[i] = write_sets_wrap[i].get();
                     }
                 }
 
                 void updateCopySparse(const std::vector<uint32_t> &_copy_set_ids) {
                     copy_sets. resize(copy_sets_wrap.size());
                     for (uint32_t i : _copy_set_ids) {
-                        copy_sets_wrap[i].updateWrap();
-                        copy_sets[i] = copy_sets_wrap[i].wrap;
+                        copy_sets[i] = copy_sets_wrap[i].get();
                     }
                 }
 
@@ -4325,7 +4475,7 @@ namespace Simple {
                 Struct::StructWrap<VkCommandBufferBeginInfo> begin_info_wrap;
 
                 void callFunction(VkCommandBuffer _command_buffer) {
-                    Func::BeginCommandBuffer(_command_buffer, &begin_info_wrap.wrap);
+                    Func::BeginCommandBuffer(_command_buffer, &begin_info_wrap.get());
                 }
 
                 void updateWrap() {
@@ -4339,7 +4489,7 @@ namespace Simple {
                 Struct::StructWrap<VkRenderPassBeginInfo> wrap;
 
                 void callFunction(VkCommandBuffer _command_buffer, VkSubpassContents _contents) {
-                    vkCmdBeginRenderPass(_command_buffer, &wrap.wrap, _contents);
+                    vkCmdBeginRenderPass(_command_buffer, &wrap.get(), _contents);
                 }
 
                 void updateWrap() {
@@ -4359,8 +4509,7 @@ namespace Simple {
                 void updateWrap() {
                     viewports.resize(viewports_wrap.size());
                     for (uint32_t i = 0u; i < viewports.size(); ++i) {
-                        viewports_wrap[i].updateWrap();
-                        viewports[i] = viewports_wrap[i].wrap;
+                        viewports[i] = viewports_wrap[i].get();
                     }
                 }
 
@@ -4369,8 +4518,7 @@ namespace Simple {
                 void updateWrapSparse(const std::vector<uint32_t> &_viewport_ids) {
                     viewports.resize(viewports_wrap.size());
                     for (uint32_t i : _viewport_ids) {
-                        viewports_wrap[i].updateWrap();
-                        viewports[i] = viewports_wrap[i].wrap;
+                        viewports[i] = viewports_wrap[i].get();
                     }
                 }
             }; // CmdSetViewport END
@@ -4387,8 +4535,7 @@ namespace Simple {
                 void updateWrap() {
                     scissors.resize(scissors_wrap.size());
                     for (uint32_t i = 0u; i < scissors.size(); ++i) {
-                        scissors_wrap[i].updateWrap();
-                        scissors[i] = scissors_wrap[i].wrap;
+                        scissors[i] = scissors_wrap[i].get();
                     }
                 }
 
@@ -4398,8 +4545,7 @@ namespace Simple {
                     scissors.resize(scissors_wrap.size());
                     for (uint32_t i : _scissor_ids) {
 
-                        scissors_wrap[i].updateWrap();
-                        scissors[i] = scissors_wrap[i].wrap;
+                        scissors[i] = scissors_wrap[i].get();
                     }
                 }
             }; // CmdSetScissor END

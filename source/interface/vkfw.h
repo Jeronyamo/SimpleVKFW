@@ -56,12 +56,10 @@ namespace Simple {
                 ContextIndex addQueueFamily() { queue_families.emplace_back(); queues.emplace_back(); return queue_families.size()-1; }
 
                 void createInstance() {
-                    instance.create_info.updateWrap();
-                    instance.createObject(alloc_cb.wrap);
+                    instance.createObject(alloc_cb.get());
                 }
                 void createDebugUtilsMessenger() {
-                    cxt_debug.debug_messenger.create_info.updateWrap();
-                    cxt_debug.debug_messenger.createObject(instance.handle, alloc_cb.wrap);
+                    cxt_debug.debug_messenger.createObject(instance.handle, alloc_cb.get());
                 }
                 void loadPhysicalDeviceInfo() {
                     phys_device.select_info.loadInfo(instance.handle);
@@ -79,8 +77,7 @@ namespace Simple {
                         queue_families[i].createObject();
                 }
                 void createDevice() {
-                    device.create_info.updateWrap();
-                    device.createObject(phys_device.handle, alloc_cb.wrap);
+                    device.createObject(phys_device.handle, alloc_cb.get());
                 }
                 void acquireQueues() {
                     for (ContextIndex i = 0u; i < queues.size(); ++i)
@@ -88,25 +85,24 @@ namespace Simple {
                         queues[i].createObject(device.handle);
                 }
                 void createRenderPass() {
-                    render_pass.create_info.updateWrap();
-                    render_pass.createObject(device.handle, alloc_cb.wrap);
+                    render_pass.createObject(device.handle, alloc_cb.get());
                 }
 
 
                 void destroyInstance() {
-                    instance.destroyObject(alloc_cb.wrap);
+                    instance.destroyObject(alloc_cb.get());
                 }
                 void destroyDebugUtilsMessenger() {
-                    cxt_debug.debug_messenger.destroyObject(instance.handle, alloc_cb.wrap);
+                    cxt_debug.debug_messenger.destroyObject(instance.handle, alloc_cb.get());
                 }
                 void destroyPhysicalDevice() {
                     phys_device.destroyObject();
                 }
                 void destroyDevice() {
-                    device.destroyObject(alloc_cb.wrap);
+                    device.destroyObject(alloc_cb.get());
                 }
                 void destroyRenderPass() {
-                    render_pass.destroyObject(device.handle, alloc_cb.wrap);
+                    render_pass.destroyObject(device.handle, alloc_cb.get());
                 }
 
             // Scenarios
@@ -130,13 +126,12 @@ namespace Simple {
                 void setQueueFamilyQueueCount(const ContextIndex& _ci_queue_family, uint32_t _queue_count, const std::vector<float> &_priorities = {1.0f}) {
                     queues[_ci_queue_family].create_info.queue_family = queue_families[_ci_queue_family].handle;
                     queues[_ci_queue_family].create_info.setQueueCount(_queue_count, _priorities);
-                    queues[_ci_queue_family].create_info.updateWrap();
                 }
 
                 void setDeviceQueueInfo() {
                     device.create_info.queue_info.resize(queue_families.size());
                     for (ContextIndex i = 0u; i < queue_families.size(); ++i)
-                        device.create_info.queue_info[i] = queues[i].create_info.wrap;
+                        device.create_info.queue_info[i] = queues[i].create_info.get();
                 }
             } cxt_core; // ContextCore END
 
@@ -165,50 +160,48 @@ namespace Simple {
             // Manage Objects
 
                 void createSurface() {
-                    surface.createObject(cxt_core->instance.handle, window, cxt_core->alloc_cb.wrap);
+                    surface.createObject(cxt_core->instance.handle, window, cxt_core->alloc_cb.get());
                 }
 
                 void createSwapchain() {
-                    swapchain.create_info.updateWrap();
-                    swapchain.create_info.wrap.surface = surface.handle;
-                    swapchain.createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
-                    image_view_wrap.wrap.format = swapchain.create_info.wrap.imageFormat;
-                    framebuffer_wrap.setBufferSize(swapchain.create_info.wrap.imageExtent);
+                    swapchain.create_info.edit().surface = surface.handle;
+                    swapchain.createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
+                    image_view_wrap.edit().format = swapchain.create_info.peek().imageFormat;
+                    framebuffer_wrap.setBufferSize(swapchain.create_info.peek().imageExtent);
                 }
                 void createImageViews() {
                     std::vector<VkImage> __swapchain_images{Func::GetSwapchainImagesKHR(cxt_core->device.handle, swapchain.handle)};
 
                     image_views.resize(__swapchain_images.size());
                     for (ContextIndex ci = 0u; ci < __swapchain_images.size(); ++ci) {
-                        image_view_wrap.wrap.image = __swapchain_images[ci];
-                        image_views[ci] = Func::CreateImageView(&image_view_wrap.wrap, cxt_core->device.handle, __swapchain_images[ci], cxt_core->alloc_cb.wrap);
+                        image_view_wrap.edit().image = __swapchain_images[ci];
+                        image_views[ci] = Func::CreateImageView(&image_view_wrap.get(), cxt_core->device.handle, __swapchain_images[ci], cxt_core->alloc_cb.get());
                     }
                 }
                 void createFramebuffers() {
                     framebuffers.resize(image_views.size());
-                    framebuffer_wrap.wrap.renderPass = cxt_core->render_pass.handle;
+                    framebuffer_wrap.edit().renderPass = cxt_core->render_pass.handle;
 
                     for (ContextIndex ci = 0u; ci < framebuffers.size(); ++ci) {
                         framebuffer_wrap.attachments = {image_views[ci]};
-                        framebuffer_wrap.updateWrap();
-                        framebuffers[ci] = Func::CreateFramebuffer(&framebuffer_wrap.wrap, cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        framebuffers[ci] = Func::CreateFramebuffer(&framebuffer_wrap.get(), cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                 }
 
 
                 void destroySurface() {
-                    surface.destroyObject(cxt_core->instance.handle, cxt_core->alloc_cb.wrap);
+                    surface.destroyObject(cxt_core->instance.handle, cxt_core->alloc_cb.get());
                 }
                 void destroySwapchain() {
-                    swapchain.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    swapchain.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroyImageViews() {
                     for (auto    img_view :  image_views)
-                        vkDestroyImageView(cxt_core->device.handle, img_view, cxt_core->alloc_cb.wrap);
+                        vkDestroyImageView(cxt_core->device.handle, img_view, cxt_core->alloc_cb.get());
                 }
                 void destroyFramebuffers() {
                     for (auto framebuffer : framebuffers)
-                        vkDestroyFramebuffer(cxt_core->device.handle, framebuffer, cxt_core->alloc_cb.wrap);
+                        vkDestroyFramebuffer(cxt_core->device.handle, framebuffer, cxt_core->alloc_cb.get());
                 }
 
             // Scenarios
@@ -246,7 +239,7 @@ namespace Simple {
                 }
 
                 void setRenderPassAttachmentImageFormat(ContextIndex _attachment_ci) {
-                    cxt_core->render_pass.create_info.attachments_wrap[_attachment_ci].wrap.format = swapchain.create_info.wrap.imageFormat;
+                    cxt_core->render_pass.create_info.attachments_wrap[_attachment_ci].edit().format = swapchain.create_info.peek().imageFormat;
                 }
 
                 void recreate() {
@@ -279,9 +272,9 @@ namespace Simple {
                 void destroyContext() {
                     // Note: sets can be ignored, they are freed when layouts are destroyed
                     for (ContextIndex ci = 0u; ci < pools.size(); ++ci)
-                        pools  [ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        pools  [ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     for (ContextIndex ci = 0u; ci < layouts.size(); ++ci)
-                        layouts[ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        layouts[ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
             // Manage Objects
@@ -291,24 +284,21 @@ namespace Simple {
                 ContextIndex addSet   () {    sets.emplace_back(); return    sets.size()-1; }
 
                 void createLayout(ContextIndex _layout_ci) {
-                    layouts[_layout_ci].create_info.updateWrap();
-                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void createPool(ContextIndex _pool_ci) {
-                    pools[_pool_ci].create_info.updateWrap();
-                    pools[_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    pools[_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void createSets(ContextIndex _set_ci) {
-                    sets[_set_ci].alloc_info.updateWrap();
-                    sets[_set_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    sets[_set_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
 
                 void destroyLayout(ContextIndex _layout_ci) {
-                    layouts[_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    layouts[_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroyPool(ContextIndex _pool_ci) {
-                    pools[_pool_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    pools[_pool_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroySets(ContextIndex _set_ci) {
                     sets[_set_ci].destroyObject(cxt_core->device.handle);
@@ -327,7 +317,7 @@ namespace Simple {
                 }
 
                 void setPoolForSet(ContextIndex _set_ci, ContextIndex _pool_ci) {
-                    sets[_set_ci].alloc_info.wrap.descriptorPool = pools[_pool_ci].handle;
+                    sets[_set_ci].alloc_info.edit().descriptorPool = pools[_pool_ci].handle;
                 }
 
                 void setLayoutsForSet(ContextIndex _set_ci, const std::vector<ContextIndex> &_layout_cis) {
@@ -336,7 +326,6 @@ namespace Simple {
                         __layouts[ci] = layouts[_layout_cis[ci]].handle;
 
                     sets[_set_ci].alloc_info.set_layouts = __layouts;
-                    sets[_set_ci].alloc_info.updateWrap();
                 }
             } cxt_descriptor; // ContextDescriptors END
 
@@ -356,13 +345,13 @@ namespace Simple {
 
                 void destroyContext() {
                     for (auto& pipeline : pipelines)
-                        pipeline.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        pipeline.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     for (auto& layout   :   layouts)
-                        layout  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        layout  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     for (auto& cache    :    caches)
-                        cache   .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        cache   .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     for (auto& shader   :   shaders)
-                        shader  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        shader  .destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
             // Manage Objects
@@ -376,47 +365,41 @@ namespace Simple {
                                     VkDeferredOperationKHR _deferred_op = VK_NULL_HANDLE) {
                     switch (pipelines[_pipeline_ci].pipeline_type) {
                         case VKFW_PIPELINE_TYPE_GRAPHICS:
-                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.renderPass = cxt_core->render_pass.handle;
-                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.subpass    = _subpass;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.edit().renderPass = cxt_core->render_pass.handle;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.edit().subpass    = _subpass;
 
-                            pipelines[_pipeline_ci].  graphics_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
-                            pipelines[_pipeline_ci].  graphics_create_info_wrap.updateWrap(); break;
+                            pipelines[_pipeline_ci].  graphics_create_info_wrap.edit().layout = layouts[_layout_ci].handle; break;
                         case VKFW_PIPELINE_TYPE_COMPUTE:
-                            pipelines[_pipeline_ci].   compute_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
-                            pipelines[_pipeline_ci].   compute_create_info_wrap.updateWrap(); break;
+                            pipelines[_pipeline_ci].   compute_create_info_wrap.edit().layout = layouts[_layout_ci].handle; break;
                         case VKFW_PIPELINE_TYPE_RAY_TRACING:
-                            pipelines[_pipeline_ci].raytracing_create_info_wrap.wrap.layout = layouts[_layout_ci].handle;
-                            pipelines[_pipeline_ci].raytracing_create_info_wrap.updateWrap(); break;
+                            pipelines[_pipeline_ci].raytracing_create_info_wrap.edit().layout = layouts[_layout_ci].handle; break;
                     }
                     VkPipelineCache __pipeline_cache = _cache_ci != VKFW_CI_IGNORE ? caches[_cache_ci].handle : VK_NULL_HANDLE;
                     pipelines[_pipeline_ci].createObject(cxt_core->device.handle, cxt_core->render_pass.handle, _subpass,
-                                                         _deferred_op, __pipeline_cache, cxt_core->alloc_cb.wrap);
+                                                         _deferred_op, __pipeline_cache, cxt_core->alloc_cb.get());
                 }
                 void createCache (ContextIndex _cache_ci) {
-                    caches [ _cache_ci].create_info.updateWrap();
-                    caches [ _cache_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    caches [ _cache_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void createLayout(ContextIndex _layout_ci) {
-                    layouts[_layout_ci].create_info.updateWrap();
-                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    layouts[_layout_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void createShader(ContextIndex _ci_shader) {
-                    shaders[_ci_shader].create_info.updateWrap();
-                    shaders[_ci_shader].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    shaders[_ci_shader].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
 
                 void destroyPipeline(ContextIndex _pipeline_ci) {
-                    pipelines[_pipeline_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    pipelines[_pipeline_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroyCache   (ContextIndex    _cache_ci) {
-                    caches      [_cache_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    caches      [_cache_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroyLayout  (ContextIndex   _layout_ci) {
-                    layouts    [_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    layouts    [_layout_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void destroyShader  (ContextIndex   _ci_shader) {
-                    shaders    [_ci_shader].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    shaders    [_ci_shader].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
             // Scenarios
@@ -452,7 +435,7 @@ namespace Simple {
                     for (auto& cmd_buff : cmd_buffers)
                         cmd_buff.destroyObject(cxt_core->device.handle);
                     for (auto& cmd_pool :   cmd_pools)
-                        cmd_pool.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        cmd_pool.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
             // Manage Objects
@@ -461,28 +444,23 @@ namespace Simple {
                 ContextIndex addCmdBuffer() { cmd_buffers.emplace_back(); return cmd_buffers.size() - 1; }
 
                 void createCmdPool(ContextIndex _cmd_pool_ci) {
-                    cmd_pools[_cmd_pool_ci].create_info.updateWrap();
-                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
                 void createCmdBuffers(ContextIndex _cmd_buffer_ci) {
-                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
-                    cmd_buffers[_cmd_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                    cmd_buffers[_cmd_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                 }
 
             // Scenarios
 
                 void createCmdPool(ContextIndex _cmd_pool_ci, ContextIndex _queue_family_ci, VkCommandPoolCreateFlags _flags = 0u) {
-                    cmd_pools[_cmd_pool_ci].create_info.updateWrap();
-                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->queue_families[_queue_family_ci].handle, _flags, cxt_core->alloc_cb.wrap);
+                    cmd_pools[_cmd_pool_ci].createObject(cxt_core->device.handle, cxt_core->queue_families[_queue_family_ci].handle, _flags, cxt_core->alloc_cb.get());
                 }
 
                 void createCmdBuffersPrimary(ContextIndex _cmd_buffer_ci, ContextIndex _cmd_pool_ci, uint32_t _cmd_buffers_count) {
-                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
-                    cmd_buffers[_cmd_buffer_ci].createPrimary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.wrap);
+                    cmd_buffers[_cmd_buffer_ci].createPrimary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.get());
                 }
                 void createCmdBuffersSecondary(ContextIndex _cmd_buffer_ci, ContextIndex _cmd_pool_ci, uint32_t _cmd_buffers_count) {
-                    cmd_buffers[_cmd_buffer_ci].create_info.updateWrap();
-                    cmd_buffers[_cmd_buffer_ci].createSecondary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.wrap);
+                    cmd_buffers[_cmd_buffer_ci].createSecondary(cxt_core->device.handle, cmd_pools[_cmd_pool_ci].handle, _cmd_buffers_count, cxt_core->alloc_cb.get());
                 }
             } cxt_command; // ContextCommand END
 
@@ -514,15 +492,15 @@ namespace Simple {
                         mapped_ptr = nullptr;
 
                         for (auto& buf_view : buffer_views)
-                            buf_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                            buf_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                         for (auto& img_view :  image_views)
-                            img_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                            img_view.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                         for (auto& buf : buffers)
-                            buf.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                            buf.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                         for (auto& img :  images)
-                            img.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                            img.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
 
-                        memory.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        memory.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
 
                     void allocateChunkMemory(VkPhysicalDeviceMemoryProperties &_allowed_size) {
@@ -586,9 +564,9 @@ namespace Simple {
                                         "No device memory types to represent and fit buffers/images");
 
                         _allowed_size.memoryHeaps[_allowed_size.memoryTypes[__supported_mem_type_index].heapIndex].size -= __mem_req.size;
-                        memory.allocate_info.wrap.memoryTypeIndex = __supported_mem_type_index;
-                        memory.allocate_info.wrap.allocationSize  = __mem_req.size;
-                        memory.createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        memory.allocate_info.edit().memoryTypeIndex = __supported_mem_type_index;
+                        memory.allocate_info.edit().allocationSize  = __mem_req.size;
+                        memory.createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
 
                         // Note: mapping a memory object once and keeping it mapped is allowed and cheaper than mapping it every frame
                         if (required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
@@ -616,33 +594,29 @@ namespace Simple {
                     ContextIndex addImageView () {  image_views.emplace_back(); return  image_views.size() - 1; }
 
                     void createBuffer(ContextIndex _buffer_ci) {
-                        buffers[_buffer_ci].create_info.updateWrap();
-                        buffers[_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        buffers[_buffer_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                     void createImage (ContextIndex _image_ci) {
-                        images [ _image_ci].create_info.updateWrap();
-                        images [ _image_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        images [ _image_ci].createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                     void createBufferView(ContextIndex _buffer_view_ci, ContextIndex _buffer_ci) {
-                        buffer_views[_buffer_view_ci].create_info.updateWrap();
-                        buffer_views[_buffer_view_ci].createObject(cxt_core->device.handle, buffers[_buffer_ci].handle, cxt_core->alloc_cb.wrap);
+                        buffer_views[_buffer_view_ci].createObject(cxt_core->device.handle, buffers[_buffer_ci].handle, cxt_core->alloc_cb.get());
                     }
                     void createImageView (ContextIndex  _image_view_ci, ContextIndex  _image_ci) {
-                        image_views [ _image_view_ci].create_info.updateWrap();
-                        image_views [ _image_view_ci].createObject(cxt_core->device.handle,  images[ _image_ci].handle, cxt_core->alloc_cb.wrap);
+                        image_views [ _image_view_ci].createObject(cxt_core->device.handle,  images[ _image_ci].handle, cxt_core->alloc_cb.get());
                     }
 
                     void destroyBuffer(ContextIndex _buffer_ci) {
-                        buffers[_buffer_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        buffers[_buffer_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                     void destroyImage (ContextIndex _image_ci) {
-                        images [ _image_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        images [ _image_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                     void destroyBufferView(ContextIndex _buffer_view_ci) {
-                        buffer_views[_buffer_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        buffer_views[_buffer_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                     void destroyImageView (ContextIndex  _image_view_ci) {
-                        image_views [ _image_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.wrap);
+                        image_views [ _image_view_ci].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
                 }; // MemoryChunk END
                 std::vector<MemoryChunk> memory_chunks;
@@ -673,7 +647,7 @@ namespace Simple {
                 }
 
                 void allocateChunkMemory(ContextIndex _memory_ci) {
-                    memory_chunks[_memory_ci].allocateChunkMemory(memory_properties.wrap.memoryProperties);
+                    memory_chunks[_memory_ci].allocateChunkMemory(memory_properties.edit().memoryProperties);
                 }
 
                 ContextIndex2 addChunkBuffer(ContextIndex _ci_memory, uint32_t _buf_size = 0u) { return { _ci_memory, memory_chunks[_ci_memory].addBuffer(_buf_size) }; }
@@ -744,7 +718,7 @@ namespace Simple {
                         if (semaphores[ci] == VK_NULL_HANDLE) { __res_semaphore_ci = ci; break; }
                     if (__res_semaphore_ci >= semaphores.size()) semaphores.emplace_back();
 
-                    vkCreateSemaphore(cxt_core->device.handle, &semaphore_wrap.wrap, cxt_core->alloc_cb.wrap, &semaphores[__res_semaphore_ci]);
+                    vkCreateSemaphore(cxt_core->device.handle, &semaphore_wrap.get(), cxt_core->alloc_cb.get(), &semaphores[__res_semaphore_ci]);
                     return __res_semaphore_ci;
                 }
                 ContextIndex addFence(bool _is_signaled) {
@@ -754,7 +728,7 @@ namespace Simple {
                     if (__res_fence_ci >= fences.size()) fences.emplace_back();
 
                     fence_wrap.setWholeStruct(_is_signaled);
-                    vkCreateFence(cxt_core->device.handle, &fence_wrap.wrap, cxt_core->alloc_cb.wrap, &fences[__res_fence_ci]);
+                    vkCreateFence(cxt_core->device.handle, &fence_wrap.get(), cxt_core->alloc_cb.get(), &fences[__res_fence_ci]);
                     return __res_fence_ci;
                 }
                 ContextIndex addEvent(bool _is_signaled) {
@@ -764,23 +738,23 @@ namespace Simple {
                     if (__res_event_ci >= events.size()) events.emplace_back();
 
                     event_wrap.setWholeStruct(_is_signaled);
-                    vkCreateEvent(cxt_core->device.handle, &event_wrap.wrap, cxt_core->alloc_cb.wrap, &events[__res_event_ci]);
+                    vkCreateEvent(cxt_core->device.handle, &event_wrap.get(), cxt_core->alloc_cb.get(), &events[__res_event_ci]);
                     return __res_event_ci;
                 }
 
                 void destroySemaphore(ContextIndex _semaphore_ci) {
                     if (semaphores[_semaphore_ci] != VK_NULL_HANDLE)
-                        vkDestroySemaphore(cxt_core->device.handle, semaphores[_semaphore_ci], cxt_core->alloc_cb.wrap);
+                        vkDestroySemaphore(cxt_core->device.handle, semaphores[_semaphore_ci], cxt_core->alloc_cb.get());
                     semaphores[_semaphore_ci] = VK_NULL_HANDLE;
                 }
                 void destroyFence(ContextIndex _fence_ci) {
                     if (fences[_fence_ci] != VK_NULL_HANDLE)
-                        vkDestroyFence(cxt_core->device.handle, fences[_fence_ci], cxt_core->alloc_cb.wrap);
+                        vkDestroyFence(cxt_core->device.handle, fences[_fence_ci], cxt_core->alloc_cb.get());
                     fences[_fence_ci] = VK_NULL_HANDLE;
                 }
                 void destroyEvent(ContextIndex _event_ci) {
                     if (events[_event_ci] != VK_NULL_HANDLE)
-                        vkDestroyEvent(cxt_core->device.handle, events[_event_ci], cxt_core->alloc_cb.wrap);
+                        vkDestroyEvent(cxt_core->device.handle, events[_event_ci], cxt_core->alloc_cb.get());
                     events[_event_ci] = VK_NULL_HANDLE;
                 }
             } cxt_barrier; // ContextBarrier END
@@ -838,7 +812,7 @@ namespace Simple {
             VkfwQueueFamily          getObjQueueFamily(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci ) ? UINT32_MAX     : cxt_ptr->cxt_core.queue_families[_obj_ci].handle; }
             VkQueue                  getObjQueue(ContextIndex2 _obj_ci2)     const { return shouldIgnoreCI(_obj_ci2) ? VK_NULL_HANDLE : cxt_ptr->cxt_core.queues[_obj_ci2.first].handles[_obj_ci2.second]; }
             VkRenderPass             getObjRenderPass()                      const { return cxt_ptr->cxt_core.render_pass.handle; }
-            VkAllocationCallbacks*   getSctAllocationCallbacks()                   { return cxt_ptr->cxt_core.alloc_cb.wrap; }
+            VkAllocationCallbacks*   getSctAllocationCallbacks()                   { return cxt_ptr->cxt_core.alloc_cb.get(); }
 
             ContextEntity<Object::QueueFamily> shortcutObjQueueFamily(ContextIndex  _obj_ci ) { return {cxt_ptr->cxt_core.queue_families.data() + _obj_ci       , _obj_ci       }; }
             ContextEntity<Object::Queue      > shortcutObjQueue      (ContextIndex2 _obj_ci2) { return {cxt_ptr->cxt_core.queues        .data() + _obj_ci2.first, _obj_ci2.first}; }
@@ -1189,7 +1163,7 @@ namespace Simple {
                     vkGetPhysicalDeviceProperties(cxt_handler.getObjPhysicalDevice(), &__properties);
                     non_coherent_atom_size = std::max(__properties.limits.nonCoherentAtomSize, VkDeviceSize(1u));
                 }
-                const VkDeviceSize __alloc_size = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].memory.allocate_info.wrap.allocationSize;
+                const VkDeviceSize __alloc_size = cxt_handler.cxt_ptr->cxt_memory.memory_chunks[mem_handle.second].memory.allocate_info.peek().allocationSize;
 
                 VkMappedMemoryRange *__mem_ranges = _res;
                 for (uint32_t i = 0u; i < _mem_ranges.size(); ++i) {
@@ -1383,7 +1357,6 @@ namespace Simple {
         // Commands
 
             void CmdBeginRenderPass(VkSubpassContents _contents) {
-                begin_render_pass_wrap.updateWrap();
                 begin_render_pass_wrap.callFunction(cmd_buffer, _contents);
             }
 
@@ -1430,7 +1403,7 @@ namespace Simple {
                 attach.colorAttachment = 0u;
                 VkClearRect rect{};
                 rect.rect.offset = {0, 0};
-                rect.rect.extent = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent;
+                rect.rect.extent = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent;
                 rect.baseArrayLayer = 0;
                 rect.layerCount = 1;
 
@@ -1492,23 +1465,23 @@ namespace Simple {
         // Scenarios
 
             void setBeginRenderPassRenderPass() {
-                begin_render_pass_wrap.wrap.wrap.renderPass = cxt_handler.getObjRenderPass();
+                begin_render_pass_wrap.wrap.edit().renderPass = cxt_handler.getObjRenderPass();
             }
 
             void setBeginRenderPassSwapchainRenderArea() {
                 begin_render_pass_wrap.wrap.render_area_wrap.setOffset(vec2i(0));
-                begin_render_pass_wrap.wrap.render_area_wrap.setExtent(cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent);
+                begin_render_pass_wrap.wrap.render_area_wrap.setExtent(cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent);
             }
 
             void setBeginRenderPassSwapchainFramebuffer(ContextIndex _ci_framebuffer) {
-                begin_render_pass_wrap.wrap.wrap.framebuffer = cxt_handler.getObjSwapchainFramebuffer(_ci_framebuffer);
+                begin_render_pass_wrap.wrap.edit().framebuffer = cxt_handler.getObjSwapchainFramebuffer(_ci_framebuffer);
             }
 
             void cmdSetViewportScissorFromSwapchainExtent() {
                 VkViewport __swapchain_viewport{};
                 VkRect2D   __swapchain_scissor {};
 
-                __swapchain_scissor.extent  = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.wrap.imageExtent;
+                __swapchain_scissor.extent  = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent;
                 __swapchain_viewport.width  = __swapchain_scissor.extent.width ;
                 __swapchain_viewport.height = __swapchain_scissor.extent.height;
 
@@ -1540,7 +1513,6 @@ namespace Simple {
         // Functions
 
             void QueuePresentKHR(ContextIndex2 _ci2_queue_pres, uint64_t _recreate_wait_queues_timeout = UINT64_MAX) {
-                queue_present_wrap.updateWrap();
                 if (queue_present_wrap.callFunction(cxt_handler.getObjQueue(_ci2_queue_pres)) == UINT32_MAX) {
                     waitForRequiredQueues(_recreate_wait_queues_timeout);
                     cxt_handler.cxt_ptr->cxt_swapchain.recreate();
@@ -1604,11 +1576,11 @@ namespace Simple {
             }
 
             void writeBufferMemory(CommandHandler &_cmd_handler, ContextIndex2 _ci2_queue_transfer, ContextIndex2 _buffer_ci2, ContextIndex2 _staging_buffer_ci2, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {
-                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_buffer_ci2.first].buffers[_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
+                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_buffer_ci2.first].buffers[_buffer_ci2.second].create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
                     fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Buffer with context index"), _buffer_ci2.first, _buffer_ci2.second,
                                                                             "is not set as transfer operation destination point");
 
-                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffers[_staging_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
+                if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffers[_staging_buffer_ci2.second].create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
                     fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
                                                                             "is not set as transfer operation source point");
 

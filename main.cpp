@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
 
     Simple::VKFW::cxt_vkfw.cxt_swapchain.pickSwapchainImageFormat();
     Simple::VKFW::cxt_vkfw.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
-    ce_attachment->wrap.samples = VK_SAMPLE_COUNT_1_BIT;
+    ce_attachment->edit().samples = VK_SAMPLE_COUNT_1_BIT;
     ce_attachment->setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR,     VK_ATTACHMENT_STORE_OP_STORE);
     ce_attachment->setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
     ce_attachment->setLayouts   (VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
     auto         ce_subpass_descr = vkfw_getter.shortcutSctRenderPassSubpassDescription(ci_subpass_descr);
 
     ce_subpass_descr->addColorAttachment(0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    ce_subpass_descr->wrap.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    ce_subpass_descr->edit().pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
 
     // Subpass dependency
@@ -182,19 +182,19 @@ int main(int argc, char **argv) {
     Simple::VKFW::cxt_vkfw.cxt_swapchain.setSwapchainSurfaceCapabilities();
     Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
     Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.wrap.imageArrayLayers = 1;
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.wrap.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.wrap.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().imageArrayLayers = 1;
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().presentMode = VK_PRESENT_MODE_FIFO_KHR;
     Simple::VKFW::cxt_vkfw.cxt_swapchain.setSwapchainExtentFromWindow();
     // Simple::VKFW::cxt_vkfw.cxt_swapchain.pickSwapchainImageFormat();
 
     // Swapchain image views
     Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.setComponents(); // set color components (identity by default)
     Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.wrap.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
 
     // Swapchain framebuffers
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.framebuffer_wrap.wrap.layers = 1u;
+    Simple::VKFW::cxt_vkfw.cxt_swapchain.framebuffer_wrap.edit().layers = 1u;
 
     Simple::VKFW::cxt_vkfw.cxt_swapchain.createSwapchainWithDependencies(); // creates swapchain, its images and framebuffers
 
@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
     ContextIndex ci_descr_pool_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addPool();
     auto         ce_descr_pool_ubo = vkfw_getter.shortcutObjDescriptorPool(ci_descr_pool_ubo);
 
-    ce_descr_pool_ubo->create_info.wrap.maxSets = FRAMES_IN_FLIGHT;
+    ce_descr_pool_ubo->create_info.edit().maxSets = FRAMES_IN_FLIGHT;
     ce_descr_pool_ubo->create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FRAMES_IN_FLIGHT);
 
     Simple::VKFW::cxt_vkfw.cxt_descriptor.createPool(ci_descr_pool_ubo);
@@ -329,14 +329,14 @@ int main(int argc, char **argv) {
 
     // Rasterization state
     ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.setDepthBias(false);
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.wrap.polygonMode = VK_POLYGON_MODE_FILL;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.wrap.cullMode = VK_CULL_MODE_NONE;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.wrap.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.wrap.lineWidth = 1.f;
+    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().polygonMode = VK_POLYGON_MODE_FILL;
+    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().cullMode = VK_CULL_MODE_NONE;
+    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().lineWidth = 1.f;
 
     // Multisample state
-    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.wrap.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.wrap.minSampleShading = 1.f;
+    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.edit().rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.edit().minSampleShading = 1.f;
 
     // Color blend state
     ce_graphics_pip->graphics_create_info_wrap.color_blend_state_wrap.setLogicOp(VK_LOGIC_OP_COPY);
