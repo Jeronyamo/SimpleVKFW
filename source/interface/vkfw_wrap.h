@@ -5,6 +5,7 @@
 
 #include "vkfw_base.h"
 #include "vkfw_enum.h"
+#include "vkfw_func.h"
 
 
 namespace Simple {
@@ -32,636 +33,67 @@ namespace Simple {
 
 
 //  == === ==== ============================================ ==== === ==  \\
-                    Vulkan Function Wrappers (functions)
+                    Vulkan Function Wrappers (presets)
 //  == === ==== ============================================ ==== === ==  \\
 
+        // Note: thin wrappers of every Vulkan command are generated into 'vkfw_func.h' (see 'source/meta/vkfw_func_gen.py');
+        //       only the helpers that do more than one Vulkan call (or build the create info) are written by hand here
         namespace Func {
-            inline std::vector<VkLayerProperties> EnumerateInstanceLayerProperties() {
-                uint32_t __layer_count = 0u;
-                std::vector<VkLayerProperties> __res;
-                vkEnumerateInstanceLayerProperties(&__layer_count, nullptr);
-
-                if (__layer_count != 0u) {
-                    __res.resize(__layer_count);
-                    vkEnumerateInstanceLayerProperties(&__layer_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: EnumerateInstanceLayerProperties", "did not find instance layers.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkExtensionProperties> EnumerateInstanceExtensionProperties(const char *_layer = nullptr) {
-                uint32_t __ext_count = 0u;
-                std::vector<VkExtensionProperties> __res;
-                vkEnumerateInstanceExtensionProperties(_layer, &__ext_count, nullptr);
-
-                if (__ext_count != 0u) {
-                    __res.resize(__ext_count);
-                    vkEnumerateInstanceExtensionProperties(_layer, &__ext_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: EnumerateInstanceExtensionProperties", "did not find instance extensions.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkLayerProperties> EnumerateDeviceLayerProperties(VkPhysicalDevice _phys_device) {
-                uint32_t __layer_count = 0u;
-                std::vector<VkLayerProperties> __res;
-                vkEnumerateDeviceLayerProperties(_phys_device, &__layer_count, nullptr);
-
-                if (__layer_count != 0u) {
-                    __res.resize(__layer_count);
-                    vkEnumerateDeviceLayerProperties(_phys_device, &__layer_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: EnumerateDeviceLayerProperties", "did not find device layers.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkExtensionProperties> EnumerateDeviceExtensionProperties(VkPhysicalDevice _phys_device, const char *_layer = nullptr) {
-                uint32_t __ext_count = 0u;
-                std::vector<VkExtensionProperties> __res;
-                vkEnumerateDeviceExtensionProperties(_phys_device, _layer, &__ext_count, nullptr);
-
-                if (__ext_count != 0u) {
-                    __res.resize(__ext_count);
-                    vkEnumerateDeviceExtensionProperties(_phys_device, _layer, &__ext_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: EnumerateDeviceExtensionProperties", "did not find device extensions.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkSurfaceFormatKHR> GetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
-                uint32_t __format_count = 0u;
-                std::vector<VkSurfaceFormatKHR> __res;
-
-                vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_device, _surface, &__format_count, nullptr);
-                if (__format_count != 0u) {
-                    __res.resize(__format_count);
-                    vkGetPhysicalDeviceSurfaceFormatsKHR(_phys_device, _surface, &__format_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: GetPhysicalDeviceSurfaceFormatsKHR", "did not find surface formats.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkPresentModeKHR> GetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
-                uint32_t __pres_mode_count = 0u;
-                std::vector<VkPresentModeKHR> __res;
-
-                vkGetPhysicalDeviceSurfacePresentModesKHR(_phys_device, _surface, &__pres_mode_count, nullptr);
-
-                if (__pres_mode_count != 0) {
-                    __res.resize(__pres_mode_count);
-                    vkGetPhysicalDeviceSurfacePresentModesKHR(_phys_device, _surface, &__pres_mode_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: GetPhysicalDeviceSurfacePresentModesKHR", "did not find presentation modes.\n"));
-                return __res;
-            }
-
-            inline std::vector<VkImage> GetSwapchainImagesKHR(VkDevice _device, VkSwapchainKHR _swapchain) {
-                uint32_t __img_count = 0u;
-                std::vector<VkImage> __res;
-
-                vkGetSwapchainImagesKHR(_device, _swapchain, &__img_count, nullptr);
-
-                if (__img_count != 0u) {
-                    __res.resize(__img_count);
-                    vkGetSwapchainImagesKHR(_device, _swapchain, &__img_count, __res.data());
-                }
-                else
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: GetSwapchainImagesKHR", "did not find swapchain images.\n"));
-                return __res;
-            }
-
-            // The returned array is allocated with 'new (unsigned char)[]'; 'safeDeleteArr()' may be used to delete it
-            inline void* GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, size_t &_cache_data_size) {
-                _cache_data_size = 0u;
-                void *__cache_data = nullptr;
-
-                vkGetPipelineCacheData(_device, _pipeline_cache, &_cache_data_size, __cache_data);
-
-                if (_cache_data_size != 0u) {
-                    __cache_data = new unsigned char[_cache_data_size];
-                    vkGetPipelineCacheData(_device, _pipeline_cache, &_cache_data_size, __cache_data);
-                }
-                return __cache_data;
-            }
-
-            inline void GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, std::vector<unsigned char> &_cache_data) {
-                size_t __cache_data_size = 0ul;
-
-                vkGetPipelineCacheData(_device, _pipeline_cache, &__cache_data_size, nullptr);
-
-                if (__cache_data_size != 0u) {
-                    _cache_data.resize(__cache_data_size);
-                    vkGetPipelineCacheData(_device, _pipeline_cache, &__cache_data_size, _cache_data.data());
-                }
-            }
-
-            inline void WaitForFences(VkDevice _device, Span<VkFence> _fences,
-                               VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
-                vkWaitForFences(_device, _fences.size(), _fences.data(), _wait_all, _wait_time);
-            }
-
-            inline void ResetFences(VkDevice _device, Span<VkFence> _fences) {
-                vkResetFences(_device, _fences.size(), _fences.data());
-            }
-
-            inline void BeginCommandBuffer(VkCommandBuffer _command_buffer, const VkCommandBufferBeginInfo *_begin_info) {
-                if (vkBeginCommandBuffer(_command_buffer, _begin_info) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: BeginCommandBuffer", "Failed to begin recording command buffer"));
-            }
-
-            inline void QueueSubmit(VkQueue _queue, Span<VkSubmitInfo> _submits, VkFence _fence = VK_NULL_HANDLE) {
-                if (vkQueueSubmit(_queue, _submits.size(), _submits.data(), _fence) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: QueueSubmit", "Failed to submit to queue"));
-            }
-
-            inline uint32_t QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *_pres_info) {
-                VkResult __queue_pres_res = vkQueuePresentKHR(_queue, _pres_info);
-
-                if (__queue_pres_res != VK_SUCCESS) {
-                    if (__queue_pres_res == VK_ERROR_OUT_OF_DATE_KHR || __queue_pres_res == VK_SUBOPTIMAL_KHR) {
-                        return UINT32_MAX;
-                    }
-
-                    if (_pres_info->pResults != nullptr) {
-                        for (uint32_t i = 0u; i < _pres_info->swapchainCount; ++i) {
-                            if (_pres_info->pResults[i] != VK_SUCCESS)
-                                fprintf(svkfwwarn, "%s %d\n", SVKFW_WRAPWARN("VKFW::Func :: queuePresentKHR", "error with swapchain:"), i);
-                        }
-                    }
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: QueuePresentKHR", "Failed to present queue, unhandled function error: ") + std::to_string(__queue_pres_res));
-                }
-                return __queue_pres_res;
-            }
-
-            inline uint32_t AcquireNextImageKHR(VkDevice _device, VkSwapchainKHR _swapchain, VkSemaphore _semaphore,
-                                         VkFence _fence = VK_NULL_HANDLE, uint64_t _timeout = UINT64_MAX) {
-                uint32_t __image_index = 0u;
-                vkAcquireNextImageKHR(_device, _swapchain, _timeout, _semaphore, _fence, &__image_index);
-
-                return __image_index;
-            }
-
-            inline VkPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device) {
-                VkPhysicalDeviceMemoryProperties __properties;
-
-                vkGetPhysicalDeviceMemoryProperties(_phys_device, &__properties);
-                return __properties;
-            }
-
-            inline void GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice _phys_device, VkPhysicalDeviceMemoryProperties2 *_properties) {
-                vkGetPhysicalDeviceMemoryProperties2(_phys_device, _properties);
-            }
-
-            inline VkMemoryRequirements GetBufferMemoryRequirements(VkDevice _device, VkBuffer _buffer) {
-                VkMemoryRequirements __mem_requirements{};
-
-                vkGetBufferMemoryRequirements(_device, _buffer, &__mem_requirements);
-                return __mem_requirements;
-            }
-
-            inline VkMemoryRequirements GetImageMemoryRequirements(VkDevice _device, VkImage _image) {
-                VkMemoryRequirements __mem_requirements{};
-
-                vkGetImageMemoryRequirements(_device, _image, &__mem_requirements);
-                return __mem_requirements;
-            }
-
-            inline void GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count,
-                                                                 std::vector<unsigned char> &_data) {
-                // Note: ray tracing pipeline properties extend VkPhysicalDeviceProperties2 (not memory properties)
-                StructChain<VkPhysicalDeviceProperties2, VkPhysicalDeviceRayTracingPipelinePropertiesKHR> __properties;
-                vkGetPhysicalDeviceProperties2(_phys_device, &__properties.head());
-
-                const size_t __data_size = size_t(__properties.get<VkPhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupHandleCaptureReplaySize) * _group_count;
-                _data.assign(__data_size, 0u);
-                if (__data_size != 0u)
-                    vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, _data.data());
-            }
-
-            inline void FlushMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
-                if (vkFlushMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FlushMappedMemoryRanges", "Failed to flush mapped memory ranges"));
-            }
-
-            inline void InvalidateMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
-                if (vkInvalidateMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: InvalidateMappedMemoryRanges", "Failed to invalidate mapped memory ranges"));
-            }
-
-            inline VkSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
-                VkSurfaceCapabilitiesKHR __res{};
-                vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys_device, _surface, &__res);
-                return __res;
-            }
-
-
-
-//  == === ==== >   Vulkan: Acquire Objects (create/get/allocate)
-
-            inline VkInstance CreateInstance(const VkInstanceCreateInfo *_create_info,
-                                      const VkAllocationCallbacks *_create_cb = nullptr,
-                                      bool _volk_instance_only = false) {
-                VkInstance __instance = VK_NULL_HANDLE;
-
-                if (vkCreateInstance(_create_info, _create_cb, &__instance) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateInstance", "Failed to create instance"));
-
-                if (_volk_instance_only) {
-                    volkLoadInstanceOnly(__instance);
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: CreateInstance", "Only instance-based function pointers are loaded. Call volkLoadDevice() after VkDevice creation.\n"));
-                }
-                else {
-                    volkLoadInstance(__instance);
-                    printf(SVKFW_WRAPINFO("VKFW::Func :: CreateInstance", "All Vulkan function pointers are loaded.\n"));
-                }
-
-                return __instance;
-            }
-
-            inline VkDebugUtilsMessengerEXT CreateDebugUtilsMessengerEXT(const VkDebugUtilsMessengerCreateInfoEXT *_create_info,
-                                                                  VkInstance _instance, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkDebugUtilsMessengerEXT __messenger = VK_NULL_HANDLE;
-
-                if (vkCreateDebugUtilsMessengerEXT(_instance, _create_info, _create_cb, &__messenger) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateDebugUtilsMessengerEXT", "Failed to create debug messenger"));
-                return __messenger;
-            }
-
-            inline VkQueue GetDeviceQueue(VkDevice _device, VkfwQueueFamily _queue_family, uint32_t _queue_index) {
-                VkQueue __queue = VK_NULL_HANDLE;
-
-                vkGetDeviceQueue(_device, _queue_family, _queue_index, &__queue);
-                return __queue;
-            }
-
-            inline VkDevice CreateDevice(const VkDeviceCreateInfo *_create_info, VkPhysicalDevice _phys_device,
-                                  const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkDevice __device = VK_NULL_HANDLE;
-
-                if (vkCreateDevice(_phys_device, _create_info, _create_cb, &__device) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateDevice", "Failed to create device"));
-                return __device;
-            }
-
-            inline VkSwapchainKHR CreateSwapchainKHR(const VkSwapchainCreateInfoKHR *_create_info, VkDevice _device,
-                                              const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkSwapchainKHR __swapchain = VK_NULL_HANDLE;
-                // Can return an error depending on current state of the surface (?) TODO: proper error handling
-                VkResult __res_call = vkCreateSwapchainKHR(_device, _create_info, _create_cb, &__swapchain);
-                if (__res_call != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateSwapchainKHR", "Failed to create swapchain, error ") + std::to_string(__res_call));
-                return __swapchain;
-            }
-
-            inline VkBuffer CreateBuffer(const VkBufferCreateInfo *_create_info, VkDevice _device,
-                                  const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkBuffer __buffer = VK_NULL_HANDLE;
-
-                if (vkCreateBuffer(_device, _create_info, _create_cb, &__buffer) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateBuffer", "Failed to create buffer"));
-                return __buffer;
-            }
-
-            inline VkBufferView CreateBufferView(const VkBufferViewCreateInfo *_create_info, VkDevice _device, VkBuffer _buffer,
-                                          const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkBufferView __buffer_view = VK_NULL_HANDLE;
-
-                if (vkCreateBufferView(_device, _create_info, _create_cb, &__buffer_view) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateBufferView", "Failed to create buffer view"));
-                return __buffer_view;
-            }
-
-            inline VkImage CreateImage(const VkImageCreateInfo *_create_info, VkDevice _device,
-                                const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkImage __image = VK_NULL_HANDLE;
-
-                if (vkCreateImage(_device, _create_info, _create_cb, &__image) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateImage", "Failed to create image"));
-                return __image;
-            }
-
-            inline VkImageView CreateImageView(const VkImageViewCreateInfo *_create_info, VkDevice _device, VkImage _image,
-                                        const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkImageView __image_view = VK_NULL_HANDLE;
-
-                if (vkCreateImageView(_device, _create_info, _create_cb, &__image_view) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateImageView", "Failed to create image view"));
-                return __image_view;
-            }
-
-            inline VkShaderModule CreateShaderModule(const VkShaderModuleCreateInfo *_create_info, VkDevice _device,
-                                              const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkShaderModule __shader_module = VK_NULL_HANDLE;
-
-                if (vkCreateShaderModule(_device, _create_info, _create_cb, &__shader_module) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateShaderModule", "Failed to create shader module"));
-                return __shader_module;
-            }
-
-            inline VkDeviceMemory AllocateMemory(const VkMemoryAllocateInfo  *_memory_allocate_info, VkDevice _device,
-                                          const VkAllocationCallbacks *_allocate_cb = nullptr) {
-                VkDeviceMemory __memory = VK_NULL_HANDLE;
-
-                if (vkAllocateMemory(_device, _memory_allocate_info, _allocate_cb, &__memory) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: AllocateMemory", "Failed to allocate device memory"));
-                return __memory;
-            }
-
-            inline void*  MapMemory(VkDevice _device, VkDeviceMemory _memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
-                void *__data_ptr = nullptr;
-
-                if (vkMapMemory(_device, _memory, _offset, _size, 0u, &__data_ptr) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: MapMemory", "Failed to map device memory"));
-                return __data_ptr;
-            }
-
-            inline VkRenderPass CreateRenderPass(const VkRenderPassCreateInfo *_create_info, VkDevice _device,
-                                          const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkRenderPass __render_pass = VK_NULL_HANDLE;
-
-                if (vkCreateRenderPass(_device, _create_info, _create_cb, &__render_pass) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateRenderPass", "Failed to create render pass"));
-                return __render_pass;
-            }
-
-            inline VkDescriptorSetLayout CreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo *_create_info,
-                                                            VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkDescriptorSetLayout __layout = VK_NULL_HANDLE;
-
-                if (vkCreateDescriptorSetLayout(_device, _create_info, _create_cb, &__layout) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateDescriptorSetLayout", "Failed to create descriptor set layout"));
-                return __layout;
-            }
-
-            inline VkDescriptorPool CreateDescriptorPool(const VkDescriptorPoolCreateInfo *_create_info, VkDevice _device,
-                                                  const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkDescriptorPool __pool = VK_NULL_HANDLE;
-
-                if (vkCreateDescriptorPool(_device, _create_info, _create_cb, &__pool) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateDescriptorPool", "Failed to create descriptor pool"));
-                return __pool;
-            }
-
-            inline std::vector<VkDescriptorSet> AllocateDescriptorSets(const VkDescriptorSetAllocateInfo *_create_info,
-                                                                VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkDescriptorSet> __sets((size_t)_create_info->descriptorSetCount, VK_NULL_HANDLE);
-
-                if (vkAllocateDescriptorSets(_device, _create_info, __sets.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: AllocateDescriptorSets", "Failed to allocate descriptor sets"));
-                return __sets;
-            }
-
-            inline VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo *_create_info, VkDevice _device,
-                                                  const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkPipelineLayout __pipeline_layout = VK_NULL_HANDLE;
-
-                if (vkCreatePipelineLayout(_device, _create_info, _create_cb, &__pipeline_layout) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreatePipelineLayout", "Failed to create pipeline layout"));
-
-                return __pipeline_layout;
-            }
-
-            inline VkPipelineCache CreatePipelineCache(const VkPipelineCacheCreateInfo *_create_info, VkDevice _device,
-                                                const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkPipelineCache __pipeline_cache = VK_NULL_HANDLE;
-
-                if (vkCreatePipelineCache(_device, _create_info, _create_cb, &__pipeline_cache) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreatePipelineCache", "Failed to create pipeline cache"));
-                return __pipeline_cache;
-            }
-
-            inline std::vector<VkPipeline> CreateGraphicsPipelines(const VkGraphicsPipelineCreateInfo *_create_infos, uint32_t _create_info_count,
-                                                            VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
-                                                            VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
-                                                            const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkPipeline> __pipelines((size_t)_create_info_count, VK_NULL_HANDLE);
-
-                if (vkCreateGraphicsPipelines(_device, _pipeline_cache, _create_info_count, _create_infos, _create_cb, __pipelines.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateGraphicsPipelines", "Failed to create graphics pipelines"));
-                return __pipelines;
-            }
-
-            inline std::vector<VkPipeline> CreateComputePipelines(const VkComputePipelineCreateInfo *_create_infos, uint32_t _create_info_count,
-                                                           VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
-                                                           VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
-                                                           const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkPipeline> __pipelines((size_t)_create_info_count, VK_NULL_HANDLE);
-
-                if (vkCreateComputePipelines(_device, _pipeline_cache, _create_info_count, _create_infos, _create_cb, __pipelines.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateComputePipelines", "Failed to create compute pipelines"));
-                return __pipelines;
-            }
-
-            inline std::vector<VkPipeline> CreateRayTracingPipelinesKHR(const VkRayTracingPipelineCreateInfoKHR *_create_infos, uint32_t _create_info_count,
-                                                                 VkDevice _device, VkDeferredOperationKHR _deferred_op,
-                                                                 VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
-                                                                 const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkPipeline> __pipelines((size_t)_create_info_count, VK_NULL_HANDLE);
-
-                if (vkCreateRayTracingPipelinesKHR(_device, _deferred_op, _pipeline_cache, _create_info_count, _create_infos, _create_cb, __pipelines.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateRayTracingPipelinesKHR", "Failed to create ray tracing pipelines"));
-                return __pipelines;
-            }
-
-            inline VkDeferredOperationKHR CreateDeferredOperationKHR(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkDeferredOperationKHR __deferred_op = VK_NULL_HANDLE;
-
-                if (vkCreateDeferredOperationKHR(_device, _create_cb, &__deferred_op) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateDeferredOperationKHR", "Failed to create deferred operation object"));
-                return __deferred_op;
-            }
-
-            
-            inline VkFramebuffer CreateFramebuffer(const VkFramebufferCreateInfo *_create_info, VkDevice _device,
-                                            const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkFramebuffer __framebuffer = VK_NULL_HANDLE;
-
-                if (vkCreateFramebuffer(_device, _create_info, _create_cb, &__framebuffer) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateFramebuffer", "Failed to create framebuffer"));
-                return __framebuffer;
-            }
-
-            inline VkCommandPool CreateCommandPool(const VkCommandPoolCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkCommandPool __cmd_pool = VK_NULL_HANDLE;
-
-                if (vkCreateCommandPool(_device, _create_info, _create_cb, &__cmd_pool) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateCommandPool", "Failed to create command pool"));
-                return __cmd_pool;
-            }
-
-            inline std::vector<VkCommandBuffer> AllocateCommandBuffers(const VkCommandBufferAllocateInfo *_create_info, VkDevice _device,
-                                                                const VkAllocationCallbacks *_create_cb = nullptr) {
-                std::vector<VkCommandBuffer> __command_buffers(size_t(_create_info->commandBufferCount), VK_NULL_HANDLE);
-
-                if (vkAllocateCommandBuffers(_device, _create_info, __command_buffers.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: AllocateCommandBuffers (1)", "Failed to allocate command buffers"));
-                return __command_buffers;
-            }
-
             inline std::vector<VkCommandBuffer> AllocateCommandBuffers(VkDevice _device, VkCommandPool _command_pool,
                                                                 VkCommandBufferLevel _level, uint32_t _buffer_count,
-                                                                const void *_p_next = nullptr, const VkAllocationCallbacks *_create_cb = nullptr) {
-                if (_buffer_count == 0u)
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW::Func :: AllocateCommandBuffers (2)", "'buffer_count' must be positive"));
+                                                                const void *_p_next = nullptr) {
+                SVKFW_ASSERT(_buffer_count != 0u, std::invalid_argument, "VKFW::Func :: AllocateCommandBuffers", "'buffer_count' must be positive");
 
                 VkCommandBufferAllocateInfo __info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
                 __info.pNext = _p_next;
                 __info.commandPool = _command_pool;
                 __info.level = _level;
                 __info.commandBufferCount = _buffer_count;
-
-                std::vector<VkCommandBuffer> __command_buffers(size_t(_buffer_count), VK_NULL_HANDLE);
-                if (vkAllocateCommandBuffers(_device, &__info, __command_buffers.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: AllocateCommandBuffers (2)", "Failed to allocate command buffers"));
-
-                return __command_buffers;
+                return AllocateCommandBuffers(_device, &__info);
             }
 
             // Creates 'semaphore_count' semaphores using the same 'create_info' config.
-            // Note: MINGW has a preprocessor definition 'CreateSemaphore' that collides with the expected function name...
-            inline std::vector<VkSemaphore> CreateSemaphores(const VkSemaphoreCreateInfo *_create_info, VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            // Note: Windows headers define 'CreateSemaphore' as a macro, so the preset has a plural name
+            inline std::vector<VkSemaphore> CreateSemaphores(VkDevice _device, const VkSemaphoreCreateInfo *_create_info, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_allocator = nullptr) {
                 std::vector<VkSemaphore> __semaphores((size_t)_semaphore_count, VK_NULL_HANDLE);
 
-                for (uint32_t i = 0u; i < _semaphore_count; ++i) {
-                    if (vkCreateSemaphore(_device, _create_info, _create_cb, &__semaphores[i]) != VK_SUCCESS)
-                        throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateSemaphores", "Failed to create semaphore ") + std::to_string(i));
-                }
+                for (uint32_t i = 0u; i < _semaphore_count; ++i)
+                    VKFW_CHECK(vkCreateSemaphore(_device, _create_info, _allocator, &__semaphores[i]), "vkCreateSemaphore");
                 return __semaphores;
             }
 
-            inline VkFence CreateFence(const VkFenceCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                VkFence __fence = VK_NULL_HANDLE;
-
-                if (vkCreateFence(_device, _create_info, _create_cb, &__fence) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateFence", "Failed to create fence"));
-                return __fence;
-            }
-
             // Creates 'fence_count' fences using the same 'create_info' config. Requires separate calls for signaled/not signaled fences.
-            inline std::vector<VkFence> CreateFences(const VkFenceCreateInfo *_create_info, VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline std::vector<VkFence> CreateFences(VkDevice _device, const VkFenceCreateInfo *_create_info, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_allocator = nullptr) {
                 std::vector<VkFence> __fences((size_t)_fence_count, VK_NULL_HANDLE);
 
-                for (uint32_t i = 0u; i < _fence_count; ++i) {
-                    if (vkCreateFence(_device, _create_info, _create_cb, &__fences[i]) != VK_SUCCESS)
-                        throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateFences", "Failed to create fence ") + std::to_string(i));
-                }
+                for (uint32_t i = 0u; i < _fence_count; ++i)
+                    VKFW_CHECK(vkCreateFence(_device, _create_info, _allocator, &__fences[i]), "vkCreateFence");
                 return __fences;
             }
 
             // Creates 'event_count' events using the same 'create_info' config. Requires separate calls for device-only events.
-            // Note: MINGW has a preprocessor definition 'CreateEvent' that collides with the expected function name...
-            inline std::vector<VkEvent> CreateEvents(const VkEventCreateInfo *_create_info, VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            // Note: Windows headers define 'CreateEvent' as a macro, so the preset has a plural name
+            inline std::vector<VkEvent> CreateEvents(VkDevice _device, const VkEventCreateInfo *_create_info, uint32_t _event_count = 1u, const VkAllocationCallbacks *_allocator = nullptr) {
                 std::vector<VkEvent> __events((size_t)_event_count, VK_NULL_HANDLE);
 
-                for (uint32_t i = 0u; i < _event_count; ++i) {
-                    if (vkCreateEvent(_device, _create_info, _create_cb, &__events[i]) != VK_SUCCESS)
-                        throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: CreateEvents", "Failed to create event ") + std::to_string(i));
-                }
+                for (uint32_t i = 0u; i < _event_count; ++i)
+                    VKFW_CHECK(vkCreateEvent(_device, _create_info, _allocator, &__events[i]), "vkCreateEvent");
                 return __events;
             }
 
+            // Queries the capture replay handle size and returns the handles of 'group_count' shader groups
+            inline std::vector<uint8_t> GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline,
+                                                                                 uint32_t _first_group, uint32_t _group_count) {
+                // Note: ray tracing pipeline properties extend VkPhysicalDeviceProperties2 (not memory properties)
+                StructChain<VkPhysicalDeviceProperties2, VkPhysicalDeviceRayTracingPipelinePropertiesKHR> __properties;
+                vkGetPhysicalDeviceProperties2(_phys_device, &__properties.head());
 
-//  == === ==== >   Vulkan: Release Objects (destroy/free)
-
-            inline void DestroyInstance(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyInstance(_instance, _destroy_cb);
+                const size_t __data_size = size_t(__properties.get<VkPhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupHandleCaptureReplaySize) * _group_count;
+                std::vector<uint8_t> __data(__data_size, 0u);
+                if (__data_size != 0u)
+                    GetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, __data.data());
+                return __data;
             }
-
-            inline void DestroyDebugUtilsMessengerEXT(VkInstance _instance, VkDebugUtilsMessengerEXT _messenger, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyDebugUtilsMessengerEXT(_instance, _messenger, _destroy_cb);
-            }
-
-            inline void DestroyDevice(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyDevice(_device, _destroy_cb);
-            }
-            
-            inline void DestroySwapchainKHR(VkDevice _device, VkSwapchainKHR _swapchain, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroySwapchainKHR(_device, _swapchain, _destroy_cb);
-            }
-
-            inline void DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyImage(_device, _image, _destroy_cb);
-            }
-
-            inline void DestroyImageView(VkDevice _device, VkImageView _image_view, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyImageView(_device, _image_view, _destroy_cb);
-            }
-
-            inline void DestroyShaderModule(VkDevice _device, VkShaderModule _shader_module, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyShaderModule(_device, _shader_module, _destroy_cb);
-            }
-
-            inline void DestroyBuffer(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyBuffer(_device, _buffer, _destroy_cb);
-            }
-
-            inline void FreeMemory(VkDevice _device, VkDeviceMemory _device_memory, const VkAllocationCallbacks *_free_cb = nullptr) {
-                vkFreeMemory(_device, _device_memory, _free_cb);
-            }
-
-            inline void UnmapMemory(VkDevice _device, VkDeviceMemory _memory) {
-                vkUnmapMemory(_device, _memory);
-            }
-
-            inline void DestroyRenderPass(VkDevice _device, VkRenderPass _render_pass, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyRenderPass(_device, _render_pass, _destroy_cb);
-            }
-
-            inline void DestroyDescriptorSetLayout(VkDevice _device, VkDescriptorSetLayout _layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyDescriptorSetLayout(_device, _layout, _destroy_cb);
-            }
-
-            inline void DestroyDescriptorPool(VkDevice _device, VkDescriptorPool _pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyDescriptorPool(_device, _pool, _destroy_cb);
-            }
-
-            inline void FreeDescriptorSets(VkDevice _device, VkDescriptorPool _descriptor_pool, Span<VkDescriptorSet> _sets) {
-                if (vkFreeDescriptorSets(_device, _descriptor_pool, _sets.size(), _sets.data()) != VK_SUCCESS)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FreeDescriptorSets","failed to free descriptor sets"));
-            }
-
-            inline void DestroyPipelineLayout(VkDevice _device, VkPipelineLayout _pipeline_layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyPipelineLayout(_device, _pipeline_layout, _destroy_cb);
-            }
-
-            inline void DestroyPipelineCache(VkDevice _device, VkPipelineCache _pipeline_cache, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyPipelineCache(_device, _pipeline_cache, _destroy_cb);
-            }
-
-            inline void DestroyPipeline(VkDevice _device, VkPipeline _pipeline, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyPipeline(_device, _pipeline, _destroy_cb);
-            }
-
-            inline void DestroyDeferredOperationKHR(VkDevice _device, VkDeferredOperationKHR _deferred_op, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyDeferredOperationKHR(_device, _deferred_op, _destroy_cb);
-            }
-
-            inline void DestroyFramebuffer(VkDevice _device, VkFramebuffer _framebuffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyFramebuffer(_device, _framebuffer, _destroy_cb);
-            }
-
-            inline void DestroyCommandPool(VkDevice _device, VkCommandPool _command_pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
-                vkDestroyCommandPool(_device, _command_pool, _destroy_cb);
-            }
-
-
-//  == === ==== >   Command Buffer Commands
-
-            inline void CmdSetViewport(VkCommandBuffer _command_buffer, Span<VkViewport> _viewports) {
-                vkCmdSetViewport(_command_buffer, 0u, (uint32_t)_viewports.size(), _viewports.data());
-            }
-
-            inline void CmdDraw(VkCommandBuffer _command_buffer, uint32_t _vert_count, uint32_t _inst_count,
-                         uint32_t _vert_offset = 0u, uint32_t _inst_offset = 0u) {
-                vkCmdDraw(_command_buffer, _vert_count, _inst_count, _vert_offset, _inst_offset);
-            }
-
         }; // Func END
 
 
@@ -2900,7 +2332,7 @@ namespace Simple {
 
                 // Get data from previously created cache object
                 void getCacheData(VkDevice _device, VkPipelineCache _pipeline_cache) {
-                    Func::GetPipelineCacheData(_device, _pipeline_cache, cache_data);
+                    cache_data = Func::GetPipelineCacheData(_device, _pipeline_cache);
                 }
             }; // StructWrap<VkPipelineCacheCreateInfo> END
 
@@ -2948,7 +2380,7 @@ namespace Simple {
             // Scenarios
 
                 void getData(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count) {
-                    Func::GetRayTracingCaptureReplayShaderGroupHandlesKHR(_phys_device, _device, _pipeline, _first_group, _group_count, capture_replay_handle);
+                    capture_replay_handle = Func::GetRayTracingCaptureReplayShaderGroupHandlesKHR(_phys_device, _device, _pipeline, _first_group, _group_count);
                     updateWrap();
                 }
             }; // StructWrap<VkRayTracingShaderGroupCreateInfoKHR> END
@@ -3801,7 +3233,16 @@ namespace Simple {
                 Struct::StructWrap<VkInstanceCreateInfo> create_info;
 
                 void createObject(const VkAllocationCallbacks *_create_cb = nullptr, bool _volk_instance_only = false) {
-                    handle = Func::CreateInstance(&create_info.get(), _create_cb, _volk_instance_only);
+                    handle = Func::CreateInstance(&create_info.get(), _create_cb);
+
+                    if (_volk_instance_only) {
+                        volkLoadInstanceOnly(handle);
+                        printf(SVKFW_WRAPINFO("VKFW::Object::Instance :: createObject", "Only instance-based function pointers are loaded. Call volkLoadDevice() after VkDevice creation.\n"));
+                    }
+                    else {
+                        volkLoadInstance(handle);
+                        printf(SVKFW_WRAPINFO("VKFW::Object::Instance :: createObject", "All Vulkan function pointers are loaded.\n"));
+                    }
                 }
 
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3818,7 +3259,7 @@ namespace Simple {
                 Struct::StructWrap<VkDebugUtilsMessengerCreateInfoEXT> create_info;
 
                 void createObject(VkInstance _instance, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDebugUtilsMessengerEXT(&create_info.get(), _instance, _create_cb);
+                    handle = Func::CreateDebugUtilsMessengerEXT(_instance, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3885,7 +3326,7 @@ namespace Simple {
                 Struct::StructWrap<VkDeviceCreateInfo> create_info;
 
                 void createObject(VkPhysicalDevice _phys_device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDevice(&create_info.get(), _phys_device, _create_cb);
+                    handle = Func::CreateDevice(_phys_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3919,7 +3360,7 @@ namespace Simple {
                 Struct::StructWrap<VkSwapchainCreateInfoKHR> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateSwapchainKHR(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateSwapchainKHR(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3936,7 +3377,7 @@ namespace Simple {
                 Struct::StructWrap<VkShaderModuleCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateShaderModule(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateShaderModule(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3953,7 +3394,7 @@ namespace Simple {
                 Struct::StructWrap<VkBufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateBuffer(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateBuffer(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3970,7 +3411,8 @@ namespace Simple {
                 Struct::StructWrap<VkBufferViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateBufferView(&create_info.get(), _device, _buffer, _create_cb);
+                    create_info.edit().buffer = _buffer;
+                    handle = Func::CreateBufferView(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -3987,7 +3429,7 @@ namespace Simple {
                 Struct::StructWrap<VkImageCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateImage(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateImage(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4004,7 +3446,8 @@ namespace Simple {
                 Struct::StructWrap<VkImageViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateImageView(&create_info.get(), _device, _image, _create_cb);
+                    create_info.edit().image = _image;
+                    handle = Func::CreateImageView(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4021,7 +3464,7 @@ namespace Simple {
                 Struct::StructWrap<VkMemoryAllocateInfo> allocate_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_allocate_cb = nullptr) {
-                    handle = Func::AllocateMemory(&allocate_info.get(), _device, _allocate_cb);
+                    handle = Func::AllocateMemory(_device, &allocate_info.get(), _allocate_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4038,7 +3481,7 @@ namespace Simple {
                 Struct::StructWrap<VkRenderPassCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateRenderPass(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateRenderPass(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4055,7 +3498,7 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDescriptorSetLayout(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateDescriptorSetLayout(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4072,7 +3515,7 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateDescriptorPool(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateDescriptorPool(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4089,7 +3532,7 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetAllocateInfo> alloc_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::AllocateDescriptorSets(&alloc_info.get(), _device, _create_cb);
+                    handles = Func::AllocateDescriptorSets(_device, &alloc_info.get());
                 }
 
                 void destroyObject(VkDevice _device) {
@@ -4106,7 +3549,7 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreatePipelineLayout(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreatePipelineLayout(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4123,7 +3566,7 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineCacheCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreatePipelineCache(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreatePipelineCache(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4167,14 +3610,17 @@ namespace Simple {
                     return *this;
                 }
 
-                void createObject(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
-                                  VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
-                                  const VkAllocationCallbacks *_create_cb = nullptr) {
+                // Returns VK_SUCCESS or another success code (e.g. VK_PIPELINE_COMPILE_REQUIRED, VK_OPERATION_DEFERRED_KHR), throws on errors
+                // Note: the render pass and the subpass are taken from the create info
+                VkResult createObject(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
+                                      VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
+                                      const VkAllocationCallbacks *_create_cb = nullptr) {
+                    (void)_render_pass; (void)_subpass;
                     switch (pipeline_type) {
-                        case VKFW_PIPELINE_TYPE_GRAPHICS:    handle = Func::CreateGraphicsPipelines     (&  graphics_create_info_wrap.get(), 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
-                        case VKFW_PIPELINE_TYPE_COMPUTE:     handle = Func::CreateComputePipelines      (&   compute_create_info_wrap.get(), 1, _device, _render_pass, _subpass, _pipeline_cache, _create_cb)[0]; break;
-                        case VKFW_PIPELINE_TYPE_RAY_TRACING: handle = Func::CreateRayTracingPipelinesKHR(&raytracing_create_info_wrap.get(), 1, _device, _deferred_op,           _pipeline_cache, _create_cb)[0]; break;
-                        case VKFW_PIPELINE_TYPE_UNDEFINED:  break;
+                        case VKFW_PIPELINE_TYPE_GRAPHICS:    return Func::CreateGraphicsPipelines     (_device,               _pipeline_cache,   graphics_create_info_wrap.get(), _create_cb, &handle);
+                        case VKFW_PIPELINE_TYPE_COMPUTE:     return Func::CreateComputePipelines      (_device,               _pipeline_cache,    compute_create_info_wrap.get(), _create_cb, &handle);
+                        case VKFW_PIPELINE_TYPE_RAY_TRACING: return Func::CreateRayTracingPipelinesKHR(_device, _deferred_op, _pipeline_cache, raytracing_create_info_wrap.get(), _create_cb, &handle);
+                        case VKFW_PIPELINE_TYPE_UNDEFINED:  return VK_SUCCESS;
                         default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::Object::Pipeline :: createObject", "unknown pipeline type: " + std::to_string(pipeline_type)));
                     };
                 }
@@ -4260,7 +3706,7 @@ namespace Simple {
                 Struct::StructWrap<VkFramebufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateFramebuffer(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateFramebuffer(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4278,13 +3724,13 @@ namespace Simple {
                 Struct::StructWrap<VkCommandPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handle = Func::CreateCommandPool(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateCommandPool(_device, &create_info.get(), _create_cb);
                 }
 
                 void createObject(VkDevice _device, VkfwQueueFamily _queue_family, VkCommandPoolCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.edit().flags =  _flags;
                     create_info.edit().queueFamilyIndex = _queue_family;
-                    handle = Func::CreateCommandPool(&create_info.get(), _device, _create_cb);
+                    handle = Func::CreateCommandPool(_device, &create_info.get(), _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4301,7 +3747,7 @@ namespace Simple {
                 Struct::StructWrap<VkCommandBufferAllocateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
+                    handles = Func::AllocateCommandBuffers(_device, &create_info.get());
                 }
 
                 void destroyObject(VkDevice _device) {
@@ -4315,14 +3761,14 @@ namespace Simple {
                     create_info.edit().level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
                     create_info.edit().commandPool = _command_pool;
                     create_info.edit().commandBufferCount = _buffer_count;
-                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
+                    handles = Func::AllocateCommandBuffers(_device, &create_info.get());
                 }
 
                 void createSecondary(VkDevice _device, VkCommandPool _command_pool, uint32_t _buffer_count, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.edit().level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
                     create_info.edit().commandPool = _command_pool;
                     create_info.edit().commandBufferCount = _buffer_count;
-                    handles = Func::AllocateCommandBuffers(&create_info.get(), _device, _create_cb);
+                    handles = Func::AllocateCommandBuffers(_device, &create_info.get());
                 }
             }; // CommandBuffer END
 
@@ -4334,7 +3780,7 @@ namespace Simple {
                 Struct::StructWrap<VkSemaphoreCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateSemaphores(&create_info.get(), _device, _semaphore_count, _create_cb);
+                    handles = Func::CreateSemaphores(_device, &create_info.get(), _semaphore_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4352,7 +3798,7 @@ namespace Simple {
                 Struct::StructWrap<VkFenceCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(_device, &create_info.get(), _fence_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4365,12 +3811,12 @@ namespace Simple {
 
                 void createSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(true);
-                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(_device, &create_info.get(), _fence_count, _create_cb);
                 }
 
                 void createNotSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(false);
-                    handles = Func::CreateFences(&create_info.get(), _device, _fence_count, _create_cb);
+                    handles = Func::CreateFences(_device, &create_info.get(), _fence_count, _create_cb);
                 }
             }; // Fence END
 
@@ -4382,7 +3828,7 @@ namespace Simple {
                 Struct::StructWrap<VkEventCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
-                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(_device, &create_info.get(), _event_count, _create_cb);
                 }
 
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
@@ -4395,12 +3841,12 @@ namespace Simple {
 
                 void createSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(true);
-                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(_device, &create_info.get(), _event_count, _create_cb);
                 }
 
                 void createNotSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                     create_info.setWholeStruct(false);
-                    handles = Func::CreateEvents(&create_info.get(), _device, _event_count, _create_cb);
+                    handles = Func::CreateEvents(_device, &create_info.get(), _event_count, _create_cb);
                 }
             }; // Event END
 

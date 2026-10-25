@@ -247,7 +247,7 @@ namespace Simple {
                     image_views.resize(__swapchain_images.size());
                     for (ContextIndex ci = 0u; ci < __swapchain_images.size(); ++ci) {
                         image_view_wrap.edit().image = __swapchain_images[ci];
-                        image_views[ci] = Func::CreateImageView(&image_view_wrap.get(), cxt_core->device.handle, __swapchain_images[ci], cxt_core->alloc_cb.get());
+                        image_views[ci] = Func::CreateImageView(cxt_core->device.handle, &image_view_wrap.get(), cxt_core->alloc_cb.get());
                     }
                 }
                 void createFramebuffers() {
@@ -256,7 +256,7 @@ namespace Simple {
 
                     for (ContextIndex ci = 0u; ci < framebuffers.size(); ++ci) {
                         framebuffer_wrap.attachments = {image_views[ci]};
-                        framebuffers[ci] = Func::CreateFramebuffer(&framebuffer_wrap.get(), cxt_core->device.handle, cxt_core->alloc_cb.get());
+                        framebuffers[ci] = Func::CreateFramebuffer(cxt_core->device.handle, &framebuffer_wrap.get(), cxt_core->alloc_cb.get());
                     }
                 }
 
@@ -778,7 +778,7 @@ namespace Simple {
 
                         // Note: mapping a memory object once and keeping it mapped is allowed and cheaper than mapping it every frame
                         if (required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-                            mapped_ptr = Func::MapMemory(cxt_core->device.handle, memory.handle);
+                            mapped_ptr = Func::MapMemory(cxt_core->device.handle, memory.handle, 0u, VK_WHOLE_SIZE);
 
                         // Bind all buffers to created memory
                         VkResult __func_res = VK_SUCCESS;

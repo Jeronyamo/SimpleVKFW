@@ -199,19 +199,23 @@ add_subdirectory(${EXTERN_SRC_OPUS_DIR})
 set(Python3_FIND_REGISTRY LAST) 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(${SVKFW_MSG_PREFIX} "Looking for Python at: '${Python3_EXECUTABLE}'")
-message(${SVKFW_MSG_PREFIX} "Looking for Script at: '${CMAKE_SOURCE_DIR}/source/meta/vkfw_enum_gen.py'")
-
-
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} "source/meta/vkfw_enum_gen.py"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    RESULT_VARIABLE SCRIPT_RES
-    OUTPUT_VARIABLE SCRIPT_OUT
-     ERROR_VARIABLE SCRIPT_ERR
-)
-if(NOT SCRIPT_RES EQUAL 0)
-    message(FATAL_ERROR ${SVKFW_MSG_PREFIX} "'vkfw_enum.h' generation failed: ${SCRIPT_RES}")
-endif()
+# Note: the generated headers are not stored in git ('.gitignore'), they are made from the installed Vulkan SDK on configure
+#   vkfw_enum.h          - enum names       (vulkan_core.h)
+#   vkfw_struct_traits.h - pNext chain rules (vk.xml)
+#   vkfw_func.h          - Func wrappers    (vk.xml, ext_sources/volk/volk.h)
+foreach(SVKFW_GEN_SCRIPT IN ITEMS vkfw_enum_gen.py vkfw_struct_gen.py vkfw_func_gen.py)
+    message(${SVKFW_MSG_PREFIX} "Running script: '${CMAKE_SOURCE_DIR}/source/meta/${SVKFW_GEN_SCRIPT}'")
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} "source/meta/${SVKFW_GEN_SCRIPT}"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        RESULT_VARIABLE SCRIPT_RES
+        OUTPUT_VARIABLE SCRIPT_OUT
+         ERROR_VARIABLE SCRIPT_ERR
+    )
+    if(NOT SCRIPT_RES EQUAL 0)
+        message(FATAL_ERROR ${SVKFW_MSG_PREFIX} "'${SVKFW_GEN_SCRIPT}' failed: ${SCRIPT_RES}\n${SCRIPT_OUT}${SCRIPT_ERR}")
+    endif()
+endforeach()
 
 
 ##  ============  SVKFW Targets  ============  ##

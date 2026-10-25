@@ -1,3 +1,5 @@
+from __future__ import annotations  # Note: allows "str | None" hints on Python < 3.10
+
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -66,11 +68,16 @@ def loadRegistry(vk_xml_path: str):
 
     # Which core versions/extensions declare each type
     providers: dict[str, set[str]] = {}
+    # Extra macros that guard sType values ('protect' in vk.xml, e.g. VK_ENABLE_BETA_EXTENSIONS for provisional values)
+    stype_protect: dict[str, str] = {}
     def addRequires(owner, owner_name: str) -> None:
         for req in owner.findall("require"):
             if not isVulkanApi(req.get("api")): continue
             for rt in req.findall("type"):
                 providers.setdefault(rt.get("name"), set()).add(owner_name)
+            for re_ in req.findall("enum"):
+                if re_.get("extends") == "VkStructureType" and re_.get("protect"):
+                    stype_protect[re_.get("name")] = re_.get("protect")
 
     for feature in root.findall("feature"):
         if isVulkanApi(feature.get("api")):
@@ -79,7 +86,7 @@ def loadRegistry(vk_xml_path: str):
         if "vulkan" in (ext.get("supported") or "").split(","):
             addRequires(ext, ext.get("name"))
 
-    return header_version, stypes, extends, providers
+    return header_version, stypes, extends, providers, stype_protect
 
 
 def guardOf(type_name: str, providers: dict[str, set[str]]) -> str:
@@ -96,7 +103,7 @@ def joinGuards(guards: list[str]) -> str:
 
 
 def generate(vk_xml_path: str, out_path: str) -> None:
-    header_version, stypes, extends, providers = loadRegistry(vk_xml_path)
+    header_version, stypes, extends, providers, stype_protect = loadRegistry(vk_xml_path)
     # Note: types required only by Vulkan SC (or by nothing) are not declared in the Vulkan headers
     stypes  = { n: v for n, v in stypes.items() if n in providers }
     extends = { n: v for n, v in extends.items() if n in stypes }
@@ -104,7 +111,10 @@ def generate(vk_xml_path: str, out_path: str) -> None:
     # Group specializations by their guard to keep the number of #if blocks small
     groups: dict[str, list[str]] = {}
     for name in sorted(stypes):
-        groups.setdefault(guardOf(name, providers), []).append(
+        guard = guardOf(name, providers)
+        if stypes[name] in stype_protect:
+            guard = joinGuards([guard, f"defined({stype_protect[stypes[name]]})"])
+        groups.setdefault(guard, []).append(
             f"        template <> struct StructType<{name}> {{ static const VkStructureType value = {stypes[name]}; }};")
 
     ext_groups: dict[str, list[str]] = {}
