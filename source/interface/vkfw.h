@@ -114,6 +114,17 @@ namespace Simple {
                     return __handles[_id.index];
                 }
 
+            // Physical device queries (pass a StructChain headed by VkPhysicalDeviceFeatures2 / VkPhysicalDeviceProperties2)
+
+                template <typename... Ts>
+                void queryFeatures(StructChain<VkPhysicalDeviceFeatures2, Ts...> &_chain) const {
+                    vkGetPhysicalDeviceFeatures2(phys_device.handle, &_chain.head());
+                }
+                template <typename... Ts>
+                void queryProperties(StructChain<VkPhysicalDeviceProperties2, Ts...> &_chain) const {
+                    vkGetPhysicalDeviceProperties2(phys_device.handle, &_chain.head());
+                }
+
             // Create Objects
 
                 void createInstance() {

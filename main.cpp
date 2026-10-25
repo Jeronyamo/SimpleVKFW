@@ -122,6 +122,12 @@ int main(int argc, char **argv) {
     vk.cxt_core.loadPhysicalDeviceInfo();
     vk.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
 
+    // Note: Vulkan 1.3 is required (instance and device)
+    Simple::VKFW::StructChain<VkPhysicalDeviceProperties2> phys_device_props;
+    vk.cxt_core.queryProperties(phys_device_props);
+    SVKFW_ASSERT(Simple::VKFW::VulkanAPIVersion::available() >= VK_API_VERSION_1_3 && phys_device_props.head().properties.apiVersion >= VK_API_VERSION_1_3,
+                    std::runtime_error, "main()", "Vulkan 1.3 is not supported");
+
     // Queue family
     QueueFamilyId ci_qfam_graphics = vk.cxt_core.addQueueFamily();
     QueueFamilyId ci_qfam_transfer = vk.cxt_core.addQueueFamily();
@@ -145,6 +151,15 @@ int main(int argc, char **argv) {
     vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_graphics, QUEUES_COUNT_GRAPHICS);
     vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_transfer, QUEUES_COUNT_TRANSFER);
     vk.cxt_core.setDeviceQueueInfo();
+
+    // Device features: Vulkan 1.0 features are set through 'req_features', newer ones through the chain
+    // Note: the chain must outlive 'createDevice'; these features are mandatory in Vulkan 1.3
+    Simple::VKFW::StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan11Features,
+                              VkPhysicalDeviceVulkan12Features, VkPhysicalDeviceVulkan13Features> device_features;
+    device_features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore = VK_TRUE;
+    device_features.get<VkPhysicalDeviceVulkan13Features>().synchronization2  = VK_TRUE;
+    device_features.get<VkPhysicalDeviceVulkan13Features>().dynamicRendering  = VK_TRUE;
+    vk.cxt_core.device.create_info.setNext(device_features);
 
     vk.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
     vk.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});

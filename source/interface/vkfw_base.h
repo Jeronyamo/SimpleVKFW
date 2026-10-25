@@ -5,9 +5,12 @@
 #include <vector>
 #include <initializer_list>
 #include <stdexcept>
+#include <tuple>
+#include <type_traits>
 
 #include "common/memory.h"
 #include "interface/glfwrap.h"
+#include "interface/vkfw_struct_traits.h"
 
 #define VKFW_CI_IGNORE UINT32_MAX
 
@@ -462,6 +465,121 @@ namespace Simple {
             }
 
         }; // StructPtrChain END
+
+
+        namespace Detail {
+            template <bool... Bs> struct AnyOf;
+            template <> struct AnyOf<> { static const bool value = false; };
+            template <bool B, bool... Bs> struct AnyOf<B, Bs...> { static const bool value = B || AnyOf<Bs...>::value; };
+
+            template <typename T, typename... Ts> struct TypeCount;
+            template <typename T> struct TypeCount<T> { static const uint32_t value = 0u; };
+            template <typename T, typename U, typename... Ts> struct TypeCount<T, U, Ts...> {
+                static const uint32_t value = (std::is_same<T, U>::value ? 1u : 0u) + TypeCount<T, Ts...>::value;
+            };
+
+            // Note: index of the first 'T' in 'Ts' ('TypeCount' guards against a missing type)
+            template <typename T, typename... Ts> struct TypeIndex;
+            template <typename T, typename... Ts> struct TypeIndex<T, T, Ts...> { static const uint32_t value = 0u; };
+            template <typename T, typename U, typename... Ts> struct TypeIndex<T, U, Ts...> { static const uint32_t value = 1u + TypeIndex<T, Ts...>::value; };
+
+            template <typename... Ts> struct TypeList {};
+
+            // Note: every structure must appear once and extend one of the structures before it ('StructExtends')
+            template <typename Prev, typename... Rest> struct ChainValid;
+            template <typename... Prev> struct ChainValid<TypeList<Prev...>> { static const bool value = true; };
+            template <typename... Prev, typename T, typename... Rest> struct ChainValid<TypeList<Prev...>, T, Rest...> {
+                static const bool value = TypeCount<T, Prev...>::value == 0u && AnyOf<StructExtends<T, Prev>::value...>::value &&
+                                          ChainValid<TypeList<Prev..., T>, Rest...>::value;
+            };
+
+            template <typename W, typename C>
+            void setWrapNext(W &_wrap, C &_chain) {
+                static_assert(StructExtends<typename C::HeadType, W>::value, "VKFW :: StructWrap :: setNext - the chain head can't extend this structure (see StructExtends)");
+                _wrap.pNext = &_chain.head();
+            }
+        }; // Detail END
+
+        // Note: typed pNext chain stored in one object (like vk::StructureChain): 'sType' and 'pNext' are set in the constructor,
+        //       'get<T>()' is resolved at compile time and there are no allocations. The chain is checked at compile time:
+        //       every structure must appear once and extend one of the structures before it.
+        //
+        //       StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan12Features> features;
+        //       vkGetPhysicalDeviceFeatures2(phys_device, &features.head());
+        //       if (features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore) ...
+        //
+        //       The chain must outlive every Vulkan call that reads it through 'pNext'.
+        template <typename Head, typename... Tail>
+        struct StructChain {
+            typedef Head HeadType;
+            static const uint32_t SIZE = 1u + sizeof...(Tail);
+
+            static_assert(Detail::ChainValid<Detail::TypeList<Head>, Tail...>::value,
+                          "VKFW :: StructChain - every structure must appear once and extend an earlier structure of the chain (see StructExtends)");
+
+            StructChain() : data{} { link(); }
+            StructChain(const StructChain &_chain) : data{_chain.data} { link(); }
+            StructChain& operator=(const StructChain &_chain) { data = _chain.data; link(); return *this; }
+
+                  Head& head()       { return std::get<0>(data); }
+            const Head& head() const { return std::get<0>(data); }
+
+            template <typename T>
+            T& get() {
+                static_assert(Detail::TypeCount<T, Head, Tail...>::value == 1u, "VKFW :: StructChain :: get - the type is not in the chain");
+                return std::get<Detail::TypeIndex<T, Head, Tail...>::value>(data);
+            }
+            template <typename T>
+            const T& get() const {
+                static_assert(Detail::TypeCount<T, Head, Tail...>::value == 1u, "VKFW :: StructChain :: get - the type is not in the chain");
+                return std::get<Detail::TypeIndex<T, Head, Tail...>::value>(data);
+            }
+
+            // Restores the order of the template arguments, linking all structures (keeps their contents)
+            void link() {
+                VkBaseOutStructure *__ptrs[SIZE];
+                fillPtrs_(__ptrs);
+                const VkStructureType __types[SIZE] = { StructType<Head>::value, StructType<Tail>::value... };
+                for (uint32_t i = 0u; i < SIZE; ++i) {
+                    __ptrs[i]->sType = __types[i];
+                    __ptrs[i]->pNext = i + 1u < SIZE ? __ptrs[i + 1u] : nullptr;
+                }
+            }
+
+            // Removes 'T' from the pNext chain (Vulkan won't see it), its contents are kept
+            template <typename T>
+            void unlink() {
+                static_assert(!std::is_same<T, Head>::value, "VKFW :: StructChain :: unlink - the head can't be unlinked");
+                VkBaseOutStructure *__target = reinterpret_cast<VkBaseOutStructure*>(&get<T>());
+                for (VkBaseOutStructure *p = reinterpret_cast<VkBaseOutStructure*>(&head()); p != nullptr; p = p->pNext)
+                    if (p->pNext == __target) { p->pNext = __target->pNext; __target->pNext = nullptr; return; }
+            }
+            // Links an unlinked 'T' back, right after the head
+            template <typename T>
+            void relink() {
+                if (isLinked<T>()) return;
+                VkBaseOutStructure *__head   = reinterpret_cast<VkBaseOutStructure*>(&head());
+                VkBaseOutStructure *__target = reinterpret_cast<VkBaseOutStructure*>(&get<T>());
+                __target->pNext = __head->pNext;
+                __head->pNext   = __target;
+            }
+            template <typename T>
+            bool isLinked() const {
+                const VkBaseOutStructure *__target = reinterpret_cast<const VkBaseOutStructure*>(&get<T>());
+                for (const VkBaseOutStructure *p = reinterpret_cast<const VkBaseOutStructure*>(&head()); p != nullptr; p = p->pNext)
+                    if (p == __target) return true;
+                return false;
+            }
+
+        private:
+            std::tuple<Head, Tail...> data;
+
+            void fillPtrs_(VkBaseOutStructure **_ptrs) {
+                VkBaseOutStructure *__ptrs[SIZE] = { reinterpret_cast<VkBaseOutStructure*>(&std::get<0>(data)),
+                                                     reinterpret_cast<VkBaseOutStructure*>(&get<Tail>())... };
+                for (uint32_t i = 0u; i < SIZE; ++i) _ptrs[i] = __ptrs[i];
+            }
+        }; // StructChain END
     }; // VKFW END
 }; // Simple END
 

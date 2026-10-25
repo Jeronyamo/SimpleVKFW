@@ -235,12 +235,10 @@ namespace Simple {
             inline void GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count,
                                                                  std::vector<unsigned char> &_data) {
                 // Note: ray tracing pipeline properties extend VkPhysicalDeviceProperties2 (not memory properties)
-                VkPhysicalDeviceRayTracingPipelinePropertiesKHR __rt_properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
-                VkPhysicalDeviceProperties2 __properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-                __properties.pNext = &__rt_properties;
-                vkGetPhysicalDeviceProperties2(_phys_device, &__properties);
+                StructChain<VkPhysicalDeviceProperties2, VkPhysicalDeviceRayTracingPipelinePropertiesKHR> __properties;
+                vkGetPhysicalDeviceProperties2(_phys_device, &__properties.head());
 
-                const size_t __data_size = size_t(__rt_properties.shaderGroupHandleCaptureReplaySize) * _group_count;
+                const size_t __data_size = size_t(__properties.get<VkPhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupHandleCaptureReplaySize) * _group_count;
                 _data.assign(__data_size, 0u);
                 if (__data_size != 0u)
                     vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, _data.data());
@@ -1505,12 +1503,16 @@ namespace Simple {
         //       'get()' calls 'updateWrap()' first, so the counts and pointers that the wrapper manages are always current;
         //       writing such a field through 'edit()' has no effect, use the wrapper's members instead.
         //       'peek()' reads the structure as it is, without updating it.
+        // Note: 'setNext' puts a StructChain into 'pNext' (checked at compile time); the chain must outlive the wrap's use.
+        //       'edit().pNext = nullptr' removes it.
         #define VKFW_STRUCT_WRAP_ACCESS(T_)                                   \
             public:                                                           \
                 typedef T_ WrapType;                                          \
                 const WrapType &get()        { updateWrap(); return wrap; }   \
                 const WrapType &peek() const { return wrap; }                 \
-                      WrapType &edit()       { return wrap; }
+                      WrapType &edit()       { return wrap; }                 \
+                template <typename C_>                                        \
+                void setNext(C_ &_chain) { Detail::setWrapNext(wrap, _chain); }
 
             // Template interface
             template <typename T> struct StructWrap {
@@ -2071,6 +2073,16 @@ namespace Simple {
                     wrap.pQueueCreateInfos    = queue_info.data();
                     wrap.queueCreateInfoCount = queue_info.size();
                     wrap.pEnabledFeatures = &req_features;
+
+                    // Note: with VkPhysicalDeviceFeatures2 in the pNext chain 'pEnabledFeatures' must be null,
+                    //       so 'req_features' is copied into the chained structure instead
+                    for (VkBaseOutStructure *p = (VkBaseOutStructure*)wrap.pNext; p != nullptr; p = p->pNext) {
+                        if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) {
+                            ((VkPhysicalDeviceFeatures2*)p)->features = req_features;
+                            wrap.pEnabledFeatures = nullptr;
+                            break;
+                        }
+                    }
                 }
 
             // Scenarios
