@@ -835,11 +835,11 @@ namespace Simple {
                     return fences.add(__fence);
                 }
                 EventId addEvent(bool _is_signaled) {
-                    VkEvent __event = VK_NULL_HANDLE;
+                    VkEvent __vk_event = VK_NULL_HANDLE;
                     event_wrap.setWholeStruct(_is_signaled);
-                    if (vkCreateEvent(cxt_core->device.handle, &event_wrap.get(), cxt_core->alloc_cb.get(), &__event) != VK_SUCCESS)
+                    if (vkCreateEvent(cxt_core->device.handle, &event_wrap.get(), cxt_core->alloc_cb.get(), &__vk_event) != VK_SUCCESS)
                         throw std::runtime_error(SVKFW_WRAPERR("VKFW::ContextBarrier :: addEvent", "could not create event"));
-                    return events.add(__event);
+                    return events.add(__vk_event);
                 }
 
                 // Note: destroying a none or already destroyed Id does nothing
