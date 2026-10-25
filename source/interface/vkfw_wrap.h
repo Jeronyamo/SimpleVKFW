@@ -36,7 +36,7 @@ namespace Simple {
 //  == === ==== ============================================ ==== === ==  \\
 
         namespace Func {
-            std::vector<VkLayerProperties> EnumerateInstanceLayerProperties() {
+            inline std::vector<VkLayerProperties> EnumerateInstanceLayerProperties() {
                 uint32_t __layer_count = 0u;
                 std::vector<VkLayerProperties> __res;
                 vkEnumerateInstanceLayerProperties(&__layer_count, nullptr);
@@ -50,7 +50,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkExtensionProperties> EnumerateInstanceExtensionProperties(const char *_layer = nullptr) {
+            inline std::vector<VkExtensionProperties> EnumerateInstanceExtensionProperties(const char *_layer = nullptr) {
                 uint32_t __ext_count = 0u;
                 std::vector<VkExtensionProperties> __res;
                 vkEnumerateInstanceExtensionProperties(_layer, &__ext_count, nullptr);
@@ -64,7 +64,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkLayerProperties> EnumerateDeviceLayerProperties(VkPhysicalDevice _phys_device) {
+            inline std::vector<VkLayerProperties> EnumerateDeviceLayerProperties(VkPhysicalDevice _phys_device) {
                 uint32_t __layer_count = 0u;
                 std::vector<VkLayerProperties> __res;
                 vkEnumerateDeviceLayerProperties(_phys_device, &__layer_count, nullptr);
@@ -78,7 +78,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkExtensionProperties> EnumerateDeviceExtensionProperties(VkPhysicalDevice _phys_device, const char *_layer = nullptr) {
+            inline std::vector<VkExtensionProperties> EnumerateDeviceExtensionProperties(VkPhysicalDevice _phys_device, const char *_layer = nullptr) {
                 uint32_t __ext_count = 0u;
                 std::vector<VkExtensionProperties> __res;
                 vkEnumerateDeviceExtensionProperties(_phys_device, _layer, &__ext_count, nullptr);
@@ -92,7 +92,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkSurfaceFormatKHR> GetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
+            inline std::vector<VkSurfaceFormatKHR> GetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
                 uint32_t __format_count = 0u;
                 std::vector<VkSurfaceFormatKHR> __res;
 
@@ -106,7 +106,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkPresentModeKHR> GetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
+            inline std::vector<VkPresentModeKHR> GetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
                 uint32_t __pres_mode_count = 0u;
                 std::vector<VkPresentModeKHR> __res;
 
@@ -121,7 +121,7 @@ namespace Simple {
                 return __res;
             }
 
-            std::vector<VkImage> GetSwapchainImagesKHR(VkDevice _device, VkSwapchainKHR _swapchain) {
+            inline std::vector<VkImage> GetSwapchainImagesKHR(VkDevice _device, VkSwapchainKHR _swapchain) {
                 uint32_t __img_count = 0u;
                 std::vector<VkImage> __res;
 
@@ -137,7 +137,7 @@ namespace Simple {
             }
 
             // The returned array is allocated with 'new (unsigned char)[]'; 'safeDeleteArr()' may be used to delete it
-            void* GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, size_t &_cache_data_size) {
+            inline void* GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, size_t &_cache_data_size) {
                 _cache_data_size = 0u;
                 void *__cache_data = nullptr;
 
@@ -150,7 +150,7 @@ namespace Simple {
                 return __cache_data;
             }
 
-            void GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, std::vector<unsigned char> &_cache_data) {
+            inline void GetPipelineCacheData(VkDevice _device, VkPipelineCache _pipeline_cache, std::vector<unsigned char> &_cache_data) {
                 size_t __cache_data_size = 0ul;
 
                 vkGetPipelineCacheData(_device, _pipeline_cache, &__cache_data_size, nullptr);
@@ -161,26 +161,26 @@ namespace Simple {
                 }
             }
 
-            void WaitForFences(VkDevice _device, const std::vector<VkFence> &_fences,
+            inline void WaitForFences(VkDevice _device, Span<VkFence> _fences,
                                VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
                 vkWaitForFences(_device, _fences.size(), _fences.data(), _wait_all, _wait_time);
             }
 
-            void ResetFences(VkDevice _device, const std::vector<VkFence> &_fences) {
+            inline void ResetFences(VkDevice _device, Span<VkFence> _fences) {
                 vkResetFences(_device, _fences.size(), _fences.data());
             }
 
-            void BeginCommandBuffer(VkCommandBuffer _command_buffer, const VkCommandBufferBeginInfo *_begin_info) {
+            inline void BeginCommandBuffer(VkCommandBuffer _command_buffer, const VkCommandBufferBeginInfo *_begin_info) {
                 if (vkBeginCommandBuffer(_command_buffer, _begin_info) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: BeginCommandBuffer", "Failed to begin recording command buffer"));
             }
 
-            void QueueSubmit(VkQueue _queue, const std::vector<VkSubmitInfo> &_submits, VkFence _fence = VK_NULL_HANDLE) {
+            inline void QueueSubmit(VkQueue _queue, Span<VkSubmitInfo> _submits, VkFence _fence = VK_NULL_HANDLE) {
                 if (vkQueueSubmit(_queue, _submits.size(), _submits.data(), _fence) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: QueueSubmit", "Failed to submit to queue"));
             }
 
-            uint32_t QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *_pres_info) {
+            inline uint32_t QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *_pres_info) {
                 VkResult __queue_pres_res = vkQueuePresentKHR(_queue, _pres_info);
 
                 if (__queue_pres_res != VK_SUCCESS) {
@@ -199,7 +199,7 @@ namespace Simple {
                 return __queue_pres_res;
             }
 
-            uint32_t AcquireNextImageKHR(VkDevice _device, VkSwapchainKHR _swapchain, VkSemaphore _semaphore,
+            inline uint32_t AcquireNextImageKHR(VkDevice _device, VkSwapchainKHR _swapchain, VkSemaphore _semaphore,
                                          VkFence _fence = VK_NULL_HANDLE, uint64_t _timeout = UINT64_MAX) {
                 uint32_t __image_index = 0u;
                 vkAcquireNextImageKHR(_device, _swapchain, _timeout, _semaphore, _fence, &__image_index);
@@ -207,32 +207,32 @@ namespace Simple {
                 return __image_index;
             }
 
-            VkPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device) {
+            inline VkPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device) {
                 VkPhysicalDeviceMemoryProperties __properties;
 
                 vkGetPhysicalDeviceMemoryProperties(_phys_device, &__properties);
                 return __properties;
             }
 
-            void GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice _phys_device, VkPhysicalDeviceMemoryProperties2 *_properties) {
+            inline void GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice _phys_device, VkPhysicalDeviceMemoryProperties2 *_properties) {
                 vkGetPhysicalDeviceMemoryProperties2(_phys_device, _properties);
             }
 
-            VkMemoryRequirements GetBufferMemoryRequirements(VkDevice _device, VkBuffer _buffer) {
+            inline VkMemoryRequirements GetBufferMemoryRequirements(VkDevice _device, VkBuffer _buffer) {
                 VkMemoryRequirements __mem_requirements{};
 
                 vkGetBufferMemoryRequirements(_device, _buffer, &__mem_requirements);
                 return __mem_requirements;
             }
 
-            VkMemoryRequirements GetImageMemoryRequirements(VkDevice _device, VkImage _image) {
+            inline VkMemoryRequirements GetImageMemoryRequirements(VkDevice _device, VkImage _image) {
                 VkMemoryRequirements __mem_requirements{};
 
                 vkGetImageMemoryRequirements(_device, _image, &__mem_requirements);
                 return __mem_requirements;
             }
 
-            void GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count,
+            inline void GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline, uint32_t _first_group, uint32_t _group_count,
                                                                  std::vector<unsigned char> &_data) {
                 // Note: ray tracing pipeline properties extend VkPhysicalDeviceProperties2 (not memory properties)
                 VkPhysicalDeviceRayTracingPipelinePropertiesKHR __rt_properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
@@ -246,17 +246,17 @@ namespace Simple {
                     vkGetRayTracingCaptureReplayShaderGroupHandlesKHR(_device, _pipeline, _first_group, _group_count, __data_size, _data.data());
             }
 
-            void FlushMappedMemoryRanges(VkDevice _device, const std::vector<VkMappedMemoryRange> &_mem_ranges) {
+            inline void FlushMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
                 if (vkFlushMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FlushMappedMemoryRanges", "Failed to flush mapped memory ranges"));
             }
 
-            void InvalidateMappedMemoryRanges(VkDevice _device, const std::vector<VkMappedMemoryRange> &_mem_ranges) {
+            inline void InvalidateMappedMemoryRanges(VkDevice _device, Span<VkMappedMemoryRange> _mem_ranges) {
                 if (vkInvalidateMappedMemoryRanges(_device, _mem_ranges.size(), _mem_ranges.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: InvalidateMappedMemoryRanges", "Failed to invalidate mapped memory ranges"));
             }
 
-            VkSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
+            inline VkSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface) {
                 VkSurfaceCapabilitiesKHR __res{};
                 vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys_device, _surface, &__res);
                 return __res;
@@ -266,7 +266,7 @@ namespace Simple {
 
 //  == === ==== >   Vulkan: Acquire Objects (create/get/allocate)
 
-            VkInstance CreateInstance(const VkInstanceCreateInfo *_create_info,
+            inline VkInstance CreateInstance(const VkInstanceCreateInfo *_create_info,
                                       const VkAllocationCallbacks *_create_cb = nullptr,
                                       bool _volk_instance_only = false) {
                 VkInstance __instance = VK_NULL_HANDLE;
@@ -286,7 +286,7 @@ namespace Simple {
                 return __instance;
             }
 
-            VkDebugUtilsMessengerEXT CreateDebugUtilsMessengerEXT(const VkDebugUtilsMessengerCreateInfoEXT *_create_info,
+            inline VkDebugUtilsMessengerEXT CreateDebugUtilsMessengerEXT(const VkDebugUtilsMessengerCreateInfoEXT *_create_info,
                                                                   VkInstance _instance, const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkDebugUtilsMessengerEXT __messenger = VK_NULL_HANDLE;
 
@@ -295,14 +295,14 @@ namespace Simple {
                 return __messenger;
             }
 
-            VkQueue GetDeviceQueue(VkDevice _device, VkfwQueueFamily _queue_family, uint32_t _queue_index) {
+            inline VkQueue GetDeviceQueue(VkDevice _device, VkfwQueueFamily _queue_family, uint32_t _queue_index) {
                 VkQueue __queue = VK_NULL_HANDLE;
 
                 vkGetDeviceQueue(_device, _queue_family, _queue_index, &__queue);
                 return __queue;
             }
 
-            VkDevice CreateDevice(const VkDeviceCreateInfo *_create_info, VkPhysicalDevice _phys_device,
+            inline VkDevice CreateDevice(const VkDeviceCreateInfo *_create_info, VkPhysicalDevice _phys_device,
                                   const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkDevice __device = VK_NULL_HANDLE;
 
@@ -311,7 +311,7 @@ namespace Simple {
                 return __device;
             }
 
-            VkSwapchainKHR CreateSwapchainKHR(const VkSwapchainCreateInfoKHR *_create_info, VkDevice _device,
+            inline VkSwapchainKHR CreateSwapchainKHR(const VkSwapchainCreateInfoKHR *_create_info, VkDevice _device,
                                               const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkSwapchainKHR __swapchain = VK_NULL_HANDLE;
                 // Can return an error depending on current state of the surface (?) TODO: proper error handling
@@ -321,7 +321,7 @@ namespace Simple {
                 return __swapchain;
             }
 
-            VkBuffer CreateBuffer(const VkBufferCreateInfo *_create_info, VkDevice _device,
+            inline VkBuffer CreateBuffer(const VkBufferCreateInfo *_create_info, VkDevice _device,
                                   const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkBuffer __buffer = VK_NULL_HANDLE;
 
@@ -330,7 +330,7 @@ namespace Simple {
                 return __buffer;
             }
 
-            VkBufferView CreateBufferView(const VkBufferViewCreateInfo *_create_info, VkDevice _device, VkBuffer _buffer,
+            inline VkBufferView CreateBufferView(const VkBufferViewCreateInfo *_create_info, VkDevice _device, VkBuffer _buffer,
                                           const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkBufferView __buffer_view = VK_NULL_HANDLE;
 
@@ -339,7 +339,7 @@ namespace Simple {
                 return __buffer_view;
             }
 
-            VkImage CreateImage(const VkImageCreateInfo *_create_info, VkDevice _device,
+            inline VkImage CreateImage(const VkImageCreateInfo *_create_info, VkDevice _device,
                                 const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkImage __image = VK_NULL_HANDLE;
 
@@ -348,7 +348,7 @@ namespace Simple {
                 return __image;
             }
 
-            VkImageView CreateImageView(const VkImageViewCreateInfo *_create_info, VkDevice _device, VkImage _image,
+            inline VkImageView CreateImageView(const VkImageViewCreateInfo *_create_info, VkDevice _device, VkImage _image,
                                         const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkImageView __image_view = VK_NULL_HANDLE;
 
@@ -357,7 +357,7 @@ namespace Simple {
                 return __image_view;
             }
 
-            VkShaderModule CreateShaderModule(const VkShaderModuleCreateInfo *_create_info, VkDevice _device,
+            inline VkShaderModule CreateShaderModule(const VkShaderModuleCreateInfo *_create_info, VkDevice _device,
                                               const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkShaderModule __shader_module = VK_NULL_HANDLE;
 
@@ -366,7 +366,7 @@ namespace Simple {
                 return __shader_module;
             }
 
-            VkDeviceMemory AllocateMemory(const VkMemoryAllocateInfo  *_memory_allocate_info, VkDevice _device,
+            inline VkDeviceMemory AllocateMemory(const VkMemoryAllocateInfo  *_memory_allocate_info, VkDevice _device,
                                           const VkAllocationCallbacks *_allocate_cb = nullptr) {
                 VkDeviceMemory __memory = VK_NULL_HANDLE;
 
@@ -375,7 +375,7 @@ namespace Simple {
                 return __memory;
             }
 
-            void*  MapMemory(VkDevice _device, VkDeviceMemory _memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
+            inline void*  MapMemory(VkDevice _device, VkDeviceMemory _memory, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
                 void *__data_ptr = nullptr;
 
                 if (vkMapMemory(_device, _memory, _offset, _size, 0u, &__data_ptr) != VK_SUCCESS)
@@ -383,7 +383,7 @@ namespace Simple {
                 return __data_ptr;
             }
 
-            VkRenderPass CreateRenderPass(const VkRenderPassCreateInfo *_create_info, VkDevice _device,
+            inline VkRenderPass CreateRenderPass(const VkRenderPassCreateInfo *_create_info, VkDevice _device,
                                           const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkRenderPass __render_pass = VK_NULL_HANDLE;
 
@@ -392,7 +392,7 @@ namespace Simple {
                 return __render_pass;
             }
 
-            VkDescriptorSetLayout CreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo *_create_info,
+            inline VkDescriptorSetLayout CreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo *_create_info,
                                                             VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkDescriptorSetLayout __layout = VK_NULL_HANDLE;
 
@@ -401,7 +401,7 @@ namespace Simple {
                 return __layout;
             }
 
-            VkDescriptorPool CreateDescriptorPool(const VkDescriptorPoolCreateInfo *_create_info, VkDevice _device,
+            inline VkDescriptorPool CreateDescriptorPool(const VkDescriptorPoolCreateInfo *_create_info, VkDevice _device,
                                                   const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkDescriptorPool __pool = VK_NULL_HANDLE;
 
@@ -410,7 +410,7 @@ namespace Simple {
                 return __pool;
             }
 
-            std::vector<VkDescriptorSet> AllocateDescriptorSets(const VkDescriptorSetAllocateInfo *_create_info,
+            inline std::vector<VkDescriptorSet> AllocateDescriptorSets(const VkDescriptorSetAllocateInfo *_create_info,
                                                                 VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
                 std::vector<VkDescriptorSet> __sets((size_t)_create_info->descriptorSetCount, VK_NULL_HANDLE);
 
@@ -419,7 +419,7 @@ namespace Simple {
                 return __sets;
             }
 
-            VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo *_create_info, VkDevice _device,
+            inline VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo *_create_info, VkDevice _device,
                                                   const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkPipelineLayout __pipeline_layout = VK_NULL_HANDLE;
 
@@ -429,7 +429,7 @@ namespace Simple {
                 return __pipeline_layout;
             }
 
-            VkPipelineCache CreatePipelineCache(const VkPipelineCacheCreateInfo *_create_info, VkDevice _device,
+            inline VkPipelineCache CreatePipelineCache(const VkPipelineCacheCreateInfo *_create_info, VkDevice _device,
                                                 const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkPipelineCache __pipeline_cache = VK_NULL_HANDLE;
 
@@ -438,7 +438,7 @@ namespace Simple {
                 return __pipeline_cache;
             }
 
-            std::vector<VkPipeline> CreateGraphicsPipelines(const VkGraphicsPipelineCreateInfo *_create_infos, uint32_t _create_info_count,
+            inline std::vector<VkPipeline> CreateGraphicsPipelines(const VkGraphicsPipelineCreateInfo *_create_infos, uint32_t _create_info_count,
                                                             VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
                                                             VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                                             const VkAllocationCallbacks *_create_cb = nullptr) {
@@ -449,7 +449,7 @@ namespace Simple {
                 return __pipelines;
             }
 
-            std::vector<VkPipeline> CreateComputePipelines(const VkComputePipelineCreateInfo *_create_infos, uint32_t _create_info_count,
+            inline std::vector<VkPipeline> CreateComputePipelines(const VkComputePipelineCreateInfo *_create_infos, uint32_t _create_info_count,
                                                            VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
                                                            VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                                            const VkAllocationCallbacks *_create_cb = nullptr) {
@@ -460,7 +460,7 @@ namespace Simple {
                 return __pipelines;
             }
 
-            std::vector<VkPipeline> CreateRayTracingPipelinesKHR(const VkRayTracingPipelineCreateInfoKHR *_create_infos, uint32_t _create_info_count,
+            inline std::vector<VkPipeline> CreateRayTracingPipelinesKHR(const VkRayTracingPipelineCreateInfoKHR *_create_infos, uint32_t _create_info_count,
                                                                  VkDevice _device, VkDeferredOperationKHR _deferred_op,
                                                                  VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                                                  const VkAllocationCallbacks *_create_cb = nullptr) {
@@ -471,7 +471,7 @@ namespace Simple {
                 return __pipelines;
             }
 
-            VkDeferredOperationKHR CreateDeferredOperationKHR(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline VkDeferredOperationKHR CreateDeferredOperationKHR(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkDeferredOperationKHR __deferred_op = VK_NULL_HANDLE;
 
                 if (vkCreateDeferredOperationKHR(_device, _create_cb, &__deferred_op) != VK_SUCCESS)
@@ -480,7 +480,7 @@ namespace Simple {
             }
 
             
-            VkFramebuffer CreateFramebuffer(const VkFramebufferCreateInfo *_create_info, VkDevice _device,
+            inline VkFramebuffer CreateFramebuffer(const VkFramebufferCreateInfo *_create_info, VkDevice _device,
                                             const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkFramebuffer __framebuffer = VK_NULL_HANDLE;
 
@@ -489,7 +489,7 @@ namespace Simple {
                 return __framebuffer;
             }
 
-            VkCommandPool CreateCommandPool(const VkCommandPoolCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline VkCommandPool CreateCommandPool(const VkCommandPoolCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkCommandPool __cmd_pool = VK_NULL_HANDLE;
 
                 if (vkCreateCommandPool(_device, _create_info, _create_cb, &__cmd_pool) != VK_SUCCESS)
@@ -497,7 +497,7 @@ namespace Simple {
                 return __cmd_pool;
             }
 
-            std::vector<VkCommandBuffer> AllocateCommandBuffers(const VkCommandBufferAllocateInfo *_create_info, VkDevice _device,
+            inline std::vector<VkCommandBuffer> AllocateCommandBuffers(const VkCommandBufferAllocateInfo *_create_info, VkDevice _device,
                                                                 const VkAllocationCallbacks *_create_cb = nullptr) {
                 std::vector<VkCommandBuffer> __command_buffers(size_t(_create_info->commandBufferCount), VK_NULL_HANDLE);
 
@@ -506,7 +506,7 @@ namespace Simple {
                 return __command_buffers;
             }
 
-            std::vector<VkCommandBuffer> AllocateCommandBuffers(VkDevice _device, VkCommandPool _command_pool,
+            inline std::vector<VkCommandBuffer> AllocateCommandBuffers(VkDevice _device, VkCommandPool _command_pool,
                                                                 VkCommandBufferLevel _level, uint32_t _buffer_count,
                                                                 const void *_p_next = nullptr, const VkAllocationCallbacks *_create_cb = nullptr) {
                 if (_buffer_count == 0u)
@@ -527,7 +527,7 @@ namespace Simple {
 
             // Creates 'semaphore_count' semaphores using the same 'create_info' config.
             // Note: MINGW has a preprocessor definition 'CreateSemaphore' that collides with the expected function name...
-            std::vector<VkSemaphore> CreateSemaphores(const VkSemaphoreCreateInfo *_create_info, VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline std::vector<VkSemaphore> CreateSemaphores(const VkSemaphoreCreateInfo *_create_info, VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                 std::vector<VkSemaphore> __semaphores((size_t)_semaphore_count, VK_NULL_HANDLE);
 
                 for (uint32_t i = 0u; i < _semaphore_count; ++i) {
@@ -537,7 +537,7 @@ namespace Simple {
                 return __semaphores;
             }
 
-            VkFence CreateFence(const VkFenceCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline VkFence CreateFence(const VkFenceCreateInfo *_create_info, VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr) {
                 VkFence __fence = VK_NULL_HANDLE;
 
                 if (vkCreateFence(_device, _create_info, _create_cb, &__fence) != VK_SUCCESS)
@@ -546,7 +546,7 @@ namespace Simple {
             }
 
             // Creates 'fence_count' fences using the same 'create_info' config. Requires separate calls for signaled/not signaled fences.
-            std::vector<VkFence> CreateFences(const VkFenceCreateInfo *_create_info, VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline std::vector<VkFence> CreateFences(const VkFenceCreateInfo *_create_info, VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                 std::vector<VkFence> __fences((size_t)_fence_count, VK_NULL_HANDLE);
 
                 for (uint32_t i = 0u; i < _fence_count; ++i) {
@@ -558,7 +558,7 @@ namespace Simple {
 
             // Creates 'event_count' events using the same 'create_info' config. Requires separate calls for device-only events.
             // Note: MINGW has a preprocessor definition 'CreateEvent' that collides with the expected function name...
-            std::vector<VkEvent> CreateEvents(const VkEventCreateInfo *_create_info, VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
+            inline std::vector<VkEvent> CreateEvents(const VkEventCreateInfo *_create_info, VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr) {
                 std::vector<VkEvent> __events((size_t)_event_count, VK_NULL_HANDLE);
 
                 for (uint32_t i = 0u; i < _event_count; ++i) {
@@ -571,95 +571,95 @@ namespace Simple {
 
 //  == === ==== >   Vulkan: Release Objects (destroy/free)
 
-            void DestroyInstance(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyInstance(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyInstance(_instance, _destroy_cb);
             }
 
-            void DestroyDebugUtilsMessengerEXT(VkInstance _instance, VkDebugUtilsMessengerEXT _messenger, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyDebugUtilsMessengerEXT(VkInstance _instance, VkDebugUtilsMessengerEXT _messenger, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyDebugUtilsMessengerEXT(_instance, _messenger, _destroy_cb);
             }
 
-            void DestroyDevice(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyDevice(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyDevice(_device, _destroy_cb);
             }
             
-            void DestroySwapchainKHR(VkDevice _device, VkSwapchainKHR _swapchain, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroySwapchainKHR(VkDevice _device, VkSwapchainKHR _swapchain, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroySwapchainKHR(_device, _swapchain, _destroy_cb);
             }
 
-            void DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyImage(_device, _image, _destroy_cb);
             }
 
-            void DestroyImageView(VkDevice _device, VkImageView _image_view, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyImageView(VkDevice _device, VkImageView _image_view, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyImageView(_device, _image_view, _destroy_cb);
             }
 
-            void DestroyShaderModule(VkDevice _device, VkShaderModule _shader_module, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyShaderModule(VkDevice _device, VkShaderModule _shader_module, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyShaderModule(_device, _shader_module, _destroy_cb);
             }
 
-            void DestroyBuffer(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyBuffer(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyBuffer(_device, _buffer, _destroy_cb);
             }
 
-            void FreeMemory(VkDevice _device, VkDeviceMemory _device_memory, const VkAllocationCallbacks *_free_cb = nullptr) {
+            inline void FreeMemory(VkDevice _device, VkDeviceMemory _device_memory, const VkAllocationCallbacks *_free_cb = nullptr) {
                 vkFreeMemory(_device, _device_memory, _free_cb);
             }
 
-            void UnmapMemory(VkDevice _device, VkDeviceMemory _memory) {
+            inline void UnmapMemory(VkDevice _device, VkDeviceMemory _memory) {
                 vkUnmapMemory(_device, _memory);
             }
 
-            void DestroyRenderPass(VkDevice _device, VkRenderPass _render_pass, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyRenderPass(VkDevice _device, VkRenderPass _render_pass, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyRenderPass(_device, _render_pass, _destroy_cb);
             }
 
-            void DestroyDescriptorSetLayout(VkDevice _device, VkDescriptorSetLayout _layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyDescriptorSetLayout(VkDevice _device, VkDescriptorSetLayout _layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyDescriptorSetLayout(_device, _layout, _destroy_cb);
             }
 
-            void DestroyDescriptorPool(VkDevice _device, VkDescriptorPool _pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyDescriptorPool(VkDevice _device, VkDescriptorPool _pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyDescriptorPool(_device, _pool, _destroy_cb);
             }
 
-            void FreeDescriptorSets(VkDevice _device, VkDescriptorPool _descriptor_pool, const std::vector<VkDescriptorSet> _sets) {
+            inline void FreeDescriptorSets(VkDevice _device, VkDescriptorPool _descriptor_pool, Span<VkDescriptorSet> _sets) {
                 if (vkFreeDescriptorSets(_device, _descriptor_pool, _sets.size(), _sets.data()) != VK_SUCCESS)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Func :: FreeDescriptorSets","failed to free descriptor sets"));
             }
 
-            void DestroyPipelineLayout(VkDevice _device, VkPipelineLayout _pipeline_layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyPipelineLayout(VkDevice _device, VkPipelineLayout _pipeline_layout, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyPipelineLayout(_device, _pipeline_layout, _destroy_cb);
             }
 
-            void DestroyPipelineCache(VkDevice _device, VkPipelineCache _pipeline_cache, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyPipelineCache(VkDevice _device, VkPipelineCache _pipeline_cache, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyPipelineCache(_device, _pipeline_cache, _destroy_cb);
             }
 
-            void DestroyPipeline(VkDevice _device, VkPipeline _pipeline, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyPipeline(VkDevice _device, VkPipeline _pipeline, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyPipeline(_device, _pipeline, _destroy_cb);
             }
 
-            void DestroyDeferredOperationKHR(VkDevice _device, VkDeferredOperationKHR _deferred_op, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyDeferredOperationKHR(VkDevice _device, VkDeferredOperationKHR _deferred_op, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyDeferredOperationKHR(_device, _deferred_op, _destroy_cb);
             }
 
-            void DestroyFramebuffer(VkDevice _device, VkFramebuffer _framebuffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyFramebuffer(VkDevice _device, VkFramebuffer _framebuffer, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyFramebuffer(_device, _framebuffer, _destroy_cb);
             }
 
-            void DestroyCommandPool(VkDevice _device, VkCommandPool _command_pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
+            inline void DestroyCommandPool(VkDevice _device, VkCommandPool _command_pool, const VkAllocationCallbacks *_destroy_cb = nullptr) {
                 vkDestroyCommandPool(_device, _command_pool, _destroy_cb);
             }
 
 
 //  == === ==== >   Command Buffer Commands
 
-            void CmdSetViewport(VkCommandBuffer _command_buffer, const std::vector<VkViewport> &_viewports) {
+            inline void CmdSetViewport(VkCommandBuffer _command_buffer, Span<VkViewport> _viewports) {
                 vkCmdSetViewport(_command_buffer, 0u, (uint32_t)_viewports.size(), _viewports.data());
             }
 
-            void CmdDraw(VkCommandBuffer _command_buffer, uint32_t _vert_count, uint32_t _inst_count,
+            inline void CmdDraw(VkCommandBuffer _command_buffer, uint32_t _vert_count, uint32_t _inst_count,
                          uint32_t _vert_offset = 0u, uint32_t _inst_offset = 0u) {
                 vkCmdDraw(_command_buffer, _vert_count, _inst_count, _vert_offset, _inst_offset);
             }
@@ -676,7 +676,7 @@ namespace Simple {
             using Simple::Util::StringVec;
 
         // Default VKFW debug message callback
-            VKAPI_ATTR VkBool32 VKAPI_CALL vkfwDebugMessageCallback(
+            inline VKAPI_ATTR VkBool32 VKAPI_CALL vkfwDebugMessageCallback(
                         VkDebugUtilsMessageSeverityFlagBitsEXT _message_severity,
                         VkDebugUtilsMessageTypeFlagsEXT _message_type,
                         const VkDebugUtilsMessengerCallbackDataEXT* _callback_data,
@@ -733,7 +733,7 @@ namespace Simple {
 
 //  == === ==== >   Extension/Layer checks for Instance/Device
 
-            bool allLayersAvailable(const StringVec &_layers, const std::vector<VkLayerProperties> _layer_list) {
+            inline bool allLayersAvailable(const StringVec &_layers, const std::vector<VkLayerProperties> _layer_list) {
                 bool __res = true;
                 for (const std::string &layer_name : _layers.list) {
                     bool __layer_found = false;
@@ -753,7 +753,7 @@ namespace Simple {
                 return __res;
             }
 
-            bool allExtAvailable(const StringVec &_extensions, const std::vector<VkExtensionProperties> &_ext_list) {
+            inline bool allExtAvailable(const StringVec &_extensions, const std::vector<VkExtensionProperties> &_ext_list) {
                 bool __res = true;
                 for (const std::string &ext_name : _extensions.list) {
                     bool __ext_found = false;
@@ -773,7 +773,7 @@ namespace Simple {
                 return __res;
             }
 
-            void checkLayers(const StringVec &_layers, bool *_flags, const std::vector<VkLayerProperties> &_layer_list) {
+            inline void checkLayers(const StringVec &_layers, bool *_flags, const std::vector<VkLayerProperties> &_layer_list) {
                 for (uint32_t i = 0u; i < _layers.list.size(); ++i) {
                     bool __layer_found = false;
 
@@ -790,7 +790,7 @@ namespace Simple {
                 }
             }
 
-            void checkExtensions(const StringVec &_extensions, bool *_flags, const std::vector<VkExtensionProperties> &_ext_list) {
+            inline void checkExtensions(const StringVec &_extensions, bool *_flags, const std::vector<VkExtensionProperties> &_ext_list) {
                 for (uint32_t i = 0u; i < _extensions.list.size(); ++i) {
                     bool __ext_found = false;
 
@@ -808,28 +808,28 @@ namespace Simple {
             }
 
 
-            bool allInstanceLayersAvailable(const StringVec &_layers) {
+            inline bool allInstanceLayersAvailable(const StringVec &_layers) {
                 std::vector<VkLayerProperties> __layer_list{Func::EnumerateInstanceLayerProperties()};
                 return allLayersAvailable(_layers, __layer_list);
             }
 
-            bool allInstanceExtAvailable(const StringVec &_extensions, const char *_layer = nullptr) {
+            inline bool allInstanceExtAvailable(const StringVec &_extensions, const char *_layer = nullptr) {
                 std::vector<VkExtensionProperties> __ext_list{Func::EnumerateInstanceExtensionProperties(_layer)};
                 return allExtAvailable(_extensions, __ext_list);
             }
 
-            bool allDeviceLayersAvailable(VkPhysicalDevice _phys_device, const StringVec &_layers) {
+            inline bool allDeviceLayersAvailable(VkPhysicalDevice _phys_device, const StringVec &_layers) {
                 std::vector<VkLayerProperties> __layer_list{Func::EnumerateDeviceLayerProperties(_phys_device)};
                 return allLayersAvailable(_layers, __layer_list);
             }
 
-            bool allDeviceExtAvailable(VkPhysicalDevice _phys_device, const StringVec &_extensions, const char *_layer = nullptr) {
+            inline bool allDeviceExtAvailable(VkPhysicalDevice _phys_device, const StringVec &_extensions, const char *_layer = nullptr) {
                 std::vector<VkExtensionProperties> __ext_list{Func::EnumerateDeviceExtensionProperties(_phys_device, _layer)};
                 return allExtAvailable(_extensions, __ext_list);
             }
 
 
-            void checkInstanceLayers(const StringVec &_layers, bool *_flags) {
+            inline void checkInstanceLayers(const StringVec &_layers, bool *_flags) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW::Util :: checkInstanceLayers",
                                     "'flags' must be a pointer to an array of 'layers.size()' boolean values"));
@@ -839,7 +839,7 @@ namespace Simple {
                 checkLayers(_layers, _flags, __layer_list);
             }
 
-            void checkInstanceExtensions(const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
+            inline void checkInstanceExtensions(const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW::Util :: checkInstanceExtensions",
                                     "'flags' must be a pointer to an array of 'extensions.size()' boolean values"));
@@ -849,7 +849,7 @@ namespace Simple {
                 checkExtensions(_extensions, _flags, __ext_list);
             }
 
-            void checkDeviceLayers(VkPhysicalDevice _phys_device, const StringVec &_layers, bool *_flags) {
+            inline void checkDeviceLayers(VkPhysicalDevice _phys_device, const StringVec &_layers, bool *_flags) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW::Util :: checkDeviceLayers",
                                     "'flags' must be a pointer to an array of 'layers.size()' boolean values"));
@@ -859,7 +859,7 @@ namespace Simple {
                 checkLayers(_layers, _flags, __layer_list);
             }
 
-            void checkDeviceExtensions(VkPhysicalDevice _phys_device, const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
+            inline void checkDeviceExtensions(VkPhysicalDevice _phys_device, const StringVec &_extensions, bool *_flags, const char *_layer = nullptr) {
                 if (_flags == nullptr)
                     throw std::invalid_argument(SVKFW_WRAPERR("VKFW::Util :: checkDeviceExtensions",
                                     "'flags' must be a pointer to an array of 'extensions.size()' boolean values"));
@@ -872,7 +872,7 @@ namespace Simple {
 
 //  == === ==== >   Physical Device Selection Utilities
 
-            uint32_t checkPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device, uint32_t _req_type_properties,
+            inline uint32_t checkPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device, uint32_t _req_type_properties,
                                                          VkMemoryPropertyFlags _req_memory_properties) {
                 VkPhysicalDeviceMemoryProperties __mem_properties;
                 vkGetPhysicalDeviceMemoryProperties(_phys_device, &__mem_properties);
@@ -947,7 +947,7 @@ namespace Simple {
             typedef  int (*PhysDeviceRankFunc) (const PhysDeviceFullInfo &_phys_device_info);
 
             namespace SelectPhysDevice {
-                bool DefaultGraphicsTest(const PhysDeviceFullInfo &_phys_device_info) {
+                inline bool DefaultGraphicsTest(const PhysDeviceFullInfo &_phys_device_info) {
                     return _phys_device_info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
                            _phys_device_info.allExtAvailable({ {VK_KHR_SWAPCHAIN_EXTENSION_NAME} });
                 }
@@ -965,7 +965,6 @@ namespace Simple {
                 PhysDeviceManager(VkInstance _instance = VK_NULL_HANDLE) {
                     if (_instance != VK_NULL_HANDLE) loadInfo(_instance);
                 }
-               ~PhysDeviceManager() { clear(); }
 
                 void clear() {
                     features.clear();
@@ -1253,59 +1252,59 @@ namespace Simple {
             typedef  int (*QueueFamilyRankFunc) (const QueueFamilyFullInfo &_info, bool _surf_support);
 
             namespace SelectQueueFamily {
-                bool testGraphics(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testGraphics(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsGraphics(); }
-                bool testCompute (const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testCompute (const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsCompute (); }
-                bool testTransfer(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testTransfer(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsTransfer(); }
-                bool testSparseBinding(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSparseBinding(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsSparseBinding(); }
-                bool testProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsProtectedMemory(); }
-                bool testVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsVideoDecode(); }
-                bool testVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsVideoEncode(); }
-                bool testOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _info.supportsOpticalFlow(); }
 
-                bool testSurfAndGraphics(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndGraphics(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsGraphics(); }
-                bool testSurfAndCompute (const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndCompute (const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsCompute (); }
-                bool testSurfAndTransfer(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndTransfer(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsTransfer(); }
-                bool testSurfAndSparseBinding(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndSparseBinding(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsSparseBinding(); }
-                bool testSurfAndProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsProtectedMemory(); }
-                bool testSurfAndVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsVideoDecode(); }
-                bool testSurfAndVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsVideoEncode(); }
-                bool testSurfAndOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support)
+                inline bool testSurfAndOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support)
                     { return _surf_support && _info.supportsOpticalFlow(); }
 
 
             // TODO: practice, then redo these rank functions
             // For now, result >0 means score; if <=0, then queue family doesn't have required feature.
 
-                int rankGraphics(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankGraphics(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 5 * _info.supportsGraphics()
                              - _info.supportsCompute()
                              - _info.supportsVideoDecode()
                              - _info.supportsVideoEncode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankCompute (const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankCompute (const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 5 * _info.supportsCompute()
                              - _info.supportsGraphics()
                              - _info.supportsVideoDecode()
                              - _info.supportsVideoEncode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankTransfer(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankTransfer(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 6 * _info.supportsTransfer()
                              - _info.supportsCompute()
                              - _info.supportsGraphics()
@@ -1313,7 +1312,7 @@ namespace Simple {
                              - _info.supportsVideoEncode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankSparseBinding  (const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankSparseBinding  (const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 6 * _info.supportsSparseBinding()
                              - _info.supportsCompute()
                              - _info.supportsGraphics()
@@ -1321,24 +1320,24 @@ namespace Simple {
                              - _info.supportsVideoEncode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankProtectedMemory(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return _info.supportsProtectedMemory() ? 1 : -1;
                 }
-                int rankVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankVideoDecode(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 5 * _info.supportsVideoDecode()
                              - _info.supportsGraphics()
                              - _info.supportsCompute()
                              - _info.supportsVideoEncode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankVideoEncode(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 5 * _info.supportsVideoEncode()
                              - _info.supportsGraphics()
                              - _info.supportsCompute()
                              - _info.supportsVideoDecode()
                              - _info.supportsOpticalFlow();
                 }
-                int rankOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support) {
+                inline int rankOpticalFlow(const QueueFamilyFullInfo &_info, bool _surf_support) {
                     return 5 * _info.supportsOpticalFlow()
                              - _info.supportsGraphics()
                              - _info.supportsCompute()
@@ -1374,7 +1373,6 @@ namespace Simple {
                     if (_instance != VK_NULL_HANDLE && _phys_device != VK_NULL_HANDLE)
                         loadInfo(_instance, _phys_device);
                 }
-               ~QueueFamilyManager() { clear(); }
 
                 void clear() {
                     properties.clear();
@@ -1490,7 +1488,7 @@ namespace Simple {
             typedef int  (*SurfaceFormatRankFunc) (const VkSurfaceFormatKHR &_format);
 
             namespace SelectSurfaceFormat {
-                bool DefaultFormatTest(const VkSurfaceFormatKHR &_format) {
+                inline bool DefaultFormatTest(const VkSurfaceFormatKHR &_format) {
                     return _format.format == VK_FORMAT_B8G8R8A8_SRGB && _format.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR;
                 }
             }; // SelectSurfaceFormat END
@@ -1527,7 +1525,6 @@ namespace Simple {
                 StructWrap(const vec2f &_extent = 0.f, const vec2f &_offset = 0.f, const vec2f &_depth = { 0.f, 1.f }) :
                             wrap{_offset.x, _offset.y, _extent.x, _extent.y, _depth.x, _depth.y} {}
                 StructWrap(const StructWrap &_viewport) : wrap{_viewport.wrap} {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkViewport{ 0.f, 0.f, 0.f, 0.f, 0.f, 1.f };
@@ -1560,7 +1557,6 @@ namespace Simple {
                                 : wrap{ {_offset.x, _offset.y}, {_extent.width, _extent.height} } {}
                 StructWrap(const vec2u &_extent, const vec2i &_offset = 0)
                                 : wrap{ {_offset.x, _offset.y}, {_extent.x, _extent.y} } {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkRect2D{ {0, 0}, {0u, 0u} };
@@ -1589,7 +1585,6 @@ namespace Simple {
                 StructWrap(int32_t  _v0, int32_t  _v1, int32_t  _v2, int32_t  _v3) { fromColorVec4i({_v0, _v1, _v2, _v3}); }
                 StructWrap(uint32_t _v0, uint32_t _v1, uint32_t _v2, uint32_t _v3) { fromColorVec4u({_v0, _v1, _v2, _v3}); }
                 StructWrap(float _depth, uint32_t _stencil) { fromDepthStencil(_depth, _stencil); }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkClearValue{};
@@ -1664,7 +1659,6 @@ namespace Simple {
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
                 StructWrap(const VkAttachmentDescription &_description) : wrap{_description} {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkAttachmentDescription{};
@@ -1703,7 +1697,6 @@ namespace Simple {
                 std::vector<uint32_t>           preserve_attachments;
 
                 StructWrap() { clear(); }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSubpassDescription{};
@@ -1757,7 +1750,6 @@ namespace Simple {
                 StructWrap() {}
                 StructWrap(const StructWrap &_sct) : wrap{_sct.wrap} {}
                 StructWrap(const VkSubpassDependency &_subpass_dependency) : wrap{_subpass_dependency} {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSubpassDependency{};
@@ -1791,7 +1783,6 @@ namespace Simple {
                 std::vector<unsigned char> data;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSpecializationInfo{};
@@ -1822,7 +1813,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const Builder &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDescriptorSetLayoutBinding{};
@@ -1859,7 +1849,6 @@ namespace Simple {
                 vec4u api_version;
 
                 StructWrap() { clear(); }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkApplicationInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -1905,7 +1894,6 @@ namespace Simple {
                 StructWrap<VkApplicationInfo> app_info_wrap;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkInstanceCreateInfo{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
@@ -1961,7 +1949,6 @@ namespace Simple {
                 VkDebugUtilsMessengerCreateInfoEXT wrap{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
                 StructWrap() { clear(); }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDebugUtilsMessengerCreateInfoEXT{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
@@ -2000,7 +1987,6 @@ namespace Simple {
                 std::vector<float> priorities;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDeviceQueueCreateInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -2030,9 +2016,9 @@ namespace Simple {
                 Util::StringVec layers, extensions;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
+                    wrap = VkDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
                     req_features = VkPhysicalDeviceFeatures{};
                     queue_info.clear();
                     layers.clear();
@@ -2076,7 +2062,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSwapchainCreateInfoKHR{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
@@ -2220,7 +2205,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkImageCreateInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -2238,7 +2222,6 @@ namespace Simple {
                 VkImageViewCreateInfo wrap{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkImageViewCreateInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -2274,7 +2257,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkBufferCreateInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -2303,7 +2285,6 @@ namespace Simple {
                 VkBufferViewCreateInfo wrap{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkBufferViewCreateInfo{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
@@ -2326,7 +2307,6 @@ namespace Simple {
                 VkMemoryAllocateInfo wrap{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkMemoryAllocateInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
@@ -2365,7 +2345,6 @@ namespace Simple {
                 std::vector<char> buffer;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkShaderModuleCreateInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -2431,7 +2410,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_create_info) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     attachments.clear();
@@ -2487,7 +2465,6 @@ namespace Simple {
                 std::vector<VkImageView> attachments;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkFramebufferCreateInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
@@ -2531,7 +2508,6 @@ namespace Simple {
                 VkSemaphoreCreateInfo wrap{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSemaphoreCreateInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -2545,7 +2521,6 @@ namespace Simple {
                 VkFenceCreateInfo wrap{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkFenceCreateInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
@@ -2566,7 +2541,6 @@ namespace Simple {
                 VkEventCreateInfo wrap{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkEventCreateInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
@@ -2594,7 +2568,6 @@ namespace Simple {
                 std::vector<VkBufferView>        texel_buf_views;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkWriteDescriptorSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -2640,7 +2613,6 @@ namespace Simple {
                 VkCopyDescriptorSet wrap{VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET};
 
                 StructWrap() {}
-               ~StructWrap() {}
 
                 void clear() {
                     wrap = VkCopyDescriptorSet{VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET};
@@ -2674,7 +2646,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const Builder &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDescriptorSetLayoutCreateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -2703,7 +2674,6 @@ namespace Simple {
                 std::vector<VkDescriptorPoolSize> pool_sizes;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDescriptorPoolCreateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -2735,7 +2705,6 @@ namespace Simple {
                 std::vector<VkDescriptorSetLayout> set_layouts;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkDescriptorSetAllocateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
@@ -2767,7 +2736,6 @@ namespace Simple {
                 std::vector<VkDescriptorSetLayout> layouts;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineLayoutCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
@@ -2790,7 +2758,6 @@ namespace Simple {
                 std::vector<unsigned char> cache_data;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineCacheCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
@@ -2818,7 +2785,6 @@ namespace Simple {
                 std::vector<VkPipeline> libraries;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineLibraryCreateInfoKHR{VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR};
@@ -2839,7 +2805,6 @@ namespace Simple {
                 std::vector<unsigned char> capture_replay_handle;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     capture_replay_handle.clear();
@@ -2863,7 +2828,6 @@ namespace Simple {
                 VkRayTracingPipelineInterfaceCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_INTERFACE_CREATE_INFO_KHR};
                 // Note: from Gemini, minimal supported 'maxPipelineRayHitAttributeSize' value is 32 bytes
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkRayTracingPipelineInterfaceCreateInfoKHR{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_INTERFACE_CREATE_INFO_KHR};
@@ -2884,7 +2848,6 @@ namespace Simple {
                 std::string name;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -2923,7 +2886,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructBuilder &_builder) : dynamic_states{_builder.dynamic_states} {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineDynamicStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
@@ -2967,7 +2929,6 @@ namespace Simple {
                 std::vector<VkVertexInputAttributeDescription> attributes;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineVertexInputStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -2989,7 +2950,6 @@ namespace Simple {
                 VkPipelineInputAssemblyStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineInputAssemblyStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
@@ -3020,7 +2980,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructBuilder &_builder) : viewports{_builder.viewports}, scissors{_builder.scissors} {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineViewportStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -3089,7 +3048,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructWrap &_sct) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineRasterizationStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -3121,7 +3079,6 @@ namespace Simple {
                 VkSampleMask sample_mask[2] = {VkSampleMask(-1), VkSampleMask(-1)};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineMultisampleStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
@@ -3146,7 +3103,6 @@ namespace Simple {
                 VkPipelineDepthStencilStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineDepthStencilStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
@@ -3160,7 +3116,6 @@ namespace Simple {
                 VkPipelineColorBlendAttachmentState wrap{};
 
                 StructWrap() { clear(); }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineColorBlendAttachmentState{};
@@ -3204,7 +3159,6 @@ namespace Simple {
 
                 StructWrap() {}
                 // StructWrap(const StructBuilder &_builder) = default;
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     attachments.clear();
@@ -3243,7 +3197,6 @@ namespace Simple {
                 StructWrap() {}
                 // StructWrap(const StructBuilder &_sct) = default;
                 StructWrap(uint32_t _points_num) { wrap.patchControlPoints = _points_num; }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPipelineTessellationStateCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
@@ -3274,7 +3227,6 @@ namespace Simple {
                 std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkGraphicsPipelineCreateInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
@@ -3325,7 +3277,6 @@ namespace Simple {
                 StructWrap<VkPipelineShaderStageCreateInfo>  shader_stage_wrap;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkComputePipelineCreateInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -3361,7 +3312,6 @@ namespace Simple {
                 std::vector<VkRayTracingShaderGroupCreateInfoKHR> shader_groups;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkRayTracingPipelineCreateInfoKHR{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
@@ -3415,7 +3365,6 @@ namespace Simple {
                 VkCommandPoolCreateInfo wrap{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkCommandPoolCreateInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
@@ -3429,7 +3378,6 @@ namespace Simple {
                 VkCommandBufferAllocateInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
 
                 void clear() {
@@ -3461,7 +3409,6 @@ namespace Simple {
                 VkPhysicalDeviceMemoryProperties2 wrap{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPhysicalDeviceMemoryProperties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
@@ -3497,7 +3444,6 @@ namespace Simple {
                 VkCommandBufferInheritanceInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkCommandBufferInheritanceInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
@@ -3521,7 +3467,6 @@ namespace Simple {
                     wrap = _wrap.wrap;
                     updateWrap();
                 }
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkSubmitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -3554,7 +3499,6 @@ namespace Simple {
                 bool use_results = false;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkPresentInfoKHR{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -3580,12 +3524,13 @@ namespace Simple {
 
             // Scenarios
 
-                void setWholeStruct(const std::vector<VkSemaphore> &_wait_semaphores,
-                                    const std::vector<VkSwapchainKHR> &_swapchains,
-                                    const std::vector<uint32_t> &_image_indices, bool _use_results = false) {
-                    wait_semaphores = _wait_semaphores;
-                    swapchains = _swapchains;
-                    image_indices = _image_indices;
+                // Note: 'assign' reuses the vector capacity, so per-frame calls don't allocate memory
+                void setWholeStruct(Span<VkSemaphore> _wait_semaphores,
+                                    Span<VkSwapchainKHR> _swapchains,
+                                    Span<uint32_t> _image_indices, bool _use_results = false) {
+                    wait_semaphores.assign(_wait_semaphores.begin(), _wait_semaphores.end());
+                    swapchains     .assign(     _swapchains.begin(),      _swapchains.end());
+                    image_indices  .assign(  _image_indices.begin(),   _image_indices.end());
                     use_results = _use_results;
                     updateWrap();
                 }
@@ -3601,7 +3546,6 @@ namespace Simple {
                 std::vector<VkClearValue> clear_values;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkRenderPassBeginInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
@@ -3657,7 +3601,6 @@ namespace Simple {
                 VkBool32 use_inheritance_info = false;
 
                 StructWrap() {}
-               ~StructWrap() { clear(); }
 
                 void clear() {
                     wrap = VkCommandBufferBeginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -4088,7 +4031,8 @@ namespace Simple {
                         case VKFW_PIPELINE_TYPE_COMPUTE:        compute_create_info_wrap.~StructWrap(); break;
                         case VKFW_PIPELINE_TYPE_RAY_TRACING: raytracing_create_info_wrap.~StructWrap(); break;
                         case VKFW_PIPELINE_TYPE_UNDEFINED:  break;
-                        default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::Object::Pipeline :: deletePipelineWrap", "unknown pipeline type: " + std::to_string(pipeline_type)));
+                        // Note: called from the destructor, so it must not throw ('activatePipelineWrap()' never leaves an unknown type)
+                        default: fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW::Object::Pipeline :: deletePipelineWrap", "unknown pipeline type: %u\n"), uint32_t(pipeline_type)); break;
                     };
                     pipeline_type = VKFW_PIPELINE_TYPE_UNDEFINED;
                 }
@@ -4099,7 +4043,11 @@ namespace Simple {
                         case VKFW_PIPELINE_TYPE_COMPUTE:     new (&   compute_create_info_wrap) Struct::StructWrap<   VkComputePipelineCreateInfo   >; break;
                         case VKFW_PIPELINE_TYPE_RAY_TRACING: new (&raytracing_create_info_wrap) Struct::StructWrap<VkRayTracingPipelineCreateInfoKHR>; break;
                         case VKFW_PIPELINE_TYPE_UNDEFINED:  break;
-                        default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::Object::Pipeline :: activatePipelineWrap", "unknown pipeline type: " + std::to_string(pipeline_type)));
+                        default: {
+                            const PipelineType __unknown_type = pipeline_type;
+                            pipeline_type = VKFW_PIPELINE_TYPE_UNDEFINED;
+                            throw std::runtime_error(SVKFW_WRAPERR("VKFW::Object::Pipeline :: activatePipelineWrap", "unknown pipeline type: " + std::to_string(__unknown_type)));
+                        }
                     };
                 }
 
@@ -4321,8 +4269,8 @@ namespace Simple {
 
             // Scenarios
 
-                void setActiveSubmits(const std::vector<uint32_t> &_active_submits) {
-                    active_submits = _active_submits;
+                void setActiveSubmits(Span<uint32_t> _active_submits) {
+                    active_submits.assign(_active_submits.begin(), _active_submits.end());
                     updateWrap();
                 }
             }; // QueueSubmit END
