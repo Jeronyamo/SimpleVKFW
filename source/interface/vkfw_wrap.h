@@ -4146,6 +4146,15 @@ namespace Simple {
                 }
                ~Pipeline() { deletePipelineWrap(); }
 
+                // Note: the union makes the implicit assignment deleted, it's needed to store pipelines in a 'Pool'
+                Pipeline& operator=(const Pipeline &_obj_pip) {
+                    if (this == &_obj_pip) return *this;
+                    handle = _obj_pip.handle;
+                    setPipelineType(_obj_pip.pipeline_type);
+                    setPipelineFromCopy(_obj_pip);
+                    return *this;
+                }
+
                 void createObject(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
                                   VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                   const VkAllocationCallbacks *_create_cb = nullptr) {

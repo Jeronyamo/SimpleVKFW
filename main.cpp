@@ -13,7 +13,24 @@
 int main(int argc, char **argv) {
     Simple::ArgHandler arg_handler{argc, argv};
     using Simple::VKFW::ContextIndex;
-    using Simple::VKFW::ContextIndex2;
+    using Simple::VKFW::SemaphoreId;
+    using Simple::VKFW::FenceId;
+    using Simple::VKFW::MemoryId;
+    using Simple::VKFW::BufferId;
+    using Simple::VKFW::QueueFamilyId;
+    using Simple::VKFW::QueueId;
+    using Simple::VKFW::DescriptorSetLayoutId;
+    using Simple::VKFW::DescriptorLayoutBindingId;
+    using Simple::VKFW::DescriptorPoolId;
+    using Simple::VKFW::DescriptorSetsId;
+    using Simple::VKFW::DescriptorSetId;
+    using Simple::VKFW::PipelineId;
+    using Simple::VKFW::PipelineLayoutId;
+    using Simple::VKFW::ShaderModuleId;
+    using Simple::VKFW::ShaderStageId;
+    using Simple::VKFW::CommandPoolId;
+    using Simple::VKFW::CommandBuffersId;
+    using Simple::VKFW::CommandBufferId;
 
 // Config
     const uint32_t FRAMES_IN_FLIGHT = 4u;
@@ -107,8 +124,8 @@ int main(int argc, char **argv) {
     Simple::VKFW::cxt_vkfw.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
 
     // Queue family
-    ContextIndex ci_qfam_graphics = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
-    ContextIndex ci_qfam_transfer = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
+    QueueFamilyId ci_qfam_graphics = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
+    QueueFamilyId ci_qfam_transfer = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
     auto ce_qfam_graphics = vkfw_getter.shortcutObjQueueFamily(ci_qfam_graphics);
     auto ce_qfam_transfer = vkfw_getter.shortcutObjQueueFamily(ci_qfam_transfer);
 
@@ -136,9 +153,9 @@ int main(int argc, char **argv) {
 
     // Queue
     Simple::VKFW::cxt_vkfw.cxt_core.acquireQueues();
-    ContextIndex2 ci_queue_graphics{ci_qfam_graphics, 0u};
-    ContextIndex2 ci_queue_present {ci_qfam_graphics, 1u};
-    ContextIndex2 ci_queue_transfer{ci_qfam_transfer, 0u};
+    QueueId ci_queue_graphics{ci_qfam_graphics, 0u};
+    QueueId ci_queue_present {ci_qfam_graphics, 1u};
+    QueueId ci_queue_transfer{ci_qfam_transfer, 0u};
 
     Simple::VKFW::cxt_vkfw.initNoncoreContexts();
 
@@ -201,12 +218,12 @@ int main(int argc, char **argv) {
 
 // Memory-related objects (buffers and images):
     // Staging/Uniform buffers: host-coherent memory
-    ContextIndex ci_memory_staging = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    ContextIndex ci_memory_uniform = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    MemoryId     ci_memory_staging = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    MemoryId     ci_memory_uniform = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     auto         ce_memory_staging = vkfw_getter.shortcutSctMemoryChunk(ci_memory_staging);
     auto         ce_memory_uniform = vkfw_getter.shortcutSctMemoryChunk(ci_memory_uniform);
 
-    ContextIndex2 ci_buffer_uniform[FRAMES_IN_FLIGHT], ci_buffer_staging;
+    BufferId ci_buffer_uniform[FRAMES_IN_FLIGHT], ci_buffer_staging;
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
         ci_buffer_uniform[i] = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_uniform, sizeof(UniformBufferObjectCamera));
         Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_uniform[i], { ci_qfam_graphics },
@@ -223,10 +240,10 @@ int main(int argc, char **argv) {
     Simple::VKFW::cxt_vkfw.cxt_memory.allocateChunkMemory(ci_memory_uniform);
 
     // Vertex/Index buffers: device-local memory
-    ContextIndex ci_memory_device_optim = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    MemoryId     ci_memory_device_optim = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     auto         ce_memory_device_optim = vkfw_getter.shortcutSctMemoryChunk(ci_memory_device_optim);
 
-    ContextIndex2 ci_buffer_vertex, ci_buffer_index;
+    BufferId ci_buffer_vertex, ci_buffer_index;
     ci_buffer_vertex = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_device_optim, vertices.size() * sizeof(Vertex));
     Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_vertex, { ci_qfam_graphics },
                                                                      VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -242,17 +259,17 @@ int main(int argc, char **argv) {
 
 // Descriptors:
     // Descriptor Layout
-    ContextIndex  ci_descr_layout = Simple::VKFW::cxt_vkfw.cxt_descriptor.addLayout();
-    ContextIndex2 ci_descr_layout_binding = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
-    auto          ce_descr_layout_binding = vkfw_getter.shortcutSctDescriptorSetLayoutBinding(ci_descr_layout_binding);
+    DescriptorSetLayoutId     ci_descr_layout = Simple::VKFW::cxt_vkfw.cxt_descriptor.addLayout();
+    DescriptorLayoutBindingId ci_descr_layout_binding = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
+    auto                      ce_descr_layout_binding = vkfw_getter.shortcutSctDescriptorSetLayoutBinding(ci_descr_layout_binding);
 
     ce_descr_layout_binding->setWholeStruct(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
 
     Simple::VKFW::cxt_vkfw.cxt_descriptor.createLayout(ci_descr_layout);
 
     // Descriptor Pool
-    ContextIndex ci_descr_pool_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addPool();
-    auto         ce_descr_pool_ubo = vkfw_getter.shortcutObjDescriptorPool(ci_descr_pool_ubo);
+    DescriptorPoolId ci_descr_pool_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addPool();
+    auto             ce_descr_pool_ubo = vkfw_getter.shortcutObjDescriptorPool(ci_descr_pool_ubo);
 
     ce_descr_pool_ubo->create_info.edit().maxSets = FRAMES_IN_FLIGHT;
     ce_descr_pool_ubo->create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FRAMES_IN_FLIGHT);
@@ -261,13 +278,13 @@ int main(int argc, char **argv) {
 
     // TODO: sync descriptor sets and pools (1 pool -> multiple sets)
     // Descriptor Sets
-    ContextIndex ci_descr_pool_sets_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSet();
-    std::vector<ContextIndex> cis_ubo_set_layouts((size_t)FRAMES_IN_FLIGHT, ci_descr_layout); // we need 'FRAMES_IN_FLIGHT' sets, each with 'ci_descr_layout' layout
+    DescriptorSetsId ci_descr_pool_sets_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSet();
+    std::vector<DescriptorSetLayoutId> cis_ubo_set_layouts((size_t)FRAMES_IN_FLIGHT, ci_descr_layout); // we need 'FRAMES_IN_FLIGHT' sets, each with 'ci_descr_layout' layout
     Simple::VKFW::cxt_vkfw.cxt_descriptor.setAllForSet(ci_descr_pool_sets_ubo, ci_descr_pool_ubo, cis_ubo_set_layouts);
 
-    ContextIndex2 ci_descr_sets_ubo[FRAMES_IN_FLIGHT]{};
+    DescriptorSetId ci_descr_sets_ubo[FRAMES_IN_FLIGHT]{};
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
-        ci_descr_sets_ubo[i] = { ci_descr_pool_sets_ubo, i };
+        ci_descr_sets_ubo[i] = DescriptorSetId(ci_descr_pool_sets_ubo, i);
 
     Simple::VKFW::cxt_vkfw.cxt_descriptor.createSets(ci_descr_pool_sets_ubo);
 
@@ -276,7 +293,7 @@ int main(int argc, char **argv) {
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
         auto ce_write_set = func_handler.update_descr_sets.addWriteSet();
         auto buffer_mapping = vkfw_getter.getSctMemoryMapping(ci_buffer_uniform[i]);
-        // printf("UBO (%d, %d) info: offset %ld, range %ld\n", ci_buffer_uniform[i].first, ci_buffer_uniform[i].second, buffer_mapping.offset, buffer_mapping.range);
+        // printf("UBO (%d, %d) info: offset %ld, range %ld\n", ci_buffer_uniform[i].parent.index, ci_buffer_uniform[i].index, buffer_mapping.offset, buffer_mapping.range);
         ce_write_set->addBufferInfo(vkfw_getter.getObjBuffer(ci_buffer_uniform[i]), 0u, buffer_mapping.range);
         ce_write_set->setScalars(vkfw_getter.getObjDescriptorSet(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
     }
@@ -285,26 +302,26 @@ int main(int argc, char **argv) {
 
 
 // Graphics pipeline:
-    ContextIndex ci_graphics_pip = Simple::VKFW::cxt_vkfw.cxt_pipeline.addPipeline();
+    PipelineId ci_graphics_pip = Simple::VKFW::cxt_vkfw.cxt_pipeline.addPipeline();
     auto ce_graphics_pip = vkfw_getter.shortcutObjPipeline(ci_graphics_pip);
     ce_graphics_pip->setPipelineType(Simple::VKFW::PipelineType::VKFW_PIPELINE_TYPE_GRAPHICS);
 
     // Layout
-    ContextIndex ci_pip_layout = Simple::VKFW::cxt_vkfw.cxt_pipeline.addLayout();
+    PipelineLayoutId ci_pip_layout = Simple::VKFW::cxt_vkfw.cxt_pipeline.addLayout();
     Simple::VKFW::cxt_vkfw.cxt_pipeline.setLayoutDescriptorSetLayouts(ci_pip_layout, { ci_descr_layout });
     Simple::VKFW::cxt_vkfw.cxt_pipeline.createLayout(ci_pip_layout);
 
     // Shaders
-    ContextIndex ci_shader_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
-    ContextIndex ci_shader_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
+    ShaderModuleId ci_shader_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
+    ShaderModuleId ci_shader_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
     vkfw_getter.shortcutObjShaderModule(ci_shader_vert)->create_info.fromFile("./shaders/simple_shader_vert.spv");
     vkfw_getter.shortcutObjShaderModule(ci_shader_frag)->create_info.fromFile("./shaders/simple_shader_frag.spv");
     Simple::VKFW::cxt_vkfw.cxt_pipeline.createShader(ci_shader_vert);
     Simple::VKFW::cxt_vkfw.cxt_pipeline.createShader(ci_shader_frag);
 
     // Shader stage
-    ContextIndex2 ci_sstage_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
-    ContextIndex2 ci_sstage_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
+    ShaderStageId ci_sstage_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
+    ShaderStageId ci_sstage_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
 
     auto ce_sstage_vert = vkfw_getter.shortcutSctShaderStage(ci_sstage_vert);
     ce_sstage_vert->setShaderInfo(vkfw_getter.getObjShaderModule(ci_shader_vert), VK_SHADER_STAGE_VERTEX_BIT,   "main");
@@ -348,30 +365,30 @@ int main(int argc, char **argv) {
 
     // Command pool
     Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
-    ContextIndex ci_pool_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
-    ContextIndex ci_pool_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
+    CommandPoolId ci_pool_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
+    CommandPoolId ci_pool_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
     Simple::VKFW::cxt_vkfw.cxt_command.createCmdPool(ci_pool_drawing, ci_qfam_graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     Simple::VKFW::cxt_vkfw.cxt_command.createCmdPool(ci_pool_staging, ci_qfam_transfer, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     // Command buffers
-    ContextIndex ci_cmd_buffers_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
-    ContextIndex ci_cmd_buffers_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
+    CommandBuffersId ci_cmd_buffers_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
+    CommandBuffersId ci_cmd_buffers_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
 
     Simple::VKFW::cxt_vkfw.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_staging, ci_pool_staging, 1);
     Simple::VKFW::cxt_vkfw.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_drawing, ci_pool_drawing, FRAMES_IN_FLIGHT);
 
-    ContextIndex2 ci_cmdbuf_staging = { ci_cmd_buffers_staging, 0 };
-    ContextIndex2 ci_cmdbuf_drawing[FRAMES_IN_FLIGHT];
+    CommandBufferId ci_cmdbuf_staging(ci_cmd_buffers_staging, 0u);
+    CommandBufferId ci_cmdbuf_drawing[FRAMES_IN_FLIGHT];
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
-        ci_cmdbuf_drawing[i] = { ci_cmd_buffers_drawing, i };
+        ci_cmdbuf_drawing[i] = CommandBufferId(ci_cmd_buffers_drawing, i);
 
 
 // Sync objects:
     // Semaphores
     // Note: 'image_available' semaphores are used per frame in flight, 'render_finished' - per swapchain image
     //       (swapchain may contain more images than 'FRAMES_IN_FLIGHT', and the image count may change after recreation)
-    ContextIndex ci_sem_image_available[FRAMES_IN_FLIGHT]{};
-    std::vector<ContextIndex> ci_sem_render_finished;
+    SemaphoreId ci_sem_image_available[FRAMES_IN_FLIGHT]{};
+    std::vector<SemaphoreId> ci_sem_render_finished;
 
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_sem_image_available[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore();
@@ -379,7 +396,7 @@ int main(int argc, char **argv) {
         ci_sem_render_finished.push_back(Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore());
 
     // Fences
-    ContextIndex ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
+    FenceId ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_fen_in_flight[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addFence(true);
 
@@ -411,7 +428,7 @@ int main(int argc, char **argv) {
 
 
     Simple::VKFW::MemoryMapHandler ubo_memory_handler{};
-    ubo_memory_handler.mapMemoryFromResources(std::vector<ContextIndex2>(ci_buffer_uniform, ci_buffer_uniform+FRAMES_IN_FLIGHT), {});
+    ubo_memory_handler.mapMemoryFromResources(ci_buffer_uniform, {});
 
     // Begin render pass static info
     cmd_handler.begin_render_pass_wrap.wrap.addClearValue4f({0.f, 0.f, 0.f, 1.f});

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <initializer_list>
+#include <stdexcept>
 
 #include "common/memory.h"
 #include "interface/glfwrap.h"
@@ -43,6 +44,169 @@ namespace Simple {
             ContextIndex  getCI1() const { return   first; }
             ContextIndex2 getCI2() const { return { first, second }; }
         }; // ContextEntity END
+
+
+// Typed Ids
+
+        // Note: typed index into a 'Pool'. 'generation' changes every time the slot is freed,
+        //       so the Id of a destroyed object never refers to a newer object that reuses its slot.
+        //       A default-constructed Id is "none" (the typed analog of VKFW_CI_IGNORE).
+        template <typename Tag>
+        struct Id {
+            uint32_t index      = UINT32_MAX;
+            uint32_t generation = 0u;
+
+            Id() {}
+            Id(uint32_t _index, uint32_t _generation) : index{_index}, generation{_generation} {}
+
+            bool isNone() const { return index == UINT32_MAX; }
+
+            bool operator==(const Id &_id) const { return index == _id.index && generation == _id.generation; }
+            bool operator!=(const Id &_id) const { return !(*this == _id); }
+        }; // Id END
+
+        // Note: slot map. 'add()' reuses freed slots, 'get()' checks that the Id is alive and throws otherwise.
+        //       References returned by 'get()' are invalidated by 'add()', because the storage may grow.
+        template <typename T, typename Tag>
+        class Pool {
+        public:
+            typedef Id<Tag> IdType;
+
+            IdType add(const T &_value = T()) {
+                uint32_t __index;
+                if (!free_slots.empty()) {
+                    __index = free_slots.back();
+                    free_slots.pop_back();
+                }
+                else {
+                    __index = (uint32_t)values.size();
+                    values.push_back(T());
+                    generations.push_back(1u);
+                    alive.push_back(0u);
+                }
+                values[__index] = _value;
+                alive [__index] = 1u;
+                return IdType(__index, generations[__index]);
+            }
+
+            // Returns false if the Id is none or its object was already removed
+            bool remove(IdType _id) {
+                if (!contains(_id)) return false;
+                values[_id.index] = T();
+                alive [_id.index] = 0u;
+                ++generations[_id.index];
+                free_slots.push_back(_id.index);
+                return true;
+            }
+
+            // Note: generations are kept, so the Ids of the removed objects stay invalid
+            void clear() {
+                for (uint32_t i = 0u; i < values.size(); ++i)
+                    if (alive[i]) remove(IdType(i, generations[i]));
+            }
+
+            bool contains(IdType _id) const {
+                return _id.index < values.size() && alive[_id.index] && generations[_id.index] == _id.generation;
+            }
+
+                  T& get(IdType _id)       { checkId_(_id); return values[_id.index]; }
+            const T& get(IdType _id) const { checkId_(_id); return values[_id.index]; }
+
+            // Calls '_func(IdType, T&)' for every live object
+            template <typename F>
+            void forEach(F _func) {
+                for (uint32_t i = 0u; i < values.size(); ++i)
+                    if (alive[i]) _func(IdType(i, generations[i]), values[i]);
+            }
+
+            uint32_t size() const { return (uint32_t)(values.size() - free_slots.size()); }
+            bool    empty() const { return size() == 0u; }
+
+        private:
+            std::vector<T>        values;
+            std::vector<uint32_t> generations;
+            std::vector<uint8_t>  alive;
+            std::vector<uint32_t> free_slots;
+
+            void checkId_(IdType _id) const {
+                SVKFW_ASSERT(contains(_id), std::out_of_range, "VKFW::Pool :: get", "Id is none or refers to a destroyed object");
+            }
+        }; // Pool END
+
+    // Sync
+        struct SemaphoreTag {};
+        struct FenceTag     {};
+        struct EventTag     {};
+        typedef Id<SemaphoreTag> SemaphoreId;
+        typedef Id<FenceTag>     FenceId;
+        typedef Id<EventTag>     EventId;
+
+        // Note: Id of an object that lives inside a parent object and as long as it
+        //       (e.g. a buffer inside its memory chunk, a command buffer inside its allocated group),
+        //       so it holds the parent's Id (with its generation) and the object's index inside the parent.
+        template <typename ParentTag, typename Tag>
+        struct SubId {
+            Id<ParentTag> parent;
+            uint32_t index = UINT32_MAX;
+
+            SubId() {}
+            SubId(Id<ParentTag> _parent, uint32_t _index) : parent{_parent}, index{_index} {}
+
+            bool isNone() const { return parent.isNone() || index == UINT32_MAX; }
+
+            bool operator==(const SubId &_id) const { return parent == _id.parent && index == _id.index; }
+            bool operator!=(const SubId &_id) const { return !(*this == _id); }
+        }; // SubId END
+
+    // Core
+        struct QueueFamilyTag {};
+        struct QueueTag       {};
+        typedef Id   <QueueFamilyTag>           QueueFamilyId;
+        typedef SubId<QueueFamilyTag, QueueTag> QueueId;
+
+    // Descriptor
+        struct DescriptorSetLayoutTag  {};
+        struct DescriptorLayoutBindingTag {};
+        struct DescriptorPoolTag       {};
+        struct DescriptorSetsTag       {};
+        struct DescriptorSetTag        {};
+        typedef Id   <DescriptorSetLayoutTag>                             DescriptorSetLayoutId;
+        typedef SubId<DescriptorSetLayoutTag, DescriptorLayoutBindingTag> DescriptorLayoutBindingId; // binding inside the layout create info
+        typedef Id   <DescriptorPoolTag>                                  DescriptorPoolId;
+        typedef Id   <DescriptorSetsTag>                                  DescriptorSetsId;          // group of sets allocated together
+        typedef SubId<DescriptorSetsTag, DescriptorSetTag>                DescriptorSetId;
+
+    // Pipeline
+        struct PipelineTag       {};
+        struct PipelineLayoutTag {};
+        struct PipelineCacheTag  {};
+        struct ShaderModuleTag   {};
+        struct ShaderStageTag    {};
+        typedef Id   <PipelineTag>                 PipelineId;
+        typedef Id   <PipelineLayoutTag>           PipelineLayoutId;
+        typedef Id   <PipelineCacheTag>            PipelineCacheId;
+        typedef Id   <ShaderModuleTag>             ShaderModuleId;
+        typedef SubId<PipelineTag, ShaderStageTag> ShaderStageId; // stage inside the pipeline create info
+
+    // Command
+        struct CommandPoolTag    {};
+        struct CommandBuffersTag {};
+        struct CommandBufferTag  {};
+        typedef Id   <CommandPoolTag>                      CommandPoolId;
+        typedef Id   <CommandBuffersTag>                   CommandBuffersId; // group of command buffers allocated together
+        typedef SubId<CommandBuffersTag, CommandBufferTag> CommandBufferId;
+
+    // Memory
+        struct MemoryTag     {};
+        struct BufferTag     {};
+        struct ImageTag      {};
+        struct BufferViewTag {};
+        struct ImageViewTag  {};
+        typedef Id   <MemoryTag>                MemoryId;
+        typedef SubId<MemoryTag, BufferTag>     BufferId;
+        typedef SubId<MemoryTag, ImageTag>      ImageId;
+        typedef SubId<MemoryTag, BufferViewTag> BufferViewId;
+        typedef SubId<MemoryTag, ImageViewTag>  ImageViewId;
 
 
 // Utilities

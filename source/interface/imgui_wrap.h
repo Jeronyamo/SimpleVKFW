@@ -877,13 +877,13 @@ namespace Simple {
                 ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), _cmd_buffer);
             }
 
-            void initializeContext(const VKFW::ObjGetterHandler &_vkfw_getter, VKFW::ContextIndex _ci_qfamily,
-                                   VKFW::ContextIndex2 _ci2_graphics_queue, uint32_t _image_count) {
+            void initializeContext(const VKFW::ObjGetterHandler &_vkfw_getter, VKFW::QueueFamilyId _qfamily_id,
+                                   VKFW::QueueId _graphics_queue_id, uint32_t _image_count) {
                 imgui_info.Instance                    = _vkfw_getter.getObjInstance();
                 imgui_info.PhysicalDevice              = _vkfw_getter.getObjPhysicalDevice();
                 imgui_info.Device                      = _vkfw_getter.getObjDevice();
-                imgui_info.QueueFamily                 = _vkfw_getter.getObjQueueFamily(_ci_qfamily);
-                imgui_info.Queue                       = _vkfw_getter.getObjQueue(_ci2_graphics_queue);
+                imgui_info.QueueFamily                 = _vkfw_getter.getObjQueueFamily(_qfamily_id);
+                imgui_info.Queue                       = _vkfw_getter.getObjQueue(_graphics_queue_id);
                 imgui_info.PipelineInfoMain.RenderPass = _vkfw_getter.getObjRenderPass();
                 // imgui_info.DescriptorPool = _vkfw_getter.getObjDescriptorPool(_ci_descr_pool);
                 imgui_info.MinImageCount = getMinImageCount();
