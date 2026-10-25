@@ -11,6 +11,50 @@ namespace Simple {
                     Vulkan Context
 //  == === ==== ====================== ==== === ==  \\
 
+        // Note: layer 2 only reports the swapchain state, the caller decides when to recreate it
+        enum SwapchainStatus {
+            VKFW_SWAPCHAIN_OK = 0,
+            VKFW_SWAPCHAIN_SUBOPTIMAL,   // image is acquired/presented, but the swapchain should be recreated
+            VKFW_SWAPCHAIN_OUT_OF_DATE,  // nothing was acquired/presented, the swapchain must be recreated
+            VKFW_SWAPCHAIN_NOT_READY     // acquisition timed out, try again later
+        }; // SwapchainStatus END
+
+        struct AcquireResult {
+            SwapchainStatus status;
+            uint32_t   image_index; // UINT32_MAX if no image was acquired
+        }; // AcquireResult END
+
+        #define VKFW_MAX_SUBMIT_SEMAPHORES      8u
+        #define VKFW_MAX_SUBMIT_COMMAND_BUFFERS 8u
+
+        // Note: one VkSubmitInfo described by Ids; stored inline, so it can be filled every frame without allocations
+        struct SubmitDesc {
+            SemaphoreId          wait_semaphores  [VKFW_MAX_SUBMIT_SEMAPHORES];
+            VkPipelineStageFlags wait_stages      [VKFW_MAX_SUBMIT_SEMAPHORES];
+            CommandBufferId      command_buffers  [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
+            SemaphoreId          signal_semaphores[VKFW_MAX_SUBMIT_SEMAPHORES];
+            uint32_t wait_count = 0u, command_count = 0u, signal_count = 0u;
+
+            SubmitDesc& wait(SemaphoreId _semaphore_id, VkPipelineStageFlags _stage) {
+                SVKFW_ASSERT(wait_count < VKFW_MAX_SUBMIT_SEMAPHORES, std::length_error, "VKFW::SubmitDesc :: wait", "too many wait semaphores");
+                wait_semaphores[wait_count] = _semaphore_id;
+                wait_stages    [wait_count] = _stage;
+                ++wait_count;
+                return *this;
+            }
+            SubmitDesc& commands(CommandBufferId _cmd_buffer_id) {
+                SVKFW_ASSERT(command_count < VKFW_MAX_SUBMIT_COMMAND_BUFFERS, std::length_error, "VKFW::SubmitDesc :: commands", "too many command buffers");
+                command_buffers[command_count++] = _cmd_buffer_id;
+                return *this;
+            }
+            SubmitDesc& signal(SemaphoreId _semaphore_id) {
+                SVKFW_ASSERT(signal_count < VKFW_MAX_SUBMIT_SEMAPHORES, std::length_error, "VKFW::SubmitDesc :: signal", "too many signal semaphores");
+                signal_semaphores[signal_count++] = _semaphore_id;
+                return *this;
+            }
+            void clear() { wait_count = command_count = signal_count = 0u; }
+        }; // SubmitDesc END
+
         struct VulkanContext {
             struct ContextDebug {
                 VulkanContext *cxt_ptr = nullptr;
@@ -61,10 +105,11 @@ namespace Simple {
 
             // Access by Id (throws if the Id is none, stale or out of its family)
 
-                Object::QueueFamily &queueFamily(QueueFamilyId _id) { return queue_families.get(_id).family; }
-                Object::Queue       &queues     (QueueFamilyId _id) { return queue_families.get(_id).queues; }
-                VkQueue queue(QueueId _id) {
-                    std::vector<VkQueue> &__handles = queue_families.get(_id.parent).queues.handles;
+                      Object::QueueFamily &queueFamily(QueueFamilyId _id)       { return queue_families.get(_id).family; }
+                const Object::QueueFamily &queueFamily(QueueFamilyId _id) const { return queue_families.get(_id).family; }
+                      Object::Queue       &queues     (QueueFamilyId _id)       { return queue_families.get(_id).queues; }
+                VkQueue queue(QueueId _id) const {
+                    const std::vector<VkQueue> &__handles = queue_families.get(_id.parent).queues.handles;
                     SVKFW_ASSERT(_id.index < __handles.size(), std::out_of_range, "VKFW::ContextCore :: queue", "queue index is out of its family");
                     return __handles[_id.index];
                 }
@@ -238,8 +283,55 @@ namespace Simple {
                     destroySwapchain();
                 }
 
-                uint32_t getSwapchainImageCount() {
+                uint32_t getSwapchainImageCount() const {
                     return image_views.size();
+                }
+
+                // Note: swapchain images are indexed by the image index from 'acquire'
+                VkFramebuffer framebuffer(uint32_t _image_index) const {
+                    SVKFW_ASSERT(_image_index < framebuffers.size(), std::out_of_range, "VKFW::ContextSwapchain :: framebuffer", "image index is out of the swapchain");
+                    return framebuffers[_image_index];
+                }
+                VkImageView imageView(uint32_t _image_index) const {
+                    SVKFW_ASSERT(_image_index < image_views.size(), std::out_of_range, "VKFW::ContextSwapchain :: imageView", "image index is out of the swapchain");
+                    return image_views[_image_index];
+                }
+                VkExtent2D extent() const {
+                    return swapchain.create_info.peek().imageExtent;
+                }
+
+            // Functions
+
+                AcquireResult acquire(VkSemaphore _semaphore, VkFence _fence = VK_NULL_HANDLE, uint64_t _timeout = UINT64_MAX) {
+                    AcquireResult __res = { VKFW_SWAPCHAIN_OK, UINT32_MAX };
+                    VkResult __vk_res = vkAcquireNextImageKHR(cxt_core->device.handle, swapchain.handle, _timeout, _semaphore, _fence, &__res.image_index);
+                    switch (__vk_res) {
+                        case VK_SUCCESS: break;
+                        // Note: the image is acquired and the semaphore/fence will be signaled, so the frame can be rendered as usual
+                        case VK_SUBOPTIMAL_KHR:        __res.status = VKFW_SWAPCHAIN_SUBOPTIMAL; break;
+                        case VK_ERROR_OUT_OF_DATE_KHR: __res.status = VKFW_SWAPCHAIN_OUT_OF_DATE; __res.image_index = UINT32_MAX; break;
+                        case VK_TIMEOUT:
+                        case VK_NOT_READY:             __res.status = VKFW_SWAPCHAIN_NOT_READY;   __res.image_index = UINT32_MAX; break;
+                        default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::ContextSwapchain :: acquire", "failed to acquire next swapchain image, code ") + std::to_string(__vk_res));
+                    }
+                    return __res;
+                }
+
+                SwapchainStatus present(VkQueue _queue, Span<VkSemaphore> _wait_semaphores, uint32_t _image_index) {
+                    VkPresentInfoKHR __info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+                    __info.waitSemaphoreCount = _wait_semaphores.size();
+                    __info.pWaitSemaphores    = _wait_semaphores.data();
+                    __info.swapchainCount     = 1u;
+                    __info.pSwapchains        = &swapchain.handle;
+                    __info.pImageIndices      = &_image_index;
+
+                    VkResult __vk_res = vkQueuePresentKHR(_queue, &__info);
+                    switch (__vk_res) {
+                        case VK_SUCCESS:               return VKFW_SWAPCHAIN_OK;
+                        case VK_SUBOPTIMAL_KHR:        return VKFW_SWAPCHAIN_SUBOPTIMAL;
+                        case VK_ERROR_OUT_OF_DATE_KHR: return VKFW_SWAPCHAIN_OUT_OF_DATE;
+                        default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::ContextSwapchain :: present", "failed to present, code ") + std::to_string(__vk_res));
+                    }
                 }
 
                 void pickSwapchainImageFormat(const Util::SurfaceFormatTestFunc _test_func = Util::SelectSurfaceFormat::DefaultFormatTest) {
@@ -258,6 +350,8 @@ namespace Simple {
                     cxt_core->render_pass.create_info.attachments_wrap[_attachment_ci].edit().format = swapchain.create_info.peek().imageFormat;
                 }
 
+                // Note: the caller must make sure the swapchain images are not in use (see 'VulkanContext::recreateSwapchain')
+                //       Blocks while the window is minimized (zero extent)
                 void recreate() {
                     destroySwapchainWithDependencies();
                     setSwapchainSurfaceCapabilities();
@@ -298,10 +392,32 @@ namespace Simple {
 
             // Access by Id (throws if the Id is none, stale or out of its group)
 
-                VkDescriptorSet set(DescriptorSetId _id) {
-                    std::vector<VkDescriptorSet> &__handles = sets.get(_id.parent).handles;
+                VkDescriptorSet set(DescriptorSetId _id) const {
+                    const std::vector<VkDescriptorSet> &__handles = sets.get(_id.parent).handles;
                     SVKFW_ASSERT(_id.index < __handles.size(), std::out_of_range, "VKFW::ContextDescriptor :: set", "set index is out of its group");
                     return __handles[_id.index];
+                }
+
+                // Note: references are invalidated when an object of the same kind is added
+                Object::DescriptorSetLayout &layout  (DescriptorSetLayoutId _id) { return layouts.get(_id); }
+                Object::DescriptorPool      &pool    (DescriptorPoolId      _id) { return pools  .get(_id); }
+                Object::DescriptorSet       &setGroup(DescriptorSetsId      _id) { return sets   .get(_id); }
+                Struct::StructWrap<VkDescriptorSetLayoutBinding> &layoutBinding(DescriptorLayoutBindingId _id) {
+                    Object::DescriptorSetLayout &__layout = layouts.get(_id.parent);
+                    SVKFW_ASSERT(_id.index < __layout.create_info.bindings_wrap.size(), std::out_of_range, "VKFW::ContextDescriptor :: layoutBinding", "binding index is out of its layout");
+                    return __layout.create_info.bindings_wrap[_id.index];
+                }
+
+            // Functions
+
+                void updateSets(Span<VkWriteDescriptorSet> _writes, Span<VkCopyDescriptorSet> _copies = {}) {
+                    vkUpdateDescriptorSets(cxt_core->device.handle, _writes.size(), _writes.data(), _copies.size(), _copies.data());
+                }
+                void updateSets(std::vector<Struct::StructWrap<VkWriteDescriptorSet>> &_writes) {
+                    InlineArray<VkWriteDescriptorSet> __writes(_writes.size());
+                    for (uint32_t i = 0u; i < __writes.size(); ++i)
+                        __writes[i] = _writes[i].get();
+                    updateSets(__writes);
                 }
 
             // Manage Objects
@@ -387,6 +503,17 @@ namespace Simple {
                     layouts  .clear();
                     caches   .clear();
                     shaders  .clear();
+                }
+
+            // Access by Id (throws if the Id is none or stale)
+            // Note: references are invalidated when an object of the same kind is added
+
+                Object::Pipeline       &pipeline(PipelineId       _id) { return pipelines.get(_id); }
+                Object::PipelineLayout &layout  (PipelineLayoutId _id) { return layouts  .get(_id); }
+                Object::PipelineCache  &cache   (PipelineCacheId  _id) { return caches   .get(_id); }
+                Object::ShaderModule   &shader  (ShaderModuleId   _id) { return shaders  .get(_id); }
+                Struct::StructWrap<VkPipelineShaderStageCreateInfo> &shaderStage(ShaderStageId _id) {
+                    return *pipelines.get(_id.parent).shortcutShaderStage(_id.index);
                 }
 
             // Manage Objects
@@ -486,11 +613,14 @@ namespace Simple {
 
             // Access by Id (throws if the Id is none, stale or out of its group)
 
-                VkCommandBuffer commandBuffer(CommandBufferId _id) {
-                    std::vector<VkCommandBuffer> &__handles = cmd_buffers.get(_id.parent).handles;
+                VkCommandBuffer commandBuffer(CommandBufferId _id) const {
+                    const std::vector<VkCommandBuffer> &__handles = cmd_buffers.get(_id.parent).handles;
                     SVKFW_ASSERT(_id.index < __handles.size(), std::out_of_range, "VKFW::ContextCommand :: commandBuffer", "command buffer index is out of its group");
                     return __handles[_id.index];
                 }
+
+                Object::CommandPool   &cmdPool       (CommandPoolId    _id) { return cmd_pools  .get(_id); }
+                Object::CommandBuffer &cmdBufferGroup(CommandBuffersId _id) { return cmd_buffers.get(_id); }
 
             // Manage Objects
 
@@ -690,6 +820,7 @@ namespace Simple {
                 Pool<MemoryChunk, MemoryTag> memory_chunks;
 
                 Struct::StructWrap<VkPhysicalDeviceMemoryProperties2> memory_properties;
+                VkDeviceSize non_coherent_atom_size = 1u; // loaded in 'initContext'
 
                 ContextCore *cxt_core = nullptr;
 
@@ -698,6 +829,10 @@ namespace Simple {
 
                 void initContext() {
                     memory_properties.loadForPhysicalDevice(cxt_core->phys_device.handle);
+
+                    VkPhysicalDeviceProperties __properties{};
+                    vkGetPhysicalDeviceProperties(cxt_core->phys_device.handle, &__properties);
+                    non_coherent_atom_size = std::max(__properties.limits.nonCoherentAtomSize, VkDeviceSize(1u));
                 }
 
                 void destroyContext() {
@@ -710,10 +845,14 @@ namespace Simple {
                       MemoryChunk &chunk(MemoryId _id)       { return memory_chunks.get(_id); }
                 const MemoryChunk &chunk(MemoryId _id) const { return memory_chunks.get(_id); }
 
-                Object::Buffer     &buffer    (BufferId     _id) { return at_(chunk(_id.parent).buffers,      _id.index); }
-                Object::Image      &image     (ImageId      _id) { return at_(chunk(_id.parent).images,       _id.index); }
-                Object::BufferView &bufferView(BufferViewId _id) { return at_(chunk(_id.parent).buffer_views, _id.index); }
-                Object::ImageView  &imageView (ImageViewId  _id) { return at_(chunk(_id.parent).image_views,  _id.index); }
+                      Object::Buffer     &buffer    (BufferId     _id)       { return at_(chunk(_id.parent).buffers,      _id.index); }
+                const Object::Buffer     &buffer    (BufferId     _id) const { return at_(chunk(_id.parent).buffers,      _id.index); }
+                      Object::Image      &image     (ImageId      _id)       { return at_(chunk(_id.parent).images,       _id.index); }
+                const Object::Image      &image     (ImageId      _id) const { return at_(chunk(_id.parent).images,       _id.index); }
+                      Object::BufferView &bufferView(BufferViewId _id)       { return at_(chunk(_id.parent).buffer_views, _id.index); }
+                const Object::BufferView &bufferView(BufferViewId _id) const { return at_(chunk(_id.parent).buffer_views, _id.index); }
+                      Object::ImageView  &imageView (ImageViewId  _id)       { return at_(chunk(_id.parent).image_views,  _id.index); }
+                const Object::ImageView  &imageView (ImageViewId  _id) const { return at_(chunk(_id.parent).image_views,  _id.index); }
 
                       MemoryMapping &bufferMapping(BufferId _id)       { return at_(chunk(_id.parent).buffer_maps, _id.index); }
                 const MemoryMapping &bufferMapping(BufferId _id) const { return at_(chunk(_id.parent).buffer_maps, _id.index); }
@@ -765,6 +904,39 @@ namespace Simple {
                     return __chunk_ptr == nullptr ? nullptr : (uint8_t*)__chunk_ptr + imageMapping(_image_id).offset;
                 }
 
+                bool isChunkCoherent(MemoryId _memory_id) const {
+                    return (chunk(_memory_id).required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0u;
+                }
+
+            // Functions (persistently mapped memory)
+            // Note: offsets are relative to the buffer; flush/invalidate do nothing for HOST_COHERENT memory
+
+                void flushBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) const {
+                    if (isChunkCoherent(_buffer_id.parent)) return;
+                    VkMappedMemoryRange __range = mappedRange_(_buffer_id, _offset, _size);
+                    SVKFW_ASSERT(vkFlushMappedMemoryRanges(cxt_core->device.handle, 1u, &__range) == VK_SUCCESS, std::runtime_error,
+                                    "VKFW::ContextMemory :: flushBuffer", "could not flush mapped memory");
+                }
+                void invalidateBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) const {
+                    if (isChunkCoherent(_buffer_id.parent)) return;
+                    VkMappedMemoryRange __range = mappedRange_(_buffer_id, _offset, _size);
+                    SVKFW_ASSERT(vkInvalidateMappedMemoryRanges(cxt_core->device.handle, 1u, &__range) == VK_SUCCESS, std::runtime_error,
+                                    "VKFW::ContextMemory :: invalidateBuffer", "could not invalidate mapped memory");
+                }
+
+                // Copies CPU data into a HOST_VISIBLE buffer and flushes it if needed (the GPU must not be using this range)
+                void writeBuffer(BufferId _buffer_id, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0u) const {
+                    uint8_t *__ptr = (uint8_t*)checkMappedRange_(_buffer_id, _offset, _size, "VKFW::ContextMemory :: writeBuffer");
+                    memcpy(__ptr + _offset, _data, _size);
+                    flushBuffer(_buffer_id, _offset, _size);
+                }
+                // Invalidates the range if needed and copies it from a HOST_VISIBLE buffer into CPU memory
+                void readBuffer(BufferId _buffer_id, void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0u) const {
+                    const uint8_t *__ptr = (const uint8_t*)checkMappedRange_(_buffer_id, _offset, _size, "VKFW::ContextMemory :: readBuffer");
+                    invalidateBuffer(_buffer_id, _offset, _size);
+                    memcpy(_data, __ptr + _offset, _size);
+                }
+
             // Scenarios
 
                 void setWholeBufferCreateInfoStruct(BufferId _buffer_id, Span<QueueFamilyId> _qfamilies_id,
@@ -779,6 +951,31 @@ namespace Simple {
                 }
 
             private:
+                void* checkMappedRange_(BufferId _buffer_id, VkDeviceSize _offset, VkDeviceSize _size, const char *_where) const {
+                    void *__ptr = getMappedBuffer(_buffer_id);
+                    SVKFW_ASSERT(__ptr != nullptr, std::invalid_argument, "VKFW::ContextMemory", "buffer memory is not HOST_VISIBLE or not allocated, in " + std::string(_where));
+                    SVKFW_ASSERT(_offset + _size <= bufferMapping(_buffer_id).range, std::out_of_range, "VKFW::ContextMemory",
+                                    "range is out of the buffer: " + std::to_string(_offset + _size) + " > " + std::to_string(bufferMapping(_buffer_id).range) + ", in " + _where);
+                    return __ptr;
+                }
+
+                // Note: VkMappedMemoryRange offset and size must be multiples of 'nonCoherentAtomSize' (or the size must reach the allocation end)
+                VkMappedMemoryRange mappedRange_(BufferId _buffer_id, VkDeviceSize _offset, VkDeviceSize _size) const {
+                    const MemoryChunk &__chunk = chunk(_buffer_id.parent);
+                    const MemoryMapping &__mapping = bufferMapping(_buffer_id);
+                    const VkDeviceSize __alloc_size = __chunk.memory.allocate_info.peek().allocationSize;
+
+                    VkMappedMemoryRange __range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+                    VkDeviceSize __begin = __mapping.offset + _offset;
+                    VkDeviceSize __end   = _size == VK_WHOLE_SIZE ? __mapping.offset + __mapping.range : __begin + _size;
+                    __end += (non_coherent_atom_size - __end % non_coherent_atom_size) % non_coherent_atom_size;
+
+                    __range.memory = __chunk.memory.handle;
+                    __range.offset = __begin - __begin % non_coherent_atom_size;
+                    __range.size   = __end < __alloc_size ? __end - __range.offset : VK_WHOLE_SIZE;
+                    return __range;
+                }
+
                 template <typename T>
                 static T& at_(std::vector<T> &_objs, uint32_t _index) {
                     SVKFW_ASSERT(_index < _objs.size(), std::out_of_range, "VKFW::ContextMemory", "object index is out of its memory chunk");
@@ -842,6 +1039,23 @@ namespace Simple {
                     return events.add(__vk_event);
                 }
 
+            // Functions
+
+                // Returns VK_SUCCESS or VK_TIMEOUT, throws on errors
+                VkResult wait(Span<FenceId> _fences_id, bool _wait_all = true, uint64_t _timeout = UINT64_MAX) const {
+                    InlineArray<VkFence> __fences(_fences_id.size());
+                    for (uint32_t i = 0u; i < __fences.size(); ++i) __fences[i] = fences.get(_fences_id[i]);
+                    VkResult __res = vkWaitForFences(cxt_core->device.handle, __fences.size(), __fences.data(), _wait_all ? VK_TRUE : VK_FALSE, _timeout);
+                    SVKFW_ASSERT(__res == VK_SUCCESS || __res == VK_TIMEOUT, std::runtime_error, "VKFW::ContextBarrier :: wait", "could not wait for fences, code " + std::to_string(__res));
+                    return __res;
+                }
+                void reset(Span<FenceId> _fences_id) const {
+                    InlineArray<VkFence> __fences(_fences_id.size());
+                    for (uint32_t i = 0u; i < __fences.size(); ++i) __fences[i] = fences.get(_fences_id[i]);
+                    SVKFW_ASSERT(vkResetFences(cxt_core->device.handle, __fences.size(), __fences.data()) == VK_SUCCESS, std::runtime_error,
+                                    "VKFW::ContextBarrier :: reset", "could not reset fences");
+                }
+
                 // Note: destroying a none or already destroyed Id does nothing
                 void destroySemaphore(SemaphoreId _semaphore_id) {
                     if (!semaphores.contains(_semaphore_id)) return;
@@ -876,6 +1090,87 @@ namespace Simple {
                 cxt_core.destroyContext();
             }
 
+        // Handles by Id
+        // Note: a none Id gives VK_NULL_HANDLE (UINT32_MAX for a queue family), a stale Id throws
+
+            VkfwQueueFamily       get(QueueFamilyId         _id) const { return _id.isNone() ? UINT32_MAX     : cxt_core.queueFamily(_id).handle; }
+            VkQueue               get(QueueId               _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_core.queue(_id); }
+
+            VkDescriptorSetLayout get(DescriptorSetLayoutId _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_descriptor.layouts.get(_id).handle; }
+            VkDescriptorPool      get(DescriptorPoolId      _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_descriptor.pools  .get(_id).handle; }
+            VkDescriptorSet       get(DescriptorSetId       _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_descriptor.set(_id); }
+
+            VkPipeline            get(PipelineId            _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.pipelines.get(_id).handle; }
+            VkPipelineLayout      get(PipelineLayoutId      _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.layouts  .get(_id).handle; }
+            VkPipelineCache       get(PipelineCacheId       _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.caches   .get(_id).handle; }
+            VkShaderModule        get(ShaderModuleId        _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.shaders  .get(_id).handle; }
+
+            VkCommandPool         get(CommandPoolId         _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_command.cmd_pools.get(_id).handle; }
+            VkCommandBuffer       get(CommandBufferId       _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_command.commandBuffer(_id); }
+
+            VkDeviceMemory        get(MemoryId              _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_memory.chunk(_id).memory.handle; }
+            VkBuffer              get(BufferId              _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_memory.buffer    (_id).handle; }
+            VkImage               get(ImageId               _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_memory.image     (_id).handle; }
+            VkBufferView          get(BufferViewId          _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_memory.bufferView(_id).handle; }
+            VkImageView           get(ImageViewId           _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_memory.imageView (_id).handle; }
+
+            VkSemaphore           get(SemaphoreId           _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_barrier.semaphores.get(_id); }
+            VkFence               get(FenceId               _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_barrier.fences    .get(_id); }
+            VkEvent               get(EventId               _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_barrier.events    .get(_id); }
+
+            // Writes the handles of '_ids' into '_res' (must hold at least '_ids.size()' elements)
+            template <typename IdT, typename HandleT>
+            void fill(Span<IdT> _ids, HandleT *_res) const {
+                for (uint32_t i = 0u; i < _ids.size(); ++i) _res[i] = get(_ids[i]);
+            }
+
+        // Functions
+
+            void submit(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id = FenceId()) const {
+                struct Handles {
+                    VkSemaphore     wait  [VKFW_MAX_SUBMIT_SEMAPHORES];
+                    VkCommandBuffer cmd   [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
+                    VkSemaphore     signal[VKFW_MAX_SUBMIT_SEMAPHORES];
+                };
+                InlineArray<Handles,      4u> __handles(_submits.size());
+                InlineArray<VkSubmitInfo, 4u> __infos  (_submits.size());
+
+                for (uint32_t i = 0u; i < _submits.size(); ++i) {
+                    const SubmitDesc &__desc = _submits[i];
+                    fill(Span<SemaphoreId    >(__desc.wait_semaphores,   __desc.wait_count   ), __handles[i].wait  );
+                    fill(Span<CommandBufferId>(__desc.command_buffers,   __desc.command_count), __handles[i].cmd   );
+                    fill(Span<SemaphoreId    >(__desc.signal_semaphores, __desc.signal_count ), __handles[i].signal);
+
+                    __infos[i] = VkSubmitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                    __infos[i].waitSemaphoreCount   = __desc.wait_count;
+                    __infos[i].pWaitSemaphores      = __handles[i].wait;
+                    __infos[i].pWaitDstStageMask    = __desc.wait_stages;
+                    __infos[i].commandBufferCount   = __desc.command_count;
+                    __infos[i].pCommandBuffers      = __handles[i].cmd;
+                    __infos[i].signalSemaphoreCount = __desc.signal_count;
+                    __infos[i].pSignalSemaphores    = __handles[i].signal;
+                }
+
+                VkResult __res = vkQueueSubmit(get(_queue_id), __infos.size(), __infos.data(), get(_fence_id));
+                SVKFW_ASSERT(__res == VK_SUCCESS, std::runtime_error, "VKFW::VulkanContext :: submit", "could not submit to queue, code " + std::to_string(__res));
+            }
+
+            AcquireResult acquireNextImage(SemaphoreId _semaphore_id, FenceId _fence_id = FenceId(), uint64_t _timeout = UINT64_MAX) {
+                return cxt_swapchain.acquire(get(_semaphore_id), get(_fence_id), _timeout);
+            }
+
+            SwapchainStatus present(QueueId _queue_id, Span<SemaphoreId> _wait_semaphores_id, uint32_t _image_index) {
+                InlineArray<VkSemaphore> __semaphores(_wait_semaphores_id.size());
+                fill(_wait_semaphores_id, __semaphores.data());
+                return cxt_swapchain.present(get(_queue_id), __semaphores, _image_index);
+            }
+
+            // Note: waits until the device is idle, so it is meant for rare events (resize, OUT_OF_DATE), not for every frame
+            void recreateSwapchain() {
+                vkDeviceWaitIdle(cxt_core.device.handle);
+                cxt_swapchain.recreate();
+            }
+
         // Scenarios
 
             void initNoncoreContexts() {
@@ -885,877 +1180,281 @@ namespace Simple {
             void handleResult(VkResult _result) {
                 // TODO: handle VkResult
             }
-        } cxt_vkfw; // VulkanContext END
-
-
-
-//  == === ==== ================================== ==== === ==  \\
-                    Vulkan Additional Handlers
-//  == === ==== ================================== ==== === ==  \\
-
-    // Note: Handlers with an access to VulkanContext
-
-//  == === ==== >   VKFW Object Getter Handler
-
-        struct ObjGetterHandler {
-            VKFW::VulkanContext *cxt_ptr = nullptr;
-
-            ObjGetterHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_ptr{_cxt_ptr} {}
-
-        // Single object getters
-
-        // Getters (Core)
-        // Note: in all getters a none Id gives VK_NULL_HANDLE (UINT32_MAX for a queue family), a stale Id throws
-
-            VkInstance               getObjInstance()                         const { return cxt_ptr->cxt_core.instance.handle; }
-            VkDebugUtilsMessengerEXT getObjDebugUtilsMessengerEXT()           const { return cxt_ptr->cxt_core.cxt_debug.debug_messenger.handle;}
-            VkPhysicalDevice         getObjPhysicalDevice()                   const { return cxt_ptr->cxt_core.phys_device.handle; }
-            VkDevice                 getObjDevice()                           const { return cxt_ptr->cxt_core.device.handle; }
-            VkfwQueueFamily          getObjQueueFamily(QueueFamilyId _obj_id) const { return _obj_id.isNone() ? UINT32_MAX     : cxt_ptr->cxt_core.queueFamily(_obj_id).handle; }
-            VkQueue                  getObjQueue      (QueueId       _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_core.queue      (_obj_id); }
-            VkRenderPass             getObjRenderPass()                       const { return cxt_ptr->cxt_core.render_pass.handle; }
-            VkAllocationCallbacks*   getSctAllocationCallbacks()                    { return cxt_ptr->cxt_core.alloc_cb.get(); }
-
-            ContextEntity<Object::QueueFamily> shortcutObjQueueFamily(QueueFamilyId _obj_id) { return { &cxt_ptr->cxt_core.queueFamily(_obj_id) }; }
-            ContextEntity<Object::Queue      > shortcutObjQueue      (QueueFamilyId _obj_id) { return { &cxt_ptr->cxt_core.queues     (_obj_id) }; }
-
-            ContextEntity<Struct::StructWrap<VkAttachmentDescription>> shortcutSctRenderPassAttachment        (ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutAttachment        (_sct_ci); }
-            ContextEntity<Struct::StructWrap<   VkSubpassDescription>> shortcutSctRenderPassSubpassDescription(ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutSubpassDescription(_sct_ci); }
-            ContextEntity<Struct::StructWrap<    VkSubpassDependency>> shortcutSctRenderPassSubpassDependency (ContextIndex _sct_ci) { return cxt_ptr->cxt_core.render_pass.create_info.shortcutSubpassDependency (_sct_ci); }
-
-        // Getters (Swapchain)
-        // Note: swapchain images are indexed by the image index from 'vkAcquireNextImageKHR'
-
-            VkSwapchainKHR getObjSwapchainKHR() const { return cxt_ptr->cxt_swapchain.swapchain.handle; }
-            VkSurfaceKHR   getObjSurfaceKHR()   const { return cxt_ptr->cxt_swapchain.surface  .handle; }
-            VkImageView    getObjSwapchainImageView  (ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_swapchain.image_views [_obj_ci]; }
-            VkFramebuffer  getObjSwapchainFramebuffer(ContextIndex _obj_ci) const { return shouldIgnoreCI(_obj_ci) ? VK_NULL_HANDLE : cxt_ptr->cxt_swapchain.framebuffers[_obj_ci]; }
-
-        // Getters (Descriptor)
-
-            VkDescriptorSetLayout getObjDescriptorSetLayout(DescriptorSetLayoutId _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.layouts.get(_obj_id).handle; }
-            VkDescriptorPool      getObjDescriptorPool     (DescriptorPoolId      _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.pools  .get(_obj_id).handle; }
-            VkDescriptorSet       getObjDescriptorSet      (DescriptorSetId       _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_descriptor.set(_obj_id); }
-
-            ContextEntity<Object::DescriptorSetLayout> shortcutObjDescriptorSetLayout(DescriptorSetLayoutId _obj_id) { return { &cxt_ptr->cxt_descriptor.layouts.get(_obj_id) }; }
-            ContextEntity<Object::DescriptorPool     > shortcutObjDescriptorPool     (DescriptorPoolId      _obj_id) { return { &cxt_ptr->cxt_descriptor.pools  .get(_obj_id) }; }
-            ContextEntity<Object::DescriptorSet      > shortcutObjDescriptorSet      (DescriptorSetsId      _obj_id) { return { &cxt_ptr->cxt_descriptor.sets   .get(_obj_id) }; }
-
-            ContextEntity<Struct::StructWrap<VkDescriptorSetLayoutBinding>> shortcutSctDescriptorSetLayoutBinding(DescriptorLayoutBindingId _sct_id) {
-                return { cxt_ptr->cxt_descriptor.layouts.get(_sct_id.parent).create_info.shortcutBinding(_sct_id.index).entity_ptr };
-            }
-
-        // Getters (Pipeline)
-
-            VkPipeline       getObjPipeline      (PipelineId       _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.pipelines.get(_obj_id).handle; }
-            VkPipelineLayout getObjPipelineLayout(PipelineLayoutId _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.layouts  .get(_obj_id).handle; }
-            VkPipelineCache  getObjPipelineCache (PipelineCacheId  _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.caches   .get(_obj_id).handle; }
-            VkShaderModule   getObjShaderModule  (ShaderModuleId   _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_pipeline.shaders  .get(_obj_id).handle; }
-
-            ContextEntity<Object::Pipeline      > shortcutObjPipeline      (PipelineId       _obj_id) { return { &cxt_ptr->cxt_pipeline.pipelines.get(_obj_id) }; }
-            ContextEntity<Object::PipelineLayout> shortcutObjPipelineLayout(PipelineLayoutId _obj_id) { return { &cxt_ptr->cxt_pipeline.layouts  .get(_obj_id) }; }
-            ContextEntity<Object::PipelineCache > shortcutObjPipelineCache (PipelineCacheId  _obj_id) { return { &cxt_ptr->cxt_pipeline.caches   .get(_obj_id) }; }
-            ContextEntity<Object::ShaderModule  > shortcutObjShaderModule  (ShaderModuleId   _obj_id) { return { &cxt_ptr->cxt_pipeline.shaders  .get(_obj_id) }; }
-
-            ContextEntity<Struct::StructWrap<VkPipelineShaderStageCreateInfo>> shortcutSctShaderStage(ShaderStageId _sct_id) {
-                return { cxt_ptr->cxt_pipeline.pipelines.get(_sct_id.parent).shortcutShaderStage(_sct_id.index) };
-            }
-
-        // Getters (Command)
-
-            VkCommandPool   getObjCommandPool  (CommandPoolId   _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_command.cmd_pools.get(_obj_id).handle; }
-            VkCommandBuffer getObjCommandBuffer(CommandBufferId _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_command.commandBuffer(_obj_id); }
-
-            ContextEntity<Object::CommandPool  > shortcutObjCommandPool  (CommandPoolId    _obj_id) { return { &cxt_ptr->cxt_command.cmd_pools  .get(_obj_id) }; }
-            ContextEntity<Object::CommandBuffer> shortcutObjCommandBuffer(CommandBuffersId _obj_id) { return { &cxt_ptr->cxt_command.cmd_buffers.get(_obj_id) }; }
-
-        // Getters (Device Memory)
-        
-            // Note: a none Id gives VK_NULL_HANDLE, an Id of a destroyed chunk throws
-            VkDeviceMemory getObjDeviceMemory(MemoryId     _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.chunk     (_obj_id).memory.handle; }
-            VkBuffer       getObjBuffer      (BufferId     _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.buffer    (_obj_id).handle; }
-            VkImage        getObjImage       (ImageId      _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.image     (_obj_id).handle; }
-            VkBufferView   getObjBufferView  (BufferViewId _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.bufferView(_obj_id).handle; }
-            VkImageView    getObjImageView   (ImageViewId  _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_memory.imageView (_obj_id).handle; }
-
-            VKFW::VulkanContext::ContextMemory::MemoryMapping getSctMemoryMapping(BufferId _obj_id) { return _obj_id.isNone() ? VKFW::VulkanContext::ContextMemory::MemoryMapping{ VK_WHOLE_SIZE, VK_WHOLE_SIZE } : cxt_ptr->cxt_memory.bufferMapping(_obj_id); }
-
-            ContextEntity<VulkanContext::ContextMemory::MemoryChunk> shortcutSctMemoryChunk(MemoryId _obj_id) { return { &cxt_ptr->cxt_memory.chunk(_obj_id) }; }
-            ContextEntity<Object::DeviceMemory> shortcutObjDeviceMemory(MemoryId     _obj_id) { return { &cxt_ptr->cxt_memory.chunk     (_obj_id).memory }; }
-            ContextEntity<Object::Buffer      > shortcutObjBuffer      (BufferId     _obj_id) { return { &cxt_ptr->cxt_memory.buffer    (_obj_id) }; }
-            ContextEntity<Object::Image       > shortcutObjImage       (ImageId      _obj_id) { return { &cxt_ptr->cxt_memory.image     (_obj_id) }; }
-            ContextEntity<Object::BufferView  > shortcutObjBufferView  (BufferViewId _obj_id) { return { &cxt_ptr->cxt_memory.bufferView(_obj_id) }; }
-            ContextEntity<Object::ImageView   > shortcutObjImageView   (ImageViewId  _obj_id) { return { &cxt_ptr->cxt_memory.imageView (_obj_id) }; }
-
-        // Getters (Barrier)
-
-            // Note: a none Id gives VK_NULL_HANDLE, an Id of a destroyed object throws
-            VkSemaphore getObjSemaphore(SemaphoreId _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.semaphores.get(_obj_id); }
-            VkFence     getObjFence    (FenceId     _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.fences    .get(_obj_id); }
-            VkEvent     getObjEvent    (EventId     _obj_id) const { return _obj_id.isNone() ? VK_NULL_HANDLE : cxt_ptr->cxt_barrier.events    .get(_obj_id); }
-
-        // Multiple object getters
-
-        // Getters (Core)
-
-            std::vector<VkfwQueueFamily> getObjsQueueFamily(Span<QueueFamilyId> _objs_id) const {
-                std::vector<VkfwQueueFamily> __res(_objs_id.size(), UINT32_MAX);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_core.queueFamily(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkQueue> getObjsQueue(Span<QueueId> _objs_id) const {
-                std::vector<VkQueue> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_core.queue(_objs_id[i]);
-                return __res;
-            }
-
-        // Getters (Swapchain)
-
-            std::vector<VkImageView> getObjsSwapchainImageView(Span<ContextIndex> _objs_ci) const {
-                std::vector<VkImageView> __res(_objs_ci.size(), VK_NULL_HANDLE);
-                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.image_views[_objs_ci[ci]];
-                return __res;
-            }
-
-            std::vector<VkFramebuffer> getObjsSwapchainFramebuffer(Span<ContextIndex> _objs_ci) const {
-                std::vector<VkFramebuffer> __res(_objs_ci.size(), VK_NULL_HANDLE);
-                for (uint32_t ci = 0u; ci < _objs_ci.size(); ++ci) __res[ci] = cxt_ptr->cxt_swapchain.framebuffers[_objs_ci[ci]];
-                return __res;
-            }
-
-        // Getters (Descriptor)
-
-            std::vector<VkDescriptorSetLayout> getObjsDescriptorSetLayout(Span<DescriptorSetLayoutId> _objs_id) const {
-                std::vector<VkDescriptorSetLayout> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_descriptor.layouts.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkDescriptorPool> getObjsDescriptorPool(Span<DescriptorPoolId> _objs_id) const {
-                std::vector<VkDescriptorPool> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_descriptor.pools.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkDescriptorSet> getObjsDescriptorSet(Span<DescriptorSetId> _objs_id) const {
-                std::vector<VkDescriptorSet> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_descriptor.set(_objs_id[i]);
-                return __res;
-            }
-
-        // Getters (Pipeline)
-
-            std::vector<VkPipeline> getObjsPipeline(Span<PipelineId> _objs_id) const {
-                std::vector<VkPipeline> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_pipeline.pipelines.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkPipelineCache> getObjsPipelineCache(Span<PipelineCacheId> _objs_id) const {
-                std::vector<VkPipelineCache> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_pipeline.caches.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkPipelineLayout> getObjsPipelineLayout(Span<PipelineLayoutId> _objs_id) const {
-                std::vector<VkPipelineLayout> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_pipeline.layouts.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-        // Getters (Command)
-
-            std::vector<VkCommandPool> getObjsCommandPool(Span<CommandPoolId> _objs_id) const {
-                std::vector<VkCommandPool> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_command.cmd_pools.get(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkCommandBuffer> getObjsCommandBuffer(Span<CommandBufferId> _objs_id) const {
-                std::vector<VkCommandBuffer> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_command.commandBuffer(_objs_id[i]);
-                return __res;
-            }
-
-        // Getters (Device Memory)
-
-            std::vector<VkDeviceMemory> getObjsDeviceMemory(Span<MemoryId> _objs_id) const {
-                std::vector<VkDeviceMemory> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_memory.chunk(_objs_id[i]).memory.handle;
-                return __res;
-            }
-
-            std::vector<VkBuffer> getObjsBuffer(Span<BufferId> _objs_id) const {
-                std::vector<VkBuffer> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_memory.buffer(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkImage> getObjsImage(Span<ImageId> _objs_id) const {
-                std::vector<VkImage> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_memory.image(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkBufferView> getObjsBufferView(Span<BufferViewId> _objs_id) const {
-                std::vector<VkBufferView> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_memory.bufferView(_objs_id[i]).handle;
-                return __res;
-            }
-
-            std::vector<VkImageView> getObjsImageView(Span<ImageViewId> _objs_id) const {
-                std::vector<VkImageView> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_memory.imageView(_objs_id[i]).handle;
-                return __res;
-            }
-
-        // Getters (Barrier)
-
-            std::vector<VkSemaphore> getObjsSemaphore(Span<SemaphoreId> _objs_id) const {
-                std::vector<VkSemaphore> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_barrier.semaphores.get(_objs_id[i]);
-                return __res;
-            }
-
-            std::vector<VkFence> getObjsFence(Span<FenceId> _objs_id) const {
-                std::vector<VkFence> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_barrier.fences.get(_objs_id[i]);
-                return __res;
-            }
-
-            std::vector<VkEvent> getObjsEvent(Span<EventId> _objs_id) const {
-                std::vector<VkEvent> __res(_objs_id.size(), VK_NULL_HANDLE);
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) __res[i] = cxt_ptr->cxt_barrier.events.get(_objs_id[i]);
-                return __res;
-            }
-
-        // Multiple object getters into an inline array (no memory allocation for up to VKFW_INLINE_ARRAY_SIZE objects)
-
-            void fillObjsDescriptorSet(Span<DescriptorSetId> _objs_id, InlineArray<VkDescriptorSet> &_res) const {
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) _res[i] = cxt_ptr->cxt_descriptor.set(_objs_id[i]);
-            }
-
-            void fillObjsCommandBuffer(Span<CommandBufferId> _objs_id, InlineArray<VkCommandBuffer> &_res) const {
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) _res[i] = cxt_ptr->cxt_command.commandBuffer(_objs_id[i]);
-            }
-
-            void fillObjsBuffer(Span<BufferId> _objs_id, InlineArray<VkBuffer> &_res) const {
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) _res[i] = cxt_ptr->cxt_memory.buffer(_objs_id[i]).handle;
-            }
-
-            void fillObjsSemaphore(Span<SemaphoreId> _objs_id, InlineArray<VkSemaphore> &_res) const {
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) _res[i] = cxt_ptr->cxt_barrier.semaphores.get(_objs_id[i]);
-            }
-
-            void fillObjsFence(Span<FenceId> _objs_id, InlineArray<VkFence> &_res) const {
-                for (uint32_t i = 0u; i < _objs_id.size(); ++i) _res[i] = cxt_ptr->cxt_barrier.fences.get(_objs_id[i]);
-            }
-        }; // ObjGetterHandler END
-
-
-//  == === ==== >   VKFW Barrier Handler
-
-        struct BarrierHandler {
-            ObjGetterHandler cxt_handler;
-
-            BarrierHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
-
-        // Functions
-
-            void WaitForFences(Span<FenceId> _fences_id, VkBool32 _wait_all = VK_TRUE, uint64_t _wait_time = UINT64_MAX) {
-                InlineArray<VkFence> __fences(_fences_id.size());
-                cxt_handler.fillObjsFence(_fences_id, __fences);
-                Func::WaitForFences(cxt_handler.getObjDevice(), __fences, _wait_all, _wait_time);
-            }
-
-            void ResetFences(Span<FenceId> _fences_id) {
-                InlineArray<VkFence> __fences(_fences_id.size());
-                cxt_handler.fillObjsFence(_fences_id, __fences);
-                Func::ResetFences(cxt_handler.getObjDevice(), __fences);
-            }
-        }; // BarrierHandler END
-
-
-//  == === ==== >   VKFW Device Memory Map Handler
-
-        struct MemoryMapHandler {
-            std::pair<void *, MemoryId> mem_handle{nullptr, MemoryId()};
-            VkDeviceSize mapped_offset = 0u; // offset of the mapped range in the device memory (offsets in 'buf_maps'/'img_maps' are relative to it)
-            std::vector<std::pair<BufferId, VulkanContext::ContextMemory::MemoryMapping>> buf_maps;
-            std::vector<std::pair<ImageId,  VulkanContext::ContextMemory::MemoryMapping>> img_maps;
-
-            ObjGetterHandler cxt_handler;
-            mutable VkDeviceSize non_coherent_atom_size = 0u; // loaded on demand
-
-            MemoryMapHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
-           ~MemoryMapHandler() {
-                if (cxt_handler.getObjDevice() != VK_NULL_HANDLE) UnmapMemory();
-                clear();
-            }
-
-            // Note: persistently mapped chunks (see 'MemoryChunk::mapped_ptr') are not mapped again, only the pointer is offset
-            void MapMemory(MemoryId _memory_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
-                UnmapMemory(); // memory object can't be mapped twice
-                void *__persistent_ptr = cxt_handler.cxt_ptr->cxt_memory.getMappedChunk(_memory_id);
-                void *__mapped_ptr = __persistent_ptr != nullptr ? (uint8_t*)__persistent_ptr + _offset
-                                                                 : Func::MapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(_memory_id), _offset, _size);
-                mem_handle = { __mapped_ptr, _memory_id };
-                mapped_offset = _offset;
-            }
-
-            // Note: if the chunk was removed, its memory was already unmapped and freed
-            void UnmapMemory() {
-                if (cxt_handler.cxt_ptr->cxt_memory.memory_chunks.contains(mem_handle.second) && cxt_handler.cxt_ptr->cxt_memory.getMappedChunk(mem_handle.second) == nullptr)
-                    Func::UnmapMemory(cxt_handler.getObjDevice(), cxt_handler.getObjDeviceMemory(mem_handle.second));
-                mem_handle = {nullptr, MemoryId()};
-                mapped_offset = 0u;
-            }
-
-            void clear() {
-                mem_handle = {nullptr, MemoryId()};
-                mapped_offset = 0u;
-                buf_maps.clear();
-                img_maps.clear();
-            }
-
-        // Memory Functions
-
-            // Converts ranges relative to the mapped memory into absolute VkMappedMemoryRange aligned to 'nonCoherentAtomSize'
-            std::vector<VkMappedMemoryRange> getMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
-                std::vector<VkMappedMemoryRange> __mem_ranges(_mem_ranges.size());
-                fillMappedMemoryRanges(_mem_ranges, __mem_ranges.data());
-                return __mem_ranges;
-            }
-
-            void fillMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges, VkMappedMemoryRange *_res) const {
-                if (non_coherent_atom_size == 0u) {
-                    VkPhysicalDeviceProperties __properties{};
-                    vkGetPhysicalDeviceProperties(cxt_handler.getObjPhysicalDevice(), &__properties);
-                    non_coherent_atom_size = std::max(__properties.limits.nonCoherentAtomSize, VkDeviceSize(1u));
-                }
-                const VkDeviceSize __alloc_size = cxt_handler.cxt_ptr->cxt_memory.chunk(mem_handle.second).memory.allocate_info.peek().allocationSize;
-
-                VkMappedMemoryRange *__mem_ranges = _res;
-                for (uint32_t i = 0u; i < _mem_ranges.size(); ++i) {
-                    __mem_ranges[i] = VkMappedMemoryRange{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-                    VkDeviceSize __offset = mapped_offset + _mem_ranges[i].offset;
-                    VkDeviceSize __aligned_offset = __offset - __offset % non_coherent_atom_size;
-
-                    __mem_ranges[i].memory = cxt_handler.getObjDeviceMemory(mem_handle.second);
-                    __mem_ranges[i].offset = __aligned_offset;
-                    __mem_ranges[i].size   = VK_WHOLE_SIZE;
-                    if (_mem_ranges[i].range != VK_WHOLE_SIZE) {
-                        VkDeviceSize __end = __offset + _mem_ranges[i].range;
-                        __end += (non_coherent_atom_size - __end % non_coherent_atom_size) % non_coherent_atom_size;
-                        if (__end < __alloc_size)
-                            __mem_ranges[i].size = __end - __aligned_offset;
-                    }
-                }
-            }
-
-            // Note: offsets are relative to the start of the mapped memory
-            void FlushMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
-                InlineArray<VkMappedMemoryRange> __vk_ranges(_mem_ranges.size());
-                fillMappedMemoryRanges(_mem_ranges, __vk_ranges.data());
-                Func::FlushMappedMemoryRanges(cxt_handler.getObjDevice(), __vk_ranges);
-            }
-
-            // Note: offsets are relative to the start of the mapped memory
-            void InvalidateMappedMemoryRanges(Span<VulkanContext::ContextMemory::MemoryMapping> _mem_ranges) const {
-                InlineArray<VkMappedMemoryRange> __vk_ranges(_mem_ranges.size());
-                fillMappedMemoryRanges(_mem_ranges, __vk_ranges.data());
-                Func::InvalidateMappedMemoryRanges(cxt_handler.getObjDevice(), __vk_ranges);
-            }
-
-        // Scenarios
-
-            void mapMemoryFromBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
-                auto __buffer_mapping = cxt_handler.cxt_ptr->cxt_memory.bufferMapping(_buffer_id);
-                SVKFW_ASSERT(_offset         <  __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer",          "'offset' is out of buffer range: " + std::to_string(_offset        ) + " >= " + std::to_string(__buffer_mapping.range));
-                if (_size == VK_WHOLE_SIZE)
-                    _size = __buffer_mapping.range - _offset;
-                SVKFW_ASSERT(_offset + _size <= __buffer_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromBuffer", "'size' + 'offset' is out of buffer range: " + std::to_string(_offset + _size) + " > " + std::to_string(__buffer_mapping.range));
-
-                __buffer_mapping.offset += _offset;
-                __buffer_mapping.range   =   _size;
-
-                MapMemory(_buffer_id.parent, __buffer_mapping.offset, __buffer_mapping.range);
-            }
-
-            void mapMemoryFromImage(ImageId _image_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) {
-                auto __image_mapping = cxt_handler.cxt_ptr->cxt_memory.imageMapping(_image_id);
-                SVKFW_ASSERT(_offset         <  __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage",          "'offset' is out of image range: " + std::to_string(_offset        ) + " >= " + std::to_string(__image_mapping.range));
-                if (_size == VK_WHOLE_SIZE)
-                    _size = __image_mapping.range - _offset;
-                SVKFW_ASSERT(_offset + _size <= __image_mapping.range, std::invalid_argument, "VKFW::MemoryMapHandle :: mapMemoryFromImage", "'size' + 'offset' is out of image range: " + std::to_string(_offset + _size) + " > " + std::to_string(__image_mapping.range));
-
-                __image_mapping.offset += _offset;
-                __image_mapping.range   =   _size;
-
-                MapMemory(_image_id.parent, __image_mapping.offset, __image_mapping.range);
-            }
-
-            // Note: all resources must belong to the same memory chunk
-            void mapMemoryFromResources(Span<BufferId> _bufs_id, Span<ImageId> _imgs_id) {
-                SVKFW_ASSERT(!_bufs_id.empty() || !_imgs_id.empty(), std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
-                                "Both buffer and image arrays are empty");
-
-                VkDeviceSize __mapping_begin = UINT64_MAX, __mapping_end = 0u;
-                MemoryId __memory_id;
-                if (!_bufs_id.empty()) __memory_id = _bufs_id[0].parent;
-                if (!_imgs_id.empty()) __memory_id = _imgs_id[0].parent;
-
-                buf_maps.resize(_bufs_id.size());
-                for (uint32_t i = 0u; i < _bufs_id.size(); ++i) {
-                    SVKFW_ASSERT(_bufs_id[i].parent == __memory_id, std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
-                                    "buffer memory chunk mismatch: " + std::to_string(_bufs_id[i].parent.index) + " and " + std::to_string(__memory_id.index));
-                    buf_maps[i].first  = _bufs_id[i];
-                    buf_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.bufferMapping(_bufs_id[i]);
-                    __mapping_begin = std::min(__mapping_begin, buf_maps[i].second.offset);
-                    __mapping_end   = std::max(__mapping_end  , buf_maps[i].second.offset + buf_maps[i].second.range);
-                }
-
-                img_maps.resize(_imgs_id.size());
-                for (uint32_t i = 0u; i < _imgs_id.size(); ++i) {
-                    SVKFW_ASSERT(_imgs_id[i].parent == __memory_id, std::invalid_argument, "VKFW::MemoryMapHandler :: mapMemoryFromResources",
-                                    "image memory chunk mismatch: " + std::to_string(_imgs_id[i].parent.index) + " and " + std::to_string(__memory_id.index) + (_bufs_id.empty() ? " (image)" : " (buffer)"));
-                    img_maps[i].first  = _imgs_id[i];
-                    img_maps[i].second = cxt_handler.cxt_ptr->cxt_memory.imageMapping(_imgs_id[i]);
-                    __mapping_begin = std::min(__mapping_begin, img_maps[i].second.offset);
-                    __mapping_end   = std::max(__mapping_end  , img_maps[i].second.offset + img_maps[i].second.range);
-                }
-
-                for (auto& buf_map : buf_maps)
-                    buf_map.second.offset -= __mapping_begin;
-                for (auto& img_map : img_maps)
-                    img_map.second.offset -= __mapping_begin;
-
-                MapMemory(__memory_id, __mapping_begin, __mapping_end - __mapping_begin);
-            }
-
-            // Returns false if the buffer isn't mapped
-            bool copyToBufferMap(BufferId _buf_id, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                return copyToMap_(buf_maps, _buf_id, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyToBufferMap");
-            }
-
-            // Returns false if the image isn't mapped
-            bool copyToImageMap(ImageId _img_id, const void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                return copyToMap_(img_maps, _img_id, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyToImageMap");
-            }
-
-            // Returns false if the buffer isn't mapped
-            bool copyFromBufferMap(BufferId _buf_id, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                return copyFromMap_(buf_maps, _buf_id, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyFromBufferMap");
-            }
-
-            // Returns false if the image isn't mapped
-            bool copyFromImageMap(ImageId _img_id, void* _data_ptr, int64_t _mem_offset = 0, VkDeviceSize _mem_size = VK_WHOLE_SIZE) const {
-                return copyFromMap_(img_maps, _img_id, _data_ptr, _mem_offset, _mem_size, "VKFW::MemoryMapHandler :: copyFromImageMap");
-            }
 
         private:
-            bool isMemoryCoherent_() const {
-                return cxt_handler.cxt_ptr->cxt_memory.chunk(mem_handle.second).required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            // Note: contexts keep pointers to each other, so a copy would point into the original
+            VulkanContext(const VulkanContext &);
+            VulkanContext& operator=(const VulkanContext &);
+        }; // VulkanContext END
+
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Vulkan Command Recorder
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: a light object for the stack: one command buffer plus the context to resolve Ids;
+        //       every command converts Ids into handles on the stack, so recording doesn't allocate
+        struct CommandRecorder {
+            const VulkanContext &cxt;
+            VkCommandBuffer      cmd = VK_NULL_HANDLE;
+
+            CommandRecorder(const VulkanContext &_cxt, CommandBufferId _cmd_buffer_id) : cxt(_cxt), cmd{_cxt.get(_cmd_buffer_id)} {}
+            CommandRecorder(const VulkanContext &_cxt, VkCommandBuffer _cmd_buffer   ) : cxt(_cxt), cmd{_cmd_buffer} {}
+
+            VkCommandBuffer handle() const { return cmd; }
+
+        // Command buffer
+
+            void begin(VkCommandBufferUsageFlags _flags = 0u, const VkCommandBufferInheritanceInfo *_inheritance = nullptr) {
+                VkCommandBufferBeginInfo __info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                __info.flags            = _flags;
+                __info.pInheritanceInfo = _inheritance;
+                Func::BeginCommandBuffer(cmd, &__info);
+            }
+            void end() {
+                SVKFW_ASSERT(vkEndCommandBuffer(cmd) == VK_SUCCESS, std::runtime_error, "VKFW::CommandRecorder :: end", "could not end command buffer");
+            }
+            // Note: the pool must be created with VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+            void reset(bool _release_resources = false) {
+                vkResetCommandBuffer(cmd, _release_resources ? VkCommandBufferResetFlags(VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT) : VkCommandBufferResetFlags(0u));
             }
 
-            template <typename IdT>
-            bool copyToMap_(const std::vector<std::pair<IdT, VulkanContext::ContextMemory::MemoryMapping>> &_maps, IdT _id, const void* _data_ptr, int64_t _mem_offset, VkDeviceSize _mem_size, const char *_where) const {
-                for (const auto &map : _maps) {
-                    if (map.first == _id) {
-                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = map.second.range - _mem_offset;
-                        memcpy((uint8_t*)mem_handle.first + map.second.offset + _mem_offset, _data_ptr, _mem_size);
-                        if (!isMemoryCoherent_())
-                            FlushMappedMemoryRanges({ {map.second.offset + _mem_offset, _mem_size} });
-                        return true;
-                    }
+        // Render pass
+
+            // Note: uses the render pass of the core context, render area starts at (0, 0)
+            void beginRenderPass(VkFramebuffer _framebuffer, VkExtent2D _extent, Span<VkClearValue> _clear_values = {},
+                                 VkSubpassContents _contents = VK_SUBPASS_CONTENTS_INLINE) {
+                VkRenderPassBeginInfo __info{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+                __info.renderPass        = cxt.cxt_core.render_pass.handle;
+                __info.framebuffer       = _framebuffer;
+                __info.renderArea.extent = _extent;
+                __info.clearValueCount   = _clear_values.size();
+                __info.pClearValues      = _clear_values.data();
+                vkCmdBeginRenderPass(cmd, &__info, _contents);
+            }
+            void beginRenderPass(const VkRenderPassBeginInfo &_info, VkSubpassContents _contents = VK_SUBPASS_CONTENTS_INLINE) {
+                vkCmdBeginRenderPass(cmd, &_info, _contents);
+            }
+            void nextSubpass(VkSubpassContents _contents = VK_SUBPASS_CONTENTS_INLINE) {
+                vkCmdNextSubpass(cmd, _contents);
+            }
+            void endRenderPass() {
+                vkCmdEndRenderPass(cmd);
+            }
+
+        // Bind
+
+            void bindPipeline(PipelineId _pipeline_id) {
+                VkPipelineBindPoint __bind_point;
+                switch (cxt.cxt_pipeline.pipelines.get(_pipeline_id).pipeline_type) {
+                    case VKFW_PIPELINE_TYPE_GRAPHICS   : __bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS       ; break;
+                    case VKFW_PIPELINE_TYPE_COMPUTE    : __bind_point = VK_PIPELINE_BIND_POINT_COMPUTE        ; break;
+                    case VKFW_PIPELINE_TYPE_RAY_TRACING: __bind_point = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
+                    default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::CommandRecorder :: bindPipeline", "pipeline type is not set"));
                 }
-                fprintf(svkfwwarn, "%s: (%u, %u) in %s\n", SVKFW_WRAPWARN("VKFW::MemoryMapHandler", "resource is not mapped"), _id.parent.index, _id.index, _where);
-                return false;
+                vkCmdBindPipeline(cmd, __bind_point, cxt.get(_pipeline_id));
             }
 
-            template <typename IdT>
-            bool copyFromMap_(const std::vector<std::pair<IdT, VulkanContext::ContextMemory::MemoryMapping>> &_maps, IdT _id, void* _data_ptr, int64_t _mem_offset, VkDeviceSize _mem_size, const char *_where) const {
-                for (const auto &map : _maps) {
-                    if (map.first == _id) {
-                        if (_mem_size == VK_WHOLE_SIZE) _mem_size = map.second.range - _mem_offset;
-                        if (!isMemoryCoherent_())
-                            InvalidateMappedMemoryRanges({ {map.second.offset + _mem_offset, _mem_size} });
-                        memcpy(_data_ptr, (uint8_t*)mem_handle.first + map.second.offset + _mem_offset, _mem_size);
-                        return true;
-                    }
-                }
-                fprintf(svkfwwarn, "%s: (%u, %u) in %s\n", SVKFW_WRAPWARN("VKFW::MemoryMapHandler", "resource is not mapped"), _id.parent.index, _id.index, _where);
-                return false;
-            }
-        }; // MemoryMapHandler END
-
-
-//  == === ==== >   VKFW Command Buffer Handler
-
-        struct CommandHandler {
-            VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
-
-            Callable::CmdBeginRenderPass begin_render_pass_wrap;
-            Callable::BeginCommandBuffer  begin_cmd_buffer_wrap;
-
-            ObjGetterHandler cxt_handler;
-
-            CommandHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} { setBeginRenderPassRenderPass(); }
-           ~CommandHandler() { clear(); }
-
-            void setCmdBuffer(CommandBufferId _cmd_buffer_id) {
-                cmd_buffer = cxt_handler.getObjCommandBuffer(_cmd_buffer_id);
-            }
-
-            void clear() {
-                cmd_buffer = VK_NULL_HANDLE;
-            }
-
-        // CmdBuffer-related
-
-            void BeginCommandBuffer() {
-                begin_cmd_buffer_wrap.callFunction(cmd_buffer);
-            }
-
-            void EndCommandBuffer() {
-                vkEndCommandBuffer(cmd_buffer);
-            }
-
-            void ResetCommandBuffer(bool _set_release_resources_bit = false) {
-                vkResetCommandBuffer(cmd_buffer, _set_release_resources_bit ? VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT : VkCommandBufferResetFlags(0u));
-            }
-
-        // Commands
-
-            void CmdBeginRenderPass(VkSubpassContents _contents) {
-                begin_render_pass_wrap.callFunction(cmd_buffer, _contents);
-            }
-
-            void CmdEndRenderPass() {
-                vkCmdEndRenderPass(cmd_buffer);
-            }
-
-            void CmdBindDescriptorSets(PipelineLayoutId _pip_layout_id, VkPipelineBindPoint _pip_bind_pt, Span<DescriptorSetId> _descr_sets_id, Span<uint32_t> _dynamic_descr = {}) {
-                InlineArray<VkDescriptorSet> __obj_descr_sets(_descr_sets_id.size());
-                cxt_handler.fillObjsDescriptorSet(_descr_sets_id, __obj_descr_sets);
-                vkCmdBindDescriptorSets(cmd_buffer, _pip_bind_pt, cxt_handler.getObjPipelineLayout(_pip_layout_id), 0u, __obj_descr_sets.size(), __obj_descr_sets.data(), _dynamic_descr.size(), _dynamic_descr.data());
-            }
-
-            void CmdBindIndexBuffer(BufferId _index_buffer_id, VkDeviceSize _offset = 0u, VkIndexType _index_type = VK_INDEX_TYPE_UINT32) {
-                vkCmdBindIndexBuffer(cmd_buffer, cxt_handler.getObjBuffer(_index_buffer_id), _offset, _index_type);
-            }
-
-            void CmdBindPipeline(PipelineId _pipeline_id) {
-                VkPipelineBindPoint __pipeline_type;
-                switch (cxt_handler.cxt_ptr->cxt_pipeline.pipelines.get(_pipeline_id).pipeline_type) {
-                    case VKFW_PIPELINE_TYPE_GRAPHICS   : __pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS       ; break;
-                    case VKFW_PIPELINE_TYPE_COMPUTE    : __pipeline_type = VK_PIPELINE_BIND_POINT_COMPUTE        ; break;
-                    case VKFW_PIPELINE_TYPE_RAY_TRACING: __pipeline_type = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
-                    default: throw std::runtime_error(SVKFW_WRAPERR("VKFW::CommandHandler :: CmdBindPipeline", "pipeline type is not set"));
-                }
-                vkCmdBindPipeline(cmd_buffer, __pipeline_type, cxt_handler.getObjPipeline(_pipeline_id));
+            void bindDescriptorSets(PipelineLayoutId _layout_id, Span<DescriptorSetId> _sets_id, Span<uint32_t> _dynamic_offsets = {},
+                                    VkPipelineBindPoint _bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS, uint32_t _first_set = 0u) {
+                InlineArray<VkDescriptorSet> __sets(_sets_id.size());
+                cxt.fill(_sets_id, __sets.data());
+                vkCmdBindDescriptorSets(cmd, _bind_point, cxt.get(_layout_id), _first_set, __sets.size(), __sets.data(), _dynamic_offsets.size(), _dynamic_offsets.data());
             }
 
             // Note: missing offsets are set to 0
-            void CmdBindVertexBuffers(Span<BufferId> _buffers_id, Span<VkDeviceSize> _offsets = {}) {
-                InlineArray<VkBuffer>     __obj_buffers(_buffers_id.size());
-                InlineArray<VkDeviceSize> __offsets    (_buffers_id.size());
-                cxt_handler.fillObjsBuffer(_buffers_id, __obj_buffers);
+            void bindVertexBuffers(Span<BufferId> _buffers_id, Span<VkDeviceSize> _offsets = {}, uint32_t _first_binding = 0u) {
+                InlineArray<VkBuffer>     __buffers(_buffers_id.size());
+                InlineArray<VkDeviceSize> __offsets(_buffers_id.size());
+                cxt.fill(_buffers_id, __buffers.data());
                 for (uint32_t i = 0u; i < __offsets.size(); ++i)
                     __offsets[i] = i < _offsets.size() ? _offsets[i] : 0u;
-
-                vkCmdBindVertexBuffers(cmd_buffer, 0u, __obj_buffers.size(), __obj_buffers.data(), __offsets.data());
+                vkCmdBindVertexBuffers(cmd, _first_binding, __buffers.size(), __buffers.data(), __offsets.data());
             }
 
-            void CmdClearAttachments() {
-                VkClearAttachment attach{};
-                attach.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                attach.clearValue.color = {1.f, 0.f, 1.f, 1.f};
-                attach.colorAttachment = 0u;
-                VkClearRect rect{};
-                rect.rect.offset = {0, 0};
-                rect.rect.extent = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent;
-                rect.baseArrayLayer = 0;
-                rect.layerCount = 1;
-
-                vkCmdClearAttachments(cmd_buffer, 1, &attach, 1, &rect);
+            void bindIndexBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkIndexType _index_type = VK_INDEX_TYPE_UINT32) {
+                vkCmdBindIndexBuffer(cmd, cxt.get(_buffer_id), _offset, _index_type);
             }
 
-            // void CmdClearColorImage() {
-            //     vkCmdClearColorImage()
-            // }
-
-            void CmdCopyBuffer(BufferId _src_buffer_id, BufferId _dst_buffer_id, Span<VkBufferCopy> _copy_regions) {
-                VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_id);
-                VkBuffer __dst_buffer = cxt_handler.getObjBuffer(_dst_buffer_id);
-
-                vkCmdCopyBuffer(cmd_buffer, __src_buffer, __dst_buffer, (uint32_t) _copy_regions.size(), _copy_regions.data());
+            void pushConstants(PipelineLayoutId _layout_id, VkShaderStageFlags _stages, uint32_t _offset, uint32_t _size, const void *_data) {
+                vkCmdPushConstants(cmd, cxt.get(_layout_id), _stages, _offset, _size, _data);
             }
 
-            void CmdCopyImage(ImageId _src_image_id, ImageId _dst_image_id, VkImageLayout _layout1, VkImageLayout _layout2, Span<VkImageCopy> _copy_regions) {
-                VkImage __src_image = cxt_handler.getObjImage(_src_image_id);
-                VkImage __dst_image = cxt_handler.getObjImage(_dst_image_id);
+        // Dynamic state
 
-                vkCmdCopyImage(cmd_buffer, __src_image, _layout1, __dst_image, _layout2, (uint32_t) _copy_regions.size(), _copy_regions.data());
+            void setViewports(Span<VkViewport> _viewports, uint32_t _first = 0u) { vkCmdSetViewport(cmd, _first, _viewports.size(), _viewports.data()); }
+            void setScissors (Span<VkRect2D>   _scissors,  uint32_t _first = 0u) { vkCmdSetScissor (cmd, _first, _scissors .size(), _scissors .data()); }
+            void setLineWidth(float _line_width) { vkCmdSetLineWidth(cmd, _line_width); }
+
+            // Sets viewport 0 (depth 0..1) and scissor 0 to cover '_extent'
+            void setViewportScissor(VkExtent2D _extent) {
+                VkViewport __viewport{};
+                __viewport.width    = (float)_extent.width;
+                __viewport.height   = (float)_extent.height;
+                __viewport.maxDepth = 1.f;
+                VkRect2D __scissor{};
+                __scissor.extent = _extent;
+                vkCmdSetViewport(cmd, 0u, 1u, &__viewport);
+                vkCmdSetScissor (cmd, 0u, 1u, &__scissor );
             }
 
-            void CmdCopyBufferToImage(BufferId _src_buffer_id, ImageId _dst_image_id, VkImageLayout _layout, Span<VkBufferImageCopy> _copy_regions) {
-                VkBuffer __src_buffer = cxt_handler.getObjBuffer(_src_buffer_id);
-                VkImage  __dst_image  = cxt_handler.getObjImage ( _dst_image_id);
+        // Draw
 
-                vkCmdCopyBufferToImage(cmd_buffer, __src_buffer, __dst_image, _layout, (uint32_t) _copy_regions.size(), _copy_regions.data());
-            }
-
-            void CmdDraw(uint32_t _vert_count, uint32_t _inst_count, uint32_t _first_vert = 0u, uint32_t _first_inst = 0u) {
-                vkCmdDraw(cmd_buffer, _vert_count, _inst_count, _first_vert, _first_inst);
+            void draw(uint32_t _vert_count, uint32_t _inst_count = 1u, uint32_t _first_vert = 0u, uint32_t _first_inst = 0u) {
+                vkCmdDraw(cmd, _vert_count, _inst_count, _first_vert, _first_inst);
             }
             // Note: each index is 'index + vert_offset'
-            void CmdDrawIndexed(uint32_t _ind_count, uint32_t _inst_count, int32_t _vert_offset = 0, uint32_t _first_ind = 0u, uint32_t _first_inst = 0u) {
-                vkCmdDrawIndexed(cmd_buffer, _ind_count, _inst_count, _first_ind, _vert_offset, _first_inst);
+            void drawIndexed(uint32_t _ind_count, uint32_t _inst_count = 1u, int32_t _vert_offset = 0, uint32_t _first_ind = 0u, uint32_t _first_inst = 0u) {
+                vkCmdDrawIndexed(cmd, _ind_count, _inst_count, _first_ind, _vert_offset, _first_inst);
+            }
+            void dispatch(uint32_t _x, uint32_t _y = 1u, uint32_t _z = 1u) {
+                vkCmdDispatch(cmd, _x, _y, _z);
             }
 
-            void CmdPipelineBarrier() {
-                // VkMemoryBarrier;
-                // VkImageMemoryBarrier;
-                // VkBufferMemoryBarrier;
-                // vkCmdPipelineBarrier(cmd_buffer, );
+            void clearAttachments(Span<VkClearAttachment> _attachments, Span<VkClearRect> _rects) {
+                vkCmdClearAttachments(cmd, _attachments.size(), _attachments.data(), _rects.size(), _rects.data());
             }
 
-            void CmdSetLineWidth(float _line_width) {
-               vkCmdSetLineWidth(cmd_buffer, _line_width); 
+        // Transfer
+
+            void copyBuffer(BufferId _src_id, BufferId _dst_id, Span<VkBufferCopy> _regions) {
+                vkCmdCopyBuffer(cmd, cxt.get(_src_id), cxt.get(_dst_id), _regions.size(), _regions.data());
+            }
+            void copyImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageCopy> _regions) {
+                vkCmdCopyImage(cmd, cxt.get(_src_id), _src_layout, cxt.get(_dst_id), _dst_layout, _regions.size(), _regions.data());
+            }
+            void copyBufferToImage(BufferId _src_id, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkBufferImageCopy> _regions) {
+                vkCmdCopyBufferToImage(cmd, cxt.get(_src_id), cxt.get(_dst_id), _dst_layout, _regions.size(), _regions.data());
             }
 
-            void CmdSetScissor(Span<VkRect2D> _scissors) {
-                vkCmdSetScissor(cmd_buffer, 0, _scissors.size(), _scissors.data());
+        // Synchronization
+
+            void pipelineBarrier(VkPipelineStageFlags _src_stages, VkPipelineStageFlags _dst_stages,
+                                 Span<VkMemoryBarrier> _memory_barriers, Span<VkBufferMemoryBarrier> _buffer_barriers = {},
+                                 Span<VkImageMemoryBarrier> _image_barriers = {}, VkDependencyFlags _flags = 0u) {
+                vkCmdPipelineBarrier(cmd, _src_stages, _dst_stages, _flags, _memory_barriers.size(), _memory_barriers.data(),
+                                     _buffer_barriers.size(), _buffer_barriers.data(), _image_barriers.size(), _image_barriers.data());
             }
+        }; // CommandRecorder END
 
-            void CmdSetViewport(Span<VkViewport> _viewports) {
-                vkCmdSetViewport(cmd_buffer, 0, _viewports.size(), _viewports.data());
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Vulkan Upload Batch
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: collects copies into device buffers through one HOST_VISIBLE staging buffer and submits them at once.
+        //       'submit' doesn't block the CPU; the staging buffer is reused only after 'wait'.
+        //       If the staging buffer is full, the batch submits and waits by itself, so any amount of data fits.
+        //
+        //       UploadBatch upload(vk, transfer_queue, staging_cmd, staging_buffer);
+        //       upload.copyToBuffer(vertex_buffer, vertices.data(), vertices_size);
+        //       upload.copyToBuffer( index_buffer,  indices.data(),  indices_size);
+        //       upload.submit();   // one vkQueueSubmit for both copies
+        //       ...                // other CPU work
+        //       upload.wait();
+        struct UploadBatch {
+            UploadBatch(VulkanContext &_cxt, QueueId _queue_id, CommandBufferId _cmd_buffer_id, BufferId _staging_buffer_id)
+                : cxt(_cxt), queue_id{_queue_id}, cmd_buffer_id{_cmd_buffer_id}, staging_buffer_id{_staging_buffer_id} {
+                staging_ptr = (uint8_t*)cxt.cxt_memory.getMappedBuffer(staging_buffer_id);
+                SVKFW_ASSERT(staging_ptr != nullptr, std::invalid_argument, "VKFW::UploadBatch", "staging buffer memory is not HOST_VISIBLE or not allocated");
+                if ((cxt.cxt_memory.buffer(staging_buffer_id).create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%u, %u)\n", SVKFW_WRAPWARN("VKFW::UploadBatch", "staging buffer is not set as transfer source:"), staging_buffer_id.parent.index, staging_buffer_id.index);
+
+                staging_size = cxt.cxt_memory.bufferMapping(staging_buffer_id).range;
+                fence_id = cxt.cxt_barrier.addFence(false);
             }
-
-        // Scenarios
-
-            void setBeginRenderPassRenderPass() {
-                begin_render_pass_wrap.wrap.edit().renderPass = cxt_handler.getObjRenderPass();
-            }
-
-            void setBeginRenderPassSwapchainRenderArea() {
-                begin_render_pass_wrap.wrap.render_area_wrap.setOffset(vec2i(0));
-                begin_render_pass_wrap.wrap.render_area_wrap.setExtent(cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent);
-            }
-
-            void setBeginRenderPassSwapchainFramebuffer(ContextIndex _ci_framebuffer) {
-                begin_render_pass_wrap.wrap.edit().framebuffer = cxt_handler.getObjSwapchainFramebuffer(_ci_framebuffer);
-            }
-
-            void cmdSetViewportScissorFromSwapchainExtent() {
-                VkViewport __swapchain_viewport{};
-                VkRect2D   __swapchain_scissor {};
-
-                __swapchain_scissor.extent  = cxt_handler.cxt_ptr->cxt_swapchain.swapchain.create_info.peek().imageExtent;
-                __swapchain_viewport.width  = __swapchain_scissor.extent.width ;
-                __swapchain_viewport.height = __swapchain_scissor.extent.height;
-
-                vkCmdSetViewport(cmd_buffer, 0, 1, &__swapchain_viewport);
-                vkCmdSetScissor (cmd_buffer, 0, 1, &__swapchain_scissor );
-            }
-        }; // CommandHandler END
-
-
-//  == === ==== >   VKFW Function Call Handler
-
-        struct FuncHandler {
-            Callable::UpdateDescriptorSets update_descr_sets;
-            Callable::QueuePresentKHR     queue_present_wrap;
-            Callable::QueueSubmit          queue_submit_wrap;
-
-            std::vector<QueueId> wait_queues_for_swapchain; // queues to wait before recreating swapchain (graphics and present)
-
-            ObjGetterHandler cxt_handler;
-
-            FuncHandler(VKFW::VulkanContext *_cxt_ptr = &cxt_vkfw) : cxt_handler{_cxt_ptr} {}
-           ~FuncHandler() {}
-
-
-            void setQueuesToWait(Span<QueueId> _queues_id) {
-                wait_queues_for_swapchain.assign(_queues_id.begin(), _queues_id.end());
-            }
-
-        // Functions
-
-            void QueuePresentKHR(QueueId _queue_pres_id, uint64_t _recreate_wait_queues_timeout = UINT64_MAX) {
-                if (queue_present_wrap.callFunction(cxt_handler.getObjQueue(_queue_pres_id)) == UINT32_MAX) {
-                    waitForRequiredQueues(_recreate_wait_queues_timeout);
-                    cxt_handler.cxt_ptr->cxt_swapchain.recreate();
+           ~UploadBatch() {
+                // Note: the fence and the staging buffer must not be in use when the batch is gone
+                if (cxt.cxt_barrier.fences.contains(fence_id)) {
+                    try { wait(); } catch (...) {}
+                    cxt.cxt_barrier.destroyFence(fence_id);
                 }
             }
 
-            inline void QueueSubmit(QueueId _queue_id, Span<CommandBufferId> _cmdbufs_id, Span<uint32_t> _active_submits, FenceId _fence_id = FenceId()) {
-                InlineArray<VkCommandBuffer> __obj_cmdbuf(_cmdbufs_id.size());
-                cxt_handler.fillObjsCommandBuffer(_cmdbufs_id, __obj_cmdbuf);
-                QueueSubmit(cxt_handler.getObjQueue(_queue_id), __obj_cmdbuf, _active_submits, _fence_id);
-            }
-            void QueueSubmit(VkQueue _obj_queue, Span<VkCommandBuffer> _obj_cmdbuf, Span<uint32_t> _active_submits, FenceId _fence_id = FenceId()) {
-                // Note: 'assign' reuses the vector capacity, so there are no allocations after the first frames
-                for (uint32_t i : _active_submits)
-                    queue_submit_wrap.wraps[i].command_buffers.assign(_obj_cmdbuf.begin(), _obj_cmdbuf.end());
+            // Copies the data into the staging buffer now, the device buffer is written after 'submit'
+            void copyToBuffer(BufferId _dst_buffer_id, const void *_data, VkDeviceSize _size, VkDeviceSize _dst_offset = 0u) {
+                if ((cxt.cxt_memory.buffer(_dst_buffer_id).create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%u, %u)\n", SVKFW_WRAPWARN("VKFW::UploadBatch :: copyToBuffer", "buffer is not set as transfer destination:"), _dst_buffer_id.parent.index, _dst_buffer_id.index);
+                SVKFW_ASSERT(_dst_offset + _size <= cxt.cxt_memory.bufferMapping(_dst_buffer_id).range, std::out_of_range, "VKFW::UploadBatch :: copyToBuffer",
+                                "range is out of the buffer: " + std::to_string(_dst_offset + _size) + " > " + std::to_string(cxt.cxt_memory.bufferMapping(_dst_buffer_id).range));
 
-                queue_submit_wrap.setActiveSubmits(_active_submits);
-                queue_submit_wrap.callFunction(_obj_queue, cxt_handler.getObjFence(_fence_id));
-            }
+                wait(); // the staging buffer may still be read by the previous submit
+                const uint8_t *__src = (const uint8_t*)_data;
+                while (_size > 0u) {
+                    if (staging_used == staging_size) { submit(); wait(); }
 
-            uint32_t AcquireNextImageKHR(SemaphoreId _semaphore_id, FenceId _fence_id = FenceId(), uint64_t _timeout = UINT64_MAX) {
-                VkFence __fence = cxt_handler.getObjFence(_fence_id);
-                uint32_t __image_index = UINT32_MAX;
+                    VkDeviceSize __part = std::min(_size, staging_size - staging_used);
+                    memcpy(staging_ptr + staging_used, __src, __part);
 
-                VkResult __result = vkAcquireNextImageKHR(cxt_handler.getObjDevice(), cxt_handler.getObjSwapchainKHR(),
-                                                          _timeout, cxt_handler.getObjSemaphore(_semaphore_id), __fence, &__image_index);
+                    Region __region;
+                    __region.dst_buffer_id = _dst_buffer_id;
+                    __region.copy.srcOffset = staging_used;
+                    __region.copy.dstOffset = _dst_offset;
+                    __region.copy.size      = __part;
+                    regions.push_back(__region);
 
-                // Note: with VK_SUBOPTIMAL_KHR the image is acquired and the semaphore/fence will be signaled,
-                //       so the frame is rendered as usual; the swapchain is recreated after presentation.
-                if (__result == VK_ERROR_OUT_OF_DATE_KHR) {
-                    waitForRequiredQueues(_timeout);
-                    cxt_handler.cxt_ptr->cxt_swapchain.recreate();
-                    __image_index = UINT32_MAX;
+                    staging_used += __part;
+                    __src        += __part;
+                    _dst_offset  += __part;
+                    _size        -= __part;
                 }
-                else if (__result != VK_SUCCESS && __result != VK_SUBOPTIMAL_KHR)
-                    throw std::runtime_error(SVKFW_WRAPERR("VKFW::SwapchainHandler :: AcquireNextImageKHR", "Failed to acquire next swapchain image"));
-
-                return __image_index;
             }
 
-            void UpdateDescriptorSets() {
-                update_descr_sets.callFunction(cxt_handler.getObjDevice());
-            }
-            
-            uint32_t GetSwapchainImagesKHR() {
-                return cxt_handler.cxt_ptr->cxt_swapchain.getSwapchainImageCount();
-            }
+            // Records and submits all collected copies; returns the fence signaled when they are done (none if there was nothing to submit)
+            FenceId submit() {
+                if (regions.empty()) return FenceId();
+                cxt.cxt_memory.flushBuffer(staging_buffer_id, 0u, staging_used);
 
-        // Scenarios
+                CommandRecorder __rec(cxt, cmd_buffer_id);
+                __rec.reset();
+                __rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                for (uint32_t i = 0u; i < regions.size(); ++i)
+                    __rec.copyBuffer(staging_buffer_id, regions[i].dst_buffer_id, regions[i].copy);
+                __rec.end();
 
-            void waitForRequiredQueues(uint64_t _timeout = UINT64_MAX) {
-                auto __obj_queues = cxt_handler.getObjsQueue(wait_queues_for_swapchain);
-                for (auto queue : __obj_queues)  vkQueueWaitIdle(queue);
-            }
+                SubmitDesc __submit;
+                __submit.commands(cmd_buffer_id);
+                cxt.submit(queue_id, __submit, fence_id);
 
-            void setWholeQueuePresentStruct(Span<SemaphoreId> _wait_semaphores_id,
-                                            Span<uint32_t> _image_indices, bool _use_results = false) {
-                InlineArray<VkSemaphore> __obj_semaphores(_wait_semaphores_id.size());
-                cxt_handler.fillObjsSemaphore(_wait_semaphores_id, __obj_semaphores);
-                queue_present_wrap.wrap.setWholeStruct(__obj_semaphores, cxt_handler.getObjSwapchainKHR(), _image_indices, _use_results);
-            }
-
-            void writeBufferMemory(CommandHandler &_cmd_handler, QueueId _queue_transfer_id, BufferId _buffer_id, BufferId _staging_buffer_id, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {
-                if ((cxt_handler.cxt_ptr->cxt_memory.buffer(_buffer_id).create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
-                    fprintf(svkfwwarn, "%s (%u, %u) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Buffer with Id"), _buffer_id.parent.index, _buffer_id.index,
-                                                                            "is not set as transfer operation destination point");
-
-                if ((cxt_handler.cxt_ptr->cxt_memory.buffer(_staging_buffer_id).create_info.peek().usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
-                    fprintf(svkfwwarn, "%s (%u, %u) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Staging buffer with Id"), _staging_buffer_id.parent.index, _staging_buffer_id.index,
-                                                                            "is not set as transfer operation source point");
-
-                if ((cxt_handler.cxt_ptr->cxt_memory.chunk(_staging_buffer_id.parent).required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0u)
-                    fprintf(svkfwwarn, "%s (%u, %u) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeBufferMemory", "Staging buffer with Id"), _staging_buffer_id.parent.index, _staging_buffer_id.index,
-                                                                            "cannot be mapped to CPU");
-
-                bool   __call_flush = (cxt_handler.cxt_ptr->cxt_memory.chunk(_staging_buffer_id.parent).required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0u;
-                size_t __staging_buffer_map_size = std::min(_copy_size, cxt_handler.cxt_ptr->cxt_memory.bufferMapping(_staging_buffer_id).range);
-                BarrierHandler      __barrier_h{cxt_handler.cxt_ptr};
-                MemoryMapHandler __buffer_map_h{cxt_handler.cxt_ptr};
-                __buffer_map_h.mapMemoryFromBuffer(_staging_buffer_id, 0u, __staging_buffer_map_size);
-
-                FenceId       __fence_id = cxt_handler.cxt_ptr->cxt_barrier.addFence(false);
-                ContextIndex __submit_ci = queue_submit_wrap.wraps.size();
-
-                queue_submit_wrap.wraps.emplace_back();
-                queue_submit_wrap.wraps[__submit_ci].command_buffers = { _cmd_handler.cmd_buffer };
-                queue_submit_wrap.wraps[__submit_ci].wait_stages = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-
-                VkMappedMemoryRange __mem_range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-                __mem_range.memory = cxt_handler.getObjDeviceMemory(_staging_buffer_id.parent);
-                VkBufferCopy __copy_region{};
-                __copy_region.dstOffset = _dst_offset;
-
-                while (_copy_size > 0u) {
-                    size_t __curr_copy_size = std::min(__staging_buffer_map_size, _copy_size);
-                    __copy_region.size = __curr_copy_size;
-                    _copy_size -= __curr_copy_size;
-
-                    _cmd_handler.BeginCommandBuffer();
-
-                    memcpy(__buffer_map_h.mem_handle.first, (uint8_t*)_copy_data + (__copy_region.dstOffset - _dst_offset), __curr_copy_size);
-                    if (__call_flush) __buffer_map_h.FlushMappedMemoryRanges({ { 0u, __curr_copy_size } });
-                    _cmd_handler.CmdCopyBuffer(_staging_buffer_id, _buffer_id, { __copy_region });
-
-                    _cmd_handler.EndCommandBuffer();
-
-                    QueueSubmit(cxt_handler.getObjQueue(_queue_transfer_id), {_cmd_handler.cmd_buffer}, {__submit_ci}, __fence_id);
-                    __barrier_h.WaitForFences({__fence_id});
-                    __barrier_h.  ResetFences({__fence_id});
-
-                    _cmd_handler.ResetCommandBuffer();
-                    __copy_region.dstOffset += __curr_copy_size;
-                }
-                cxt_handler.cxt_ptr->cxt_barrier.destroyFence(__fence_id);
-                queue_submit_wrap.wraps.pop_back();
+                regions.clear();
+                is_submitted = true;
+                return fence_id;
             }
 
-            // TODO: writeImageMemory for image types
+            // Waits for the submitted copies; after it the staging buffer is free again
+            void wait() {
+                if (!is_submitted) return;
+                cxt.cxt_barrier.wait(fence_id);
+                cxt.cxt_barrier.reset(fence_id);
+                is_submitted = false;
+                staging_used = 0u;
+            }
 
-            // void writeImageMemory(ContextIndex2 _image_ci2, ContextIndex2 _staging_buffer_ci2, VkImageLayout _layout, const void *_copy_data, size_t _copy_size, size_t _dst_offset = 0u) {
-            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_image_ci2.first].buffers[_image_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0u)
-            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Image with context index"), _image_ci2.first, _image_ci2.second,
-            //                                                                 "is not set as transfer operation destination point");
+            bool isSubmitted() const { return is_submitted; }
 
-            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffers[_staging_buffer_ci2.second].create_info.wrap.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0u)
-            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
-            //                                                                 "is not set as transfer operation source point");
+        private:
+            struct Region {
+                BufferId     dst_buffer_id;
+                VkBufferCopy copy;
+            };
 
-            //     if ((cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0u)
-            //         fprintf(svkfwwarn, "%s (%d, %d) %s\n", SVKFW_WRAPWARN("VKFW::CommandHandler :: writeImageMemory", "Staging buffer with context index"), _staging_buffer_ci2.first, _staging_buffer_ci2.second,
-            //                                                                 "cannot be mapped to CPU");
+            VulkanContext  &cxt;
+            QueueId         queue_id;
+            CommandBufferId cmd_buffer_id;
+            BufferId        staging_buffer_id;
+            FenceId         fence_id;
 
-            //     bool   __call_flush = (cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].required_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0u;
-            //     size_t __staging_buffer_map_size = std::min(_copy_size, cxt_handler.cxt_ptr->cxt_memory.memory_chunks[_staging_buffer_ci2.first].buffer_maps[_staging_buffer_ci2.second].range);
-            //     BarrierHandler      __barrier_h{cxt_handler.cxt_ptr};
-            //     MemoryMapHandler __buffer_map_h{cxt_handler.cxt_ptr};
-            //     __buffer_map_h.setMemoryChunk(_staging_buffer_ci2.first);
+            uint8_t     *staging_ptr  = nullptr;
+            VkDeviceSize staging_size = 0u;
+            VkDeviceSize staging_used = 0u;
+            bool         is_submitted = false;
+            std::vector<Region> regions;
 
-            //     ContextIndex __memory_map_ci = __buffer_map_h.mapMemoryFromBuffer(_staging_buffer_ci2.second, 0u, __staging_buffer_map_size);
-            //     FenceId           __fence_ci = __barrier_h.cxt_handler.cxt_ptr->cxt_barrier.addFence(false);
-            //     ContextIndex     __submit_ci =   queue_submit_wrap.wraps.size();
-
-            //     queue_submit_wrap.wraps.emplace_back();
-            //     queue_submit_wrap.wraps[__submit_ci].command_buffers = {cmd_buffer};
-            //     queue_submit_wrap.wraps[__submit_ci].wait_stages = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-
-            //     VkMappedMemoryRange __mem_range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-            //     __mem_range.memory = cxt_handler.getObjDeviceMemory(_staging_buffer_ci2.first);
-            //     VkBufferImageCopy __copy_region{};
-            //     __copy_region.dstOffset = _dst_offset;
-
-            //     while (_copy_size > 0u) {
-            //         size_t __curr_copy_size = std::min(__staging_buffer_map_size, _copy_size);
-            //         _copy_size -= __curr_copy_size;
-
-            //         BeginCommandBuffer();
-
-            //         memcpy(__buffer_map_h.handles[__memory_map_ci], _copy_data + (__copy_region.dstOffset - _dst_offset), __curr_copy_size);
-            //         if (__call_flush) __buffer_map_h.FlushMappedMemoryRanges({ { 0u, __curr_copy_size } });
-            //         CmdCopyBufferToImage(_staging_buffer_ci2, _buffer_ci2, { __copy_region });
-
-            //         EndCommandBuffer();
-
-            //         QueueSubmit({__submit_ci}, __fence_ci);
-            //         __barrier_h.WaitForFences({__fence_ci});
-            //         __barrier_h.  ResetFences({__fence_ci});
-
-            //         __copy_region.dstOffset += __curr_copy_size;
-            //     }
-            // }
-        }; // FuncHandler END
+            UploadBatch(const UploadBatch &);
+            UploadBatch& operator=(const UploadBatch &);
+        }; // UploadBatch END
     }; // VKFW END
 }; // Simple END
 

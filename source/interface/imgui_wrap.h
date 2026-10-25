@@ -877,15 +877,15 @@ namespace Simple {
                 ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), _cmd_buffer);
             }
 
-            void initializeContext(const VKFW::ObjGetterHandler &_vkfw_getter, VKFW::QueueFamilyId _qfamily_id,
+            void initializeContext(const VKFW::VulkanContext &_vkfw, VKFW::QueueFamilyId _qfamily_id,
                                    VKFW::QueueId _graphics_queue_id, uint32_t _image_count) {
-                imgui_info.Instance                    = _vkfw_getter.getObjInstance();
-                imgui_info.PhysicalDevice              = _vkfw_getter.getObjPhysicalDevice();
-                imgui_info.Device                      = _vkfw_getter.getObjDevice();
-                imgui_info.QueueFamily                 = _vkfw_getter.getObjQueueFamily(_qfamily_id);
-                imgui_info.Queue                       = _vkfw_getter.getObjQueue(_graphics_queue_id);
-                imgui_info.PipelineInfoMain.RenderPass = _vkfw_getter.getObjRenderPass();
-                // imgui_info.DescriptorPool = _vkfw_getter.getObjDescriptorPool(_ci_descr_pool);
+                imgui_info.Instance                    = _vkfw.cxt_core.instance.handle;
+                imgui_info.PhysicalDevice              = _vkfw.cxt_core.phys_device.handle;
+                imgui_info.Device                      = _vkfw.cxt_core.device.handle;
+                imgui_info.QueueFamily                 = _vkfw.get(_qfamily_id);
+                imgui_info.Queue                       = _vkfw.get(_graphics_queue_id);
+                imgui_info.PipelineInfoMain.RenderPass = _vkfw.cxt_core.render_pass.handle;
+                // imgui_info.DescriptorPool = _vkfw.get(_ci_descr_pool);
                 imgui_info.MinImageCount = getMinImageCount();
                 imgui_info.ImageCount = std::max(_image_count, getMinImageCount());
                 imgui_info.DescriptorPoolSize = getMinPoolSize();

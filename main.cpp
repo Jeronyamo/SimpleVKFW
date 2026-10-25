@@ -98,17 +98,16 @@ int main(int argc, char **argv) {
 
 ////  VKFW
 
-    Simple::VKFW::ObjGetterHandler vkfw_getter;
-    Simple::VKFW::FuncHandler func_handler;
+    Simple::VKFW::VulkanContext vk;
 
     // Instance
-    Simple::VKFW::cxt_vkfw.cxt_core.setDefaultApplicationInfo();
-    Simple::VKFW::cxt_vkfw.cxt_core.activateDebug();
+    vk.cxt_core.setDefaultApplicationInfo();
+    vk.cxt_core.activateDebug();
     if (Simple::VKFW::Util::allInstanceLayersAvailable({{"VK_LAYER_LUNARG_monitor"}})) // the layer isn't shipped with newer SDKs
-        Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addLayers({{"VK_LAYER_LUNARG_monitor"}});
-    Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addExtGLFW();
-    Simple::VKFW::cxt_vkfw.cxt_core.instance.create_info.addExtensions({{ VK_KHR_SURFACE_EXTENSION_NAME }});
-    Simple::VKFW::cxt_vkfw.cxt_core.createInstance();
+        vk.cxt_core.instance.create_info.addLayers({{"VK_LAYER_LUNARG_monitor"}});
+    vk.cxt_core.instance.create_info.addExtGLFW();
+    vk.cxt_core.instance.create_info.addExtensions({{ VK_KHR_SURFACE_EXTENSION_NAME }});
+    vk.cxt_core.createInstance();
 
     {
         Simple::vec4u api_version;
@@ -117,265 +116,257 @@ int main(int argc, char **argv) {
     }
 
     // Debug messenger
-    Simple::VKFW::cxt_vkfw.cxt_core.createDebugUtilsMessenger();
+    vk.cxt_core.createDebugUtilsMessenger();
 
     // Physical device
-    Simple::VKFW::cxt_vkfw.cxt_core.loadPhysicalDeviceInfo();
-    Simple::VKFW::cxt_vkfw.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
+    vk.cxt_core.loadPhysicalDeviceInfo();
+    vk.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
 
     // Queue family
-    QueueFamilyId ci_qfam_graphics = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
-    QueueFamilyId ci_qfam_transfer = Simple::VKFW::cxt_vkfw.cxt_core.addQueueFamily();
-    auto ce_qfam_graphics = vkfw_getter.shortcutObjQueueFamily(ci_qfam_graphics);
-    auto ce_qfam_transfer = vkfw_getter.shortcutObjQueueFamily(ci_qfam_transfer);
+    QueueFamilyId ci_qfam_graphics = vk.cxt_core.addQueueFamily();
+    QueueFamilyId ci_qfam_transfer = vk.cxt_core.addQueueFamily();
+    Simple::VKFW::Object::QueueFamily &qfam_graphics = vk.cxt_core.queueFamily(ci_qfam_graphics);
+    Simple::VKFW::Object::QueueFamily &qfam_transfer = vk.cxt_core.queueFamily(ci_qfam_transfer);
 
-    Simple::VKFW::cxt_vkfw.cxt_core.loadQueueFamiliesInfo(); // TODO: optimize
+    vk.cxt_core.loadQueueFamiliesInfo(); // TODO: optimize
 
-    ce_qfam_graphics->select_info.selectWithTest(Simple::VKFW::Util::SelectQueueFamily::testSurfAndGraphics);
-    ce_qfam_transfer->select_info.selectWithRank(Simple::VKFW::Util::SelectQueueFamily::rankTransfer);
+    qfam_graphics.select_info.selectWithTest(Simple::VKFW::Util::SelectQueueFamily::testSurfAndGraphics);
+    qfam_transfer.select_info.selectWithRank(Simple::VKFW::Util::SelectQueueFamily::rankTransfer);
 
-    ce_qfam_graphics->createObject(); // actually it is selected, not created
-    ce_qfam_transfer->createObject(); // actually it is selected, not created
+    qfam_graphics.createObject(); // actually it is selected, not created
+    qfam_transfer.createObject(); // actually it is selected, not created
 
-    SVKFW_ASSERT(vkfw_getter.getObjQueueFamily(ci_qfam_graphics) != vkfw_getter.getObjQueueFamily(ci_qfam_transfer),
+    SVKFW_ASSERT(vk.get(ci_qfam_graphics) != vk.get(ci_qfam_transfer),
                     std::runtime_error, "main()", "Transfer and Graphics queue families are the same");
 
     // Logical device
     const uint32_t QUEUES_COUNT_GRAPHICS = 2u;
     const uint32_t QUEUES_COUNT_TRANSFER = 1u;
-    Simple::VKFW::cxt_vkfw.cxt_core.setQueueFamilyQueueCount(ci_qfam_graphics, QUEUES_COUNT_GRAPHICS);
-    Simple::VKFW::cxt_vkfw.cxt_core.setQueueFamilyQueueCount(ci_qfam_transfer, QUEUES_COUNT_TRANSFER);
-    Simple::VKFW::cxt_vkfw.cxt_core.setDeviceQueueInfo();
+    vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_graphics, QUEUES_COUNT_GRAPHICS);
+    vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_transfer, QUEUES_COUNT_TRANSFER);
+    vk.cxt_core.setDeviceQueueInfo();
 
-    Simple::VKFW::cxt_vkfw.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
-    Simple::VKFW::cxt_vkfw.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
-    Simple::VKFW::cxt_vkfw.cxt_core.createDevice();
+    vk.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
+    vk.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
+    vk.cxt_core.createDevice();
 
     // Queue
-    Simple::VKFW::cxt_vkfw.cxt_core.acquireQueues();
+    vk.cxt_core.acquireQueues();
     QueueId ci_queue_graphics{ci_qfam_graphics, 0u};
     QueueId ci_queue_present {ci_qfam_graphics, 1u};
     QueueId ci_queue_transfer{ci_qfam_transfer, 0u};
 
-    Simple::VKFW::cxt_vkfw.initNoncoreContexts();
+    vk.initNoncoreContexts();
 
     // Surface
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.setWindow(main_window);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.createSurface();
+    vk.cxt_swapchain.setWindow(main_window);
+    vk.cxt_swapchain.createSurface();
 
 
 // Render pass:
     // Attachment description
-    ContextIndex ci_attachment = Simple::VKFW::cxt_vkfw.cxt_core.addSctRenderPassAttachment();
-    auto         ce_attachment = vkfw_getter.shortcutSctRenderPassAttachment(ci_attachment);
+    ContextIndex ci_attachment = vk.cxt_core.addSctRenderPassAttachment();
+    auto         ce_attachment = vk.cxt_core.render_pass.create_info.shortcutAttachment(ci_attachment);
 
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.pickSwapchainImageFormat();
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
+    vk.cxt_swapchain.pickSwapchainImageFormat();
+    vk.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
     ce_attachment->edit().samples = VK_SAMPLE_COUNT_1_BIT;
     ce_attachment->setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR,     VK_ATTACHMENT_STORE_OP_STORE);
     ce_attachment->setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
     ce_attachment->setLayouts   (VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     // Subpass description
-    ContextIndex ci_subpass_descr = Simple::VKFW::cxt_vkfw.cxt_core.addSctRenderPassSubpassDescription();
-    auto         ce_subpass_descr = vkfw_getter.shortcutSctRenderPassSubpassDescription(ci_subpass_descr);
+    ContextIndex ci_subpass_descr = vk.cxt_core.addSctRenderPassSubpassDescription();
+    auto         ce_subpass_descr = vk.cxt_core.render_pass.create_info.shortcutSubpassDescription(ci_subpass_descr);
 
     ce_subpass_descr->addColorAttachment(0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ce_subpass_descr->edit().pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
 
     // Subpass dependency
-    ContextIndex ci_subpass_dep = Simple::VKFW::cxt_vkfw.cxt_core.addSctRenderPassSubpassDependency();
-    auto         ce_subpass_dep = vkfw_getter.shortcutSctRenderPassSubpassDependency(ci_subpass_dep);
+    ContextIndex ci_subpass_dep = vk.cxt_core.addSctRenderPassSubpassDependency();
+    auto         ce_subpass_dep = vk.cxt_core.render_pass.create_info.shortcutSubpassDependency(ci_subpass_dep);
     ce_subpass_dep->setSubpasses(VK_SUBPASS_EXTERNAL, 0u);
     ce_subpass_dep->setSrcMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
     ce_subpass_dep->setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
-    Simple::VKFW::cxt_vkfw.cxt_core.createRenderPass();
+    vk.cxt_core.createRenderPass();
 
 
 // Swapchain:
     // Swapchain
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.setSwapchainSurfaceCapabilities();
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().imageArrayLayers = 1;
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.swapchain.create_info.edit().presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.setSwapchainExtentFromWindow();
-    // Simple::VKFW::cxt_vkfw.cxt_swapchain.pickSwapchainImageFormat();
+    vk.cxt_swapchain.setSwapchainSurfaceCapabilities();
+    vk.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
+    vk.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    vk.cxt_swapchain.swapchain.create_info.edit().imageArrayLayers = 1;
+    vk.cxt_swapchain.swapchain.create_info.edit().compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    vk.cxt_swapchain.swapchain.create_info.edit().presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    vk.cxt_swapchain.setSwapchainExtentFromWindow();
+    // vk.cxt_swapchain.pickSwapchainImageFormat();
 
     // Swapchain image views
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.setComponents(); // set color components (identity by default)
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.image_view_wrap.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
+    vk.cxt_swapchain.image_view_wrap.setComponents(); // set color components (identity by default)
+    vk.cxt_swapchain.image_view_wrap.setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+    vk.cxt_swapchain.image_view_wrap.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
 
     // Swapchain framebuffers
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.framebuffer_wrap.edit().layers = 1u;
+    vk.cxt_swapchain.framebuffer_wrap.edit().layers = 1u;
 
-    Simple::VKFW::cxt_vkfw.cxt_swapchain.createSwapchainWithDependencies(); // creates swapchain, its images and framebuffers
+    vk.cxt_swapchain.createSwapchainWithDependencies(); // creates swapchain, its images and framebuffers
 
 
 // Memory-related objects (buffers and images):
     // Staging/Uniform buffers: host-coherent memory
-    MemoryId     ci_memory_staging = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    MemoryId     ci_memory_uniform = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    auto         ce_memory_staging = vkfw_getter.shortcutSctMemoryChunk(ci_memory_staging);
-    auto         ce_memory_uniform = vkfw_getter.shortcutSctMemoryChunk(ci_memory_uniform);
+    MemoryId     ci_memory_staging = vk.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    MemoryId     ci_memory_uniform = vk.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     BufferId ci_buffer_uniform[FRAMES_IN_FLIGHT], ci_buffer_staging;
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
-        ci_buffer_uniform[i] = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_uniform, sizeof(UniformBufferObjectCamera));
-        Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_uniform[i], { ci_qfam_graphics },
+        ci_buffer_uniform[i] = vk.cxt_memory.addChunkBuffer(ci_memory_uniform, sizeof(UniformBufferObjectCamera));
+        vk.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_uniform[i], { ci_qfam_graphics },
                                                                          VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-        Simple::VKFW::cxt_vkfw.cxt_memory.createChunkBuffer(ci_buffer_uniform[i]);
+        vk.cxt_memory.createChunkBuffer(ci_buffer_uniform[i]);
     }
 
-    ci_buffer_staging = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_staging, STAGING_BUFFER_SIZE);
-    Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_staging, { ci_qfam_transfer },
+    ci_buffer_staging = vk.cxt_memory.addChunkBuffer(ci_memory_staging, STAGING_BUFFER_SIZE);
+    vk.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_staging, { ci_qfam_transfer },
                                                                      VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_memory.createChunkBuffer(ci_buffer_staging);
+    vk.cxt_memory.createChunkBuffer(ci_buffer_staging);
 
-    Simple::VKFW::cxt_vkfw.cxt_memory.allocateChunkMemory(ci_memory_staging);
-    Simple::VKFW::cxt_vkfw.cxt_memory.allocateChunkMemory(ci_memory_uniform);
+    vk.cxt_memory.allocateChunkMemory(ci_memory_staging);
+    vk.cxt_memory.allocateChunkMemory(ci_memory_uniform);
 
     // Vertex/Index buffers: device-local memory
-    MemoryId     ci_memory_device_optim = Simple::VKFW::cxt_vkfw.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    auto         ce_memory_device_optim = vkfw_getter.shortcutSctMemoryChunk(ci_memory_device_optim);
+    MemoryId     ci_memory_device_optim = vk.cxt_memory.addMemoryChunk(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     BufferId ci_buffer_vertex, ci_buffer_index;
-    ci_buffer_vertex = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_device_optim, vertices.size() * sizeof(Vertex));
-    Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_vertex, { ci_qfam_graphics },
+    ci_buffer_vertex = vk.cxt_memory.addChunkBuffer(ci_memory_device_optim, vertices.size() * sizeof(Vertex));
+    vk.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_vertex, { ci_qfam_graphics },
                                                                      VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_memory.createChunkBuffer(ci_buffer_vertex);
+    vk.cxt_memory.createChunkBuffer(ci_buffer_vertex);
 
-    ci_buffer_index = Simple::VKFW::cxt_vkfw.cxt_memory.addChunkBuffer(ci_memory_device_optim, indices.size() * sizeof(uint32_t));
-    Simple::VKFW::cxt_vkfw.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_index, { ci_qfam_graphics },
+    ci_buffer_index = vk.cxt_memory.addChunkBuffer(ci_memory_device_optim, indices.size() * sizeof(uint32_t));
+    vk.cxt_memory.setWholeBufferCreateInfoStruct(ci_buffer_index, { ci_qfam_graphics },
                                                                      VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_memory.createChunkBuffer(ci_buffer_index);
+    vk.cxt_memory.createChunkBuffer(ci_buffer_index);
 
-    Simple::VKFW::cxt_vkfw.cxt_memory.allocateChunkMemory(ci_memory_device_optim);
+    vk.cxt_memory.allocateChunkMemory(ci_memory_device_optim);
 
 
 // Descriptors:
     // Descriptor Layout
-    DescriptorSetLayoutId     ci_descr_layout = Simple::VKFW::cxt_vkfw.cxt_descriptor.addLayout();
-    DescriptorLayoutBindingId ci_descr_layout_binding = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
-    auto                      ce_descr_layout_binding = vkfw_getter.shortcutSctDescriptorSetLayoutBinding(ci_descr_layout_binding);
+    DescriptorSetLayoutId     ci_descr_layout = vk.cxt_descriptor.addLayout();
+    DescriptorLayoutBindingId ci_descr_layout_binding = vk.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
 
-    ce_descr_layout_binding->setWholeStruct(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
+    vk.cxt_descriptor.layoutBinding(ci_descr_layout_binding).setWholeStruct(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
 
-    Simple::VKFW::cxt_vkfw.cxt_descriptor.createLayout(ci_descr_layout);
+    vk.cxt_descriptor.createLayout(ci_descr_layout);
 
     // Descriptor Pool
-    DescriptorPoolId ci_descr_pool_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addPool();
-    auto             ce_descr_pool_ubo = vkfw_getter.shortcutObjDescriptorPool(ci_descr_pool_ubo);
+    DescriptorPoolId ci_descr_pool_ubo = vk.cxt_descriptor.addPool();
+    Simple::VKFW::Object::DescriptorPool &descr_pool_ubo = vk.cxt_descriptor.pool(ci_descr_pool_ubo);
 
-    ce_descr_pool_ubo->create_info.edit().maxSets = FRAMES_IN_FLIGHT;
-    ce_descr_pool_ubo->create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FRAMES_IN_FLIGHT);
+    descr_pool_ubo.create_info.edit().maxSets = FRAMES_IN_FLIGHT;
+    descr_pool_ubo.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FRAMES_IN_FLIGHT);
 
-    Simple::VKFW::cxt_vkfw.cxt_descriptor.createPool(ci_descr_pool_ubo);
+    vk.cxt_descriptor.createPool(ci_descr_pool_ubo);
 
     // TODO: sync descriptor sets and pools (1 pool -> multiple sets)
     // Descriptor Sets
-    DescriptorSetsId ci_descr_pool_sets_ubo = Simple::VKFW::cxt_vkfw.cxt_descriptor.addSet();
+    DescriptorSetsId ci_descr_pool_sets_ubo = vk.cxt_descriptor.addSet();
     std::vector<DescriptorSetLayoutId> cis_ubo_set_layouts((size_t)FRAMES_IN_FLIGHT, ci_descr_layout); // we need 'FRAMES_IN_FLIGHT' sets, each with 'ci_descr_layout' layout
-    Simple::VKFW::cxt_vkfw.cxt_descriptor.setAllForSet(ci_descr_pool_sets_ubo, ci_descr_pool_ubo, cis_ubo_set_layouts);
+    vk.cxt_descriptor.setAllForSet(ci_descr_pool_sets_ubo, ci_descr_pool_ubo, cis_ubo_set_layouts);
 
     DescriptorSetId ci_descr_sets_ubo[FRAMES_IN_FLIGHT]{};
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
         ci_descr_sets_ubo[i] = DescriptorSetId(ci_descr_pool_sets_ubo, i);
 
-    Simple::VKFW::cxt_vkfw.cxt_descriptor.createSets(ci_descr_pool_sets_ubo);
+    vk.cxt_descriptor.createSets(ci_descr_pool_sets_ubo);
 
     // Descriptor Sets Update
 
+    std::vector<Simple::VKFW::Struct::StructWrap<VkWriteDescriptorSet>> ubo_writes(FRAMES_IN_FLIGHT);
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
-        auto ce_write_set = func_handler.update_descr_sets.addWriteSet();
-        auto buffer_mapping = vkfw_getter.getSctMemoryMapping(ci_buffer_uniform[i]);
-        // printf("UBO (%d, %d) info: offset %ld, range %ld\n", ci_buffer_uniform[i].parent.index, ci_buffer_uniform[i].index, buffer_mapping.offset, buffer_mapping.range);
-        ce_write_set->addBufferInfo(vkfw_getter.getObjBuffer(ci_buffer_uniform[i]), 0u, buffer_mapping.range);
-        ce_write_set->setScalars(vkfw_getter.getObjDescriptorSet(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
+        ubo_writes[i].addBufferInfo(vk.get(ci_buffer_uniform[i]), 0u, vk.cxt_memory.bufferMapping(ci_buffer_uniform[i]).range);
+        ubo_writes[i].setScalars(vk.get(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
     }
-    func_handler.update_descr_sets.updateWrap();
-    func_handler.UpdateDescriptorSets();
+    vk.cxt_descriptor.updateSets(ubo_writes);
 
 
 // Graphics pipeline:
-    PipelineId ci_graphics_pip = Simple::VKFW::cxt_vkfw.cxt_pipeline.addPipeline();
-    auto ce_graphics_pip = vkfw_getter.shortcutObjPipeline(ci_graphics_pip);
-    ce_graphics_pip->setPipelineType(Simple::VKFW::PipelineType::VKFW_PIPELINE_TYPE_GRAPHICS);
+    PipelineId ci_graphics_pip = vk.cxt_pipeline.addPipeline();
+    // Note: the reference stays valid until another pipeline is added
+    Simple::VKFW::Object::Pipeline &graphics_pip = vk.cxt_pipeline.pipeline(ci_graphics_pip);
+    graphics_pip.setPipelineType(Simple::VKFW::PipelineType::VKFW_PIPELINE_TYPE_GRAPHICS);
 
     // Layout
-    PipelineLayoutId ci_pip_layout = Simple::VKFW::cxt_vkfw.cxt_pipeline.addLayout();
-    Simple::VKFW::cxt_vkfw.cxt_pipeline.setLayoutDescriptorSetLayouts(ci_pip_layout, { ci_descr_layout });
-    Simple::VKFW::cxt_vkfw.cxt_pipeline.createLayout(ci_pip_layout);
+    PipelineLayoutId ci_pip_layout = vk.cxt_pipeline.addLayout();
+    vk.cxt_pipeline.setLayoutDescriptorSetLayouts(ci_pip_layout, { ci_descr_layout });
+    vk.cxt_pipeline.createLayout(ci_pip_layout);
 
     // Shaders
-    ShaderModuleId ci_shader_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
-    ShaderModuleId ci_shader_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShader();
-    vkfw_getter.shortcutObjShaderModule(ci_shader_vert)->create_info.fromFile("./shaders/simple_shader_vert.spv");
-    vkfw_getter.shortcutObjShaderModule(ci_shader_frag)->create_info.fromFile("./shaders/simple_shader_frag.spv");
-    Simple::VKFW::cxt_vkfw.cxt_pipeline.createShader(ci_shader_vert);
-    Simple::VKFW::cxt_vkfw.cxt_pipeline.createShader(ci_shader_frag);
+    ShaderModuleId ci_shader_vert = vk.cxt_pipeline.addShader();
+    ShaderModuleId ci_shader_frag = vk.cxt_pipeline.addShader();
+    vk.cxt_pipeline.shader(ci_shader_vert).create_info.fromFile("./shaders/simple_shader_vert.spv");
+    vk.cxt_pipeline.shader(ci_shader_frag).create_info.fromFile("./shaders/simple_shader_frag.spv");
+    vk.cxt_pipeline.createShader(ci_shader_vert);
+    vk.cxt_pipeline.createShader(ci_shader_frag);
 
     // Shader stage
-    ShaderStageId ci_sstage_vert = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
-    ShaderStageId ci_sstage_frag = Simple::VKFW::cxt_vkfw.cxt_pipeline.addShaderStage(ci_graphics_pip);
+    ShaderStageId ci_sstage_vert = vk.cxt_pipeline.addShaderStage(ci_graphics_pip);
+    ShaderStageId ci_sstage_frag = vk.cxt_pipeline.addShaderStage(ci_graphics_pip);
 
-    auto ce_sstage_vert = vkfw_getter.shortcutSctShaderStage(ci_sstage_vert);
-    ce_sstage_vert->setShaderInfo(vkfw_getter.getObjShaderModule(ci_shader_vert), VK_SHADER_STAGE_VERTEX_BIT,   "main");
-    auto ce_sstage_frag = vkfw_getter.shortcutSctShaderStage(ci_sstage_frag);
-    ce_sstage_frag->setShaderInfo(vkfw_getter.getObjShaderModule(ci_shader_frag), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
+    vk.cxt_pipeline.shaderStage(ci_sstage_vert).setShaderInfo(vk.get(ci_shader_vert), VK_SHADER_STAGE_VERTEX_BIT,   "main");
+    vk.cxt_pipeline.shaderStage(ci_sstage_frag).setShaderInfo(vk.get(ci_shader_frag), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
     // Dynamic state
-    ce_graphics_pip->graphics_create_info_wrap.dynamic_state_wrap.dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    graphics_pip.graphics_create_info_wrap.dynamic_state_wrap.dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
     // Vertex input state
-    ce_graphics_pip->graphics_create_info_wrap.vertex_input_state_wrap.bindings = {{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }};
-    ce_graphics_pip->graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
+    graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.bindings = {{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }};
+    graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
                                                                                       { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) } };
 
     // Input assembly state
-    ce_graphics_pip->graphics_create_info_wrap.input_assembly_state_wrap.setWholeStruct(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
+    graphics_pip.graphics_create_info_wrap.input_assembly_state_wrap.setWholeStruct(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
 
     // Viewport state
     // viewport_state_info.setFromSwapchainExtent(swapchain_extent); // set dynamically
-    ce_graphics_pip->graphics_create_info_wrap.viewport_state_wrap. setScissorsDynamic(1u);
-    ce_graphics_pip->graphics_create_info_wrap.viewport_state_wrap.setViewportsDynamic(1u);
+    graphics_pip.graphics_create_info_wrap.viewport_state_wrap. setScissorsDynamic(1u);
+    graphics_pip.graphics_create_info_wrap.viewport_state_wrap.setViewportsDynamic(1u);
 
     // Rasterization state
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.setDepthBias(false);
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().polygonMode = VK_POLYGON_MODE_FILL;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().cullMode = VK_CULL_MODE_NONE;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    ce_graphics_pip->graphics_create_info_wrap.rasterization_state_wrap.edit().lineWidth = 1.f;
+    graphics_pip.graphics_create_info_wrap.rasterization_state_wrap.setDepthBias(false);
+    graphics_pip.graphics_create_info_wrap.rasterization_state_wrap.edit().polygonMode = VK_POLYGON_MODE_FILL;
+    graphics_pip.graphics_create_info_wrap.rasterization_state_wrap.edit().cullMode = VK_CULL_MODE_NONE;
+    graphics_pip.graphics_create_info_wrap.rasterization_state_wrap.edit().frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    graphics_pip.graphics_create_info_wrap.rasterization_state_wrap.edit().lineWidth = 1.f;
 
     // Multisample state
-    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.edit().rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    ce_graphics_pip->graphics_create_info_wrap.multisample_state_wrap.edit().minSampleShading = 1.f;
+    graphics_pip.graphics_create_info_wrap.multisample_state_wrap.edit().rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    graphics_pip.graphics_create_info_wrap.multisample_state_wrap.edit().minSampleShading = 1.f;
 
     // Color blend state
-    ce_graphics_pip->graphics_create_info_wrap.color_blend_state_wrap.setLogicOp(VK_LOGIC_OP_COPY);
-    ce_graphics_pip->graphics_create_info_wrap.color_blend_state_wrap.attachments_wrap.emplace_back(); // has default configuration: "Porter-Duff blend over"
+    graphics_pip.graphics_create_info_wrap.color_blend_state_wrap.setLogicOp(VK_LOGIC_OP_COPY);
+    graphics_pip.graphics_create_info_wrap.color_blend_state_wrap.attachments_wrap.emplace_back(); // has default configuration: "Porter-Duff blend over"
 
     // Graphics pipeline
-    vkfw_getter.shortcutObjPipeline(ci_graphics_pip)->graphics_create_info_wrap.setPipelineStates(0xfffu);
-    Simple::VKFW::cxt_vkfw.cxt_pipeline.createPipeline(ci_graphics_pip, 0u, ci_pip_layout);
+    graphics_pip.graphics_create_info_wrap.setPipelineStates(0xfffu);
+    vk.cxt_pipeline.createPipeline(ci_graphics_pip, 0u, ci_pip_layout);
 
     // Command pool
-    Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
-    CommandPoolId ci_pool_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
-    CommandPoolId ci_pool_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdPool();
-    Simple::VKFW::cxt_vkfw.cxt_command.createCmdPool(ci_pool_drawing, ci_qfam_graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    Simple::VKFW::cxt_vkfw.cxt_command.createCmdPool(ci_pool_staging, ci_qfam_transfer, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    vk.cxt_command.addCmdPool();
+    CommandPoolId ci_pool_drawing = vk.cxt_command.addCmdPool();
+    CommandPoolId ci_pool_staging = vk.cxt_command.addCmdPool();
+    vk.cxt_command.createCmdPool(ci_pool_drawing, ci_qfam_graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    vk.cxt_command.createCmdPool(ci_pool_staging, ci_qfam_transfer, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     // Command buffers
-    CommandBuffersId ci_cmd_buffers_staging = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
-    CommandBuffersId ci_cmd_buffers_drawing = Simple::VKFW::cxt_vkfw.cxt_command.addCmdBuffer();
+    CommandBuffersId ci_cmd_buffers_staging = vk.cxt_command.addCmdBuffer();
+    CommandBuffersId ci_cmd_buffers_drawing = vk.cxt_command.addCmdBuffer();
 
-    Simple::VKFW::cxt_vkfw.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_staging, ci_pool_staging, 1);
-    Simple::VKFW::cxt_vkfw.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_drawing, ci_pool_drawing, FRAMES_IN_FLIGHT);
+    vk.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_staging, ci_pool_staging, 1);
+    vk.cxt_command.createCmdBuffersPrimary(ci_cmd_buffers_drawing, ci_pool_drawing, FRAMES_IN_FLIGHT);
 
     CommandBufferId ci_cmdbuf_staging(ci_cmd_buffers_staging, 0u);
     CommandBufferId ci_cmdbuf_drawing[FRAMES_IN_FLIGHT];
@@ -391,54 +382,37 @@ int main(int argc, char **argv) {
     std::vector<SemaphoreId> ci_sem_render_finished;
 
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
-        ci_sem_image_available[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore();
-    while (ci_sem_render_finished.size() < Simple::VKFW::cxt_vkfw.cxt_swapchain.getSwapchainImageCount())
-        ci_sem_render_finished.push_back(Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore());
+        ci_sem_image_available[i] = vk.cxt_barrier.addSemaphore();
+    while (ci_sem_render_finished.size() < vk.cxt_swapchain.getSwapchainImageCount())
+        ci_sem_render_finished.push_back(vk.cxt_barrier.addSemaphore());
 
     // Fences
     FenceId ci_fen_in_flight[FRAMES_IN_FLIGHT]{};
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i)
-        ci_fen_in_flight[i] = Simple::VKFW::cxt_vkfw.cxt_barrier.addFence(true);
+        ci_fen_in_flight[i] = vk.cxt_barrier.addFence(true);
 
 
 // Other preparations:
-    func_handler.setQueuesToWait({ci_queue_graphics, ci_queue_present});
-
-    // Copy static vertex/index data
-    Simple::VKFW::CommandHandler cmd_handler;
-
-    cmd_handler.setCmdBuffer(ci_cmdbuf_staging);
-
-    func_handler.writeBufferMemory(cmd_handler, ci_queue_transfer, ci_buffer_vertex, ci_buffer_staging, vertices.data(), vertices.size() * sizeof(Vertex  ));
-    func_handler.writeBufferMemory(cmd_handler, ci_queue_transfer, ci_buffer_index , ci_buffer_staging,  indices.data(),  indices.size() * sizeof(uint32_t));
-
-    cmd_handler.setCmdBuffer(ci_cmdbuf_drawing[0]);
+    // Copy static vertex/index data (both copies go in one submit)
+    {
+        Simple::VKFW::UploadBatch upload(vk, ci_queue_transfer, ci_cmdbuf_staging, ci_buffer_staging);
+        upload.copyToBuffer(ci_buffer_vertex, vertices.data(), vertices.size() * sizeof(Vertex  ));
+        upload.copyToBuffer(ci_buffer_index ,  indices.data(),  indices.size() * sizeof(uint32_t));
+        upload.submit();
+        upload.wait();
+    }
 
     // ImGUI init
-    main_window_handler.imgui_handler.initializeContext(vkfw_getter, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT);
+    main_window_handler.imgui_handler.initializeContext(vk, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT);
     main_window_handler.imgui_handler.enableForSVKFWWindow(main_window, false);
 
 
 // Main loop:
     // Preparations
 
-    // Note: 'image_index' matches SwapchainContext's 'ci_framebuffer' and 'ci_image_view'
-    uint32_t current_frame = 0u, image_index = UINT32_MAX;
-    Simple::VKFW::BarrierHandler barrier_handler;
-
-
-    Simple::VKFW::MemoryMapHandler ubo_memory_handler{};
-    ubo_memory_handler.mapMemoryFromResources(ci_buffer_uniform, {});
-
-    // Begin render pass static info
-    cmd_handler.begin_render_pass_wrap.wrap.addClearValue4f({0.f, 0.f, 0.f, 1.f});
-
-    // Queue submit static info
-    func_handler.queue_submit_wrap.wraps.resize(FRAMES_IN_FLIGHT);
-    for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
-        func_handler.queue_submit_wrap.wraps[i].wait_stages   = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-        func_handler.queue_submit_wrap.wraps[i].wait_semaphores = { vkfw_getter.getObjSemaphore(ci_sem_image_available[i]) };
-    }
+    // Note: 'acquired.image_index' matches the swapchain framebuffers and image views
+    uint32_t current_frame = 0u;
+    const VkClearValue clear_color = {{{0.f, 0.f, 0.f, 1.f}}};
 
     // Loop
     while (!main_window.shouldClose()) {
@@ -446,81 +420,73 @@ int main(int argc, char **argv) {
         glfwPollEvents();
         main_view_centered_proj.manualFrameUpdate(main_window_handler.frame_time);
 
-        barrier_handler.WaitForFences({ci_fen_in_flight[current_frame]});
+        vk.cxt_barrier.wait(ci_fen_in_flight[current_frame]);
 
-        image_index = func_handler.AcquireNextImageKHR(ci_sem_image_available[current_frame]); // swapchain recreated in this function if needed
+        Simple::VKFW::AcquireResult acquired = vk.acquireNextImage(ci_sem_image_available[current_frame]);
         // Note: the fence is reset only after successful acquisition, otherwise it would never be signaled again
-        if (image_index == UINT32_MAX) continue;
-        barrier_handler.ResetFences({ci_fen_in_flight[current_frame]});
+        if (acquired.status == Simple::VKFW::VKFW_SWAPCHAIN_OUT_OF_DATE) { vk.recreateSwapchain(); continue; }
+        if (acquired.status == Simple::VKFW::VKFW_SWAPCHAIN_NOT_READY) continue;
+        vk.cxt_barrier.reset(ci_fen_in_flight[current_frame]);
 
         // Swapchain image count may grow after recreation
-        while (ci_sem_render_finished.size() < Simple::VKFW::cxt_vkfw.cxt_swapchain.getSwapchainImageCount())
-            ci_sem_render_finished.push_back(Simple::VKFW::cxt_vkfw.cxt_barrier.addSemaphore());
+        while (ci_sem_render_finished.size() < vk.cxt_swapchain.getSwapchainImageCount())
+            ci_sem_render_finished.push_back(vk.cxt_barrier.addSemaphore());
 
         // Update uniform buffers (per frame in flight: the buffer of this frame is not used by the GPU after the fence wait)
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
-        ubo_memory_handler.copyToBufferMap(ci_buffer_uniform[current_frame], &ubo_camera, 0, sizeof(ubo_camera));
+        vk.cxt_memory.writeBuffer(ci_buffer_uniform[current_frame], &ubo_camera, sizeof(ubo_camera));
 
 
-        // Set command buffer
-        cmd_handler.setCmdBuffer(ci_cmdbuf_drawing[current_frame]);
-        cmd_handler.ResetCommandBuffer();
+        // Record command buffer
+        Simple::VKFW::CommandRecorder rec(vk, ci_cmdbuf_drawing[current_frame]);
+        rec.reset();
+        rec.begin();
 
-        // Begin recording command buffer
-        cmd_handler.BeginCommandBuffer();
+        rec.beginRenderPass(vk.cxt_swapchain.framebuffer(acquired.image_index), vk.cxt_swapchain.extent(), clear_color);
 
-        // Begin render pass
-        cmd_handler.setBeginRenderPassSwapchainRenderArea();
-        cmd_handler.setBeginRenderPassSwapchainFramebuffer(image_index);
-        cmd_handler.CmdBeginRenderPass(VK_SUBPASS_CONTENTS_INLINE);
-
-        cmd_handler.CmdBindPipeline(ci_graphics_pip);
-        cmd_handler.CmdBindVertexBuffers({ci_buffer_vertex});
-        cmd_handler.CmdBindIndexBuffer(ci_buffer_index);
+        rec.bindPipeline(ci_graphics_pip);
+        rec.bindVertexBuffers(ci_buffer_vertex);
+        rec.bindIndexBuffer(ci_buffer_index);
 
         // Bind descriptor set (uniform buffer)
-        cmd_handler.CmdBindDescriptorSets(ci_pip_layout, VK_PIPELINE_BIND_POINT_GRAPHICS, { ci_descr_sets_ubo[current_frame] });
+        rec.bindDescriptorSets(ci_pip_layout, ci_descr_sets_ubo[current_frame]);
 
         // Set viewport, scissor
-        cmd_handler.cmdSetViewportScissorFromSwapchainExtent();
+        rec.setViewportScissor(vk.cxt_swapchain.extent());
 
         // Draw
-        // cmd_handler.CmdClearAttachments();
-        // cmd_handler.CmdDraw(vertices.size(), 1);
+        // rec.draw(vertices.size());
         // Draw (indexed)
-        cmd_handler.CmdDrawIndexed(indices.size(), 1);
+        rec.drawIndexed(indices.size());
 
         // Draw GUI
         main_window_handler.imgui_handler.newFrame();
         main_window_handler.imgui_handler.render();
-        main_window_handler.imgui_handler.fillCommandBuffer(cmd_handler.cmd_buffer);
+        main_window_handler.imgui_handler.fillCommandBuffer(rec.handle());
 
-        // End render pass
-        cmd_handler.CmdEndRenderPass();
-
-        // End recording command buffer
-        cmd_handler.EndCommandBuffer();
+        rec.endRenderPass();
+        rec.end();
 
 
         // Submit
-        func_handler.queue_submit_wrap.wraps[current_frame].signal_semaphores = { vkfw_getter.getObjSemaphore(ci_sem_render_finished[image_index]) };
-        func_handler.QueueSubmit(ci_queue_graphics, {ci_cmdbuf_drawing[current_frame]}, {current_frame}, ci_fen_in_flight[current_frame]);
+        Simple::VKFW::SubmitDesc submit;
+        submit.wait(ci_sem_image_available[current_frame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+              .commands(ci_cmdbuf_drawing[current_frame])
+              .signal(ci_sem_render_finished[acquired.image_index]);
+        vk.submit(ci_queue_graphics, submit, ci_fen_in_flight[current_frame]);
 
         // Present
-        func_handler.setWholeQueuePresentStruct({ ci_sem_render_finished[image_index] }, { image_index });
-        func_handler.QueuePresentKHR(ci_queue_present);
+        Simple::VKFW::SwapchainStatus presented = vk.present(ci_queue_present, ci_sem_render_finished[acquired.image_index], acquired.image_index);
+        if (presented != Simple::VKFW::VKFW_SWAPCHAIN_OK)
+            vk.recreateSwapchain();
 
         current_frame = (current_frame + 1) % FRAMES_IN_FLIGHT;
     } // main loop END
 
-    vkDeviceWaitIdle(vkfw_getter.getObjDevice());
-    for (uint32_t curr_frame = 0u; curr_frame < FRAMES_IN_FLIGHT; ++curr_frame) {
-        barrier_handler.WaitForFences({ci_fen_in_flight[curr_frame]});
-        barrier_handler.ResetFences({ci_fen_in_flight[curr_frame]});
-        cmd_handler.setCmdBuffer({ci_cmdbuf_drawing[curr_frame]});
-        cmd_handler.ResetCommandBuffer();
-    }
+    vkDeviceWaitIdle(vk.cxt_core.device.handle);
+    for (uint32_t curr_frame = 0u; curr_frame < FRAMES_IN_FLIGHT; ++curr_frame)
+        Simple::VKFW::CommandRecorder(vk, ci_cmdbuf_drawing[curr_frame]).reset();
 
     // ImGUI widgets destruction
     delete main_window_handler.imgui_handler.widgets[1];
@@ -528,7 +494,7 @@ int main(int argc, char **argv) {
     main_window_handler.imgui_handler.destroyContext();
 
     // Destruction
-    Simple::VKFW::cxt_vkfw.destroyContext();
+    vk.destroyContext();
     main_window.destroy();
     Simple::glfw_init.terminate();
 
