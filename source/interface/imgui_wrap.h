@@ -879,14 +879,15 @@ namespace Simple {
             }
 
             void initializeContext(const VKFW::VulkanContext &_vkfw, VKFW::QueueFamilyId _qfamily_id,
-                                   VKFW::QueueId _graphics_queue_id, uint32_t _image_count) {
+                                   VKFW::QueueId _graphics_queue_id, uint32_t _image_count, VkRenderPass _render_pass = VK_NULL_HANDLE) {
                 imgui_info.Instance                    = _vkfw.cxt_core.instance.handle;
                 imgui_info.PhysicalDevice              = _vkfw.cxt_core.phys_device.handle;
                 imgui_info.Device                      = _vkfw.cxt_core.device.handle;
                 imgui_info.QueueFamily                 = _vkfw.get(_qfamily_id);
                 imgui_info.Queue                       = _vkfw.get(_graphics_queue_id);
                 imgui_info.ApiVersion                  = _vkfw.cxt_core.apiVersion();
-                // Note: ImGui draws inside the rendering of the swapchain image ('CommandRecorder::beginSwapchainRendering')
+                // Note: ImGui draws inside the rendering of the swapchain image ('CommandRecorder::beginSwapchainRendering' or a graph pass);
+                //       without dynamic rendering it uses '_render_pass' (e.g. 'Graph::RenderGraph::renderPass'), or the render pass of the core context
                 if (_vkfw.cxt_core.profile.dynamic_rendering) {
                     color_format = _vkfw.cxt_swapchain.format();
                     imgui_info.UseDynamicRendering = true;
@@ -895,7 +896,7 @@ namespace Simple {
                     imgui_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &color_format;
                 }
                 else
-                    imgui_info.PipelineInfoMain.RenderPass = _vkfw.cxt_core.render_pass.handle;
+                    imgui_info.PipelineInfoMain.RenderPass = _render_pass != VK_NULL_HANDLE ? _render_pass : _vkfw.cxt_core.render_pass.handle;
                 // imgui_info.DescriptorPool = _vkfw.get(_ci_descr_pool);
                 imgui_info.MinImageCount = getMinImageCount();
                 imgui_info.ImageCount = std::max(_image_count, getMinImageCount());

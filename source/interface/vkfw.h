@@ -306,7 +306,7 @@ namespace Simple {
                 Object::  SurfaceKHR   surface;
                 std::vector<VkImage>       images;
                 std::vector<VkImageView> image_views;
-                std::vector<VkFramebuffer> framebuffers; // Note: created only without dynamic rendering
+                std::vector<VkFramebuffer> framebuffers; // Note: created only without dynamic rendering, if 'ContextCore::render_pass' is created
                 GLFWwindow *window = nullptr;
 
                 Struct::StructWrap<  VkImageViewCreateInfo>  image_view_wrap;
@@ -344,7 +344,8 @@ namespace Simple {
                     }
                 }
                 void createFramebuffers() {
-                    if (cxt_core->profile.dynamic_rendering) return;
+                    // Note: not needed if the render passes are elsewhere (e.g. in 'Graph::RenderGraph')
+                    if (cxt_core->profile.dynamic_rendering || cxt_core->render_pass.handle == VK_NULL_HANDLE) return;
                     framebuffers.resize(image_views.size());
                     framebuffer_wrap.edit().renderPass = cxt_core->render_pass.handle;
 
@@ -640,13 +641,19 @@ namespace Simple {
 
                 void createPipeline(PipelineId _pipeline_id, uint32_t _subpass, PipelineLayoutId _layout_id, PipelineCacheId _cache_id = PipelineCacheId(),
                                     VkDeferredOperationKHR _deferred_op = VK_NULL_HANDLE) {
+                    createPipeline(_pipeline_id, cxt_core->render_pass.handle, _subpass, _layout_id, _cache_id, _deferred_op);
+                }
+                // Note: '_render_pass' is used only without dynamic rendering (e.g. 'Graph::RenderGraph::renderPass')
+                void createPipeline(PipelineId _pipeline_id, VkRenderPass _render_pass, uint32_t _subpass, PipelineLayoutId _layout_id,
+                                    PipelineCacheId _cache_id = PipelineCacheId(), VkDeferredOperationKHR _deferred_op = VK_NULL_HANDLE) {
+                    if (cxt_core->profile.dynamic_rendering) _render_pass = VK_NULL_HANDLE;
                     Object::Pipeline &__pipeline = pipelines.get(_pipeline_id);
                     VkPipelineLayout  __layout   = layouts  .get(_layout_id).handle;
                     switch (__pipeline.pipeline_type) {
                         case VKFW_PIPELINE_TYPE_GRAPHICS:
                             // Note: with dynamic rendering the attachment formats are set through 'graphics_create_info_wrap.rendering_wrap'
                             __pipeline.  graphics_create_info_wrap.use_dynamic_rendering = cxt_core->profile.dynamic_rendering;
-                            __pipeline.  graphics_create_info_wrap.edit().renderPass = cxt_core->profile.dynamic_rendering ? VK_NULL_HANDLE : cxt_core->render_pass.handle;
+                            __pipeline.  graphics_create_info_wrap.edit().renderPass = _render_pass;
                             __pipeline.  graphics_create_info_wrap.edit().subpass    = _subpass;
 
                             __pipeline.  graphics_create_info_wrap.edit().layout = __layout; break;
@@ -657,7 +664,7 @@ namespace Simple {
                         default: break;
                     }
                     VkPipelineCache __pipeline_cache = _cache_id.isNone() ? VK_NULL_HANDLE : caches.get(_cache_id).handle;
-                    __pipeline.createObject(cxt_core->device.handle, cxt_core->render_pass.handle, _subpass,
+                    __pipeline.createObject(cxt_core->device.handle, _render_pass, _subpass,
                                             _deferred_op, __pipeline_cache, cxt_core->alloc_cb.get());
                 }
                 void createCache (PipelineCacheId _cache_id) {

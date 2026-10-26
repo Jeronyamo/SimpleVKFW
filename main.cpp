@@ -5,6 +5,7 @@
 #include "main/image.h"
 #include "main/imgui_events.h"
 #include "interface/vkfw.h"
+#include "interface/vkfw_graph.h"
 #include "interface/imgui_wrap.h"
 
 #include <iostream>
@@ -173,40 +174,10 @@ int main(int argc, char **argv) {
     vk.cxt_swapchain.createSurface();
 
 
-// Render pass (only without dynamic rendering):
+// Swapchain:
+    // Note: the render passes (without dynamic rendering) are created by the render graph
     vk.cxt_swapchain.pickSwapchainImageFormat();
 
-    if (!vk.cxt_core.profile.dynamic_rendering) {
-        // Attachment description
-        ContextIndex ci_attachment = vk.cxt_core.addSctRenderPassAttachment();
-        auto         ce_attachment = vk.cxt_core.render_pass.create_info.shortcutAttachment(ci_attachment);
-
-        vk.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
-        ce_attachment->edit().samples = VK_SAMPLE_COUNT_1_BIT;
-        ce_attachment->setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR,     VK_ATTACHMENT_STORE_OP_STORE);
-        ce_attachment->setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
-        ce_attachment->setLayouts   (VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-        // Subpass description
-        ContextIndex ci_subpass_descr = vk.cxt_core.addSctRenderPassSubpassDescription();
-        auto         ce_subpass_descr = vk.cxt_core.render_pass.create_info.shortcutSubpassDescription(ci_subpass_descr);
-
-        ce_subpass_descr->addColorAttachment(0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        ce_subpass_descr->edit().pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
-
-        // Subpass dependency
-        ContextIndex ci_subpass_dep = vk.cxt_core.addSctRenderPassSubpassDependency();
-        auto         ce_subpass_dep = vk.cxt_core.render_pass.create_info.shortcutSubpassDependency(ci_subpass_dep);
-        ce_subpass_dep->setSubpasses(VK_SUBPASS_EXTERNAL, 0u);
-        ce_subpass_dep->setSrcMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
-        ce_subpass_dep->setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-
-        vk.cxt_core.createRenderPass();
-    }
-
-
-// Swapchain:
     // Swapchain
     vk.cxt_swapchain.setSwapchainSurfaceCapabilities();
     vk.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
@@ -215,17 +186,25 @@ int main(int argc, char **argv) {
     vk.cxt_swapchain.swapchain.create_info.edit().compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     vk.cxt_swapchain.swapchain.create_info.edit().presentMode = VK_PRESENT_MODE_FIFO_KHR;
     vk.cxt_swapchain.setSwapchainExtentFromWindow();
-    // vk.cxt_swapchain.pickSwapchainImageFormat();
 
     // Swapchain image views
     vk.cxt_swapchain.image_view_wrap.setComponents(); // set color components (identity by default)
     vk.cxt_swapchain.image_view_wrap.setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
     vk.cxt_swapchain.image_view_wrap.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
 
-    // Swapchain framebuffers
-    vk.cxt_swapchain.framebuffer_wrap.edit().layers = 1u;
+    vk.cxt_swapchain.createSwapchainWithDependencies(); // creates swapchain and its images
 
-    vk.cxt_swapchain.createSwapchainWithDependencies(); // creates swapchain, its images and framebuffers
+
+// Render graph:
+    // Note: one pass draws the scene and ImGui into the swapchain image; the graph places the barriers and
+    //       begins/ends rendering (dynamic rendering or a render pass of the pass, by the profile)
+    const VkClearValue clear_color = {{{0.f, 0.f, 0.f, 1.f}}};
+
+    Simple::VKFW::Graph::RenderGraph graph(vk);
+    Simple::VKFW::Graph::ResourceId  backbuffer = graph.importSwapchain();
+    Simple::VKFW::Graph::PassId      scene_pass = graph.addGraphicsPass("scene").color(backbuffer, VK_ATTACHMENT_LOAD_OP_CLEAR, clear_color);
+
+    graph.compile(); // after the swapchain creation and after every recreation
 
 
 // Memory-related objects (buffers and images):
@@ -367,7 +346,7 @@ int main(int argc, char **argv) {
     graphics_pip.graphics_create_info_wrap.setPipelineStates(0xfffu);
     // Note: attachment formats for dynamic rendering (ignored with the render pass)
     graphics_pip.graphics_create_info_wrap.rendering_wrap.setFormats(vk.cxt_swapchain.format());
-    vk.cxt_pipeline.createPipeline(ci_graphics_pip, 0u, ci_pip_layout);
+    vk.cxt_pipeline.createPipeline(ci_graphics_pip, graph.renderPass(scene_pass), 0u, ci_pip_layout);
 
     // Command pool
     vk.cxt_command.addCmdPool();
@@ -418,16 +397,33 @@ int main(int argc, char **argv) {
     }
 
     // ImGUI init
-    main_window_handler.imgui_handler.initializeContext(vk, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT);
+    main_window_handler.imgui_handler.initializeContext(vk, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT, graph.renderPass(scene_pass));
     main_window_handler.imgui_handler.enableForSVKFWWindow(main_window, false);
 
 
 // Main loop:
     // Preparations
 
-    // Note: 'acquired.image_index' matches the swapchain images, image views and framebuffers
+    // Note: 'acquired.image_index' matches the swapchain images and image views
     uint32_t current_frame = 0u;
-    const VkClearValue clear_color = {{{0.f, 0.f, 0.f, 1.f}}};
+
+    // Commands of the scene pass (recorded inside its rendering, viewport and scissor are set by the graph)
+    graph.pass(scene_pass).execute([&](Simple::VKFW::CommandRecorder &rec) {
+        rec.bindPipeline(ci_graphics_pip);
+        rec.bindVertexBuffers(ci_buffer_vertex);
+        rec.bindIndexBuffer(ci_buffer_index);
+
+        // Bind descriptor set (uniform buffer)
+        rec.bindDescriptorSets(ci_pip_layout, ci_descr_sets_ubo[current_frame]);
+
+        // Draw
+        // rec.draw(vertices.size());
+        // Draw (indexed)
+        rec.drawIndexed(indices.size());
+
+        // Draw GUI
+        main_window_handler.imgui_handler.fillCommandBuffer(rec.handle());
+    });
 
     // Loop
     while (!main_window.shouldClose()) {
@@ -439,7 +435,7 @@ int main(int argc, char **argv) {
 
         Simple::VKFW::AcquireResult acquired = vk.acquireNextImage(ci_sem_image_available[current_frame]);
         // Note: the fence is reset only after successful acquisition, otherwise it would never be signaled again
-        if (acquired.status == Simple::VKFW::VKFW_SWAPCHAIN_OUT_OF_DATE) { vk.recreateSwapchain(); continue; }
+        if (acquired.status == Simple::VKFW::VKFW_SWAPCHAIN_OUT_OF_DATE) { vk.recreateSwapchain(); graph.compile(); continue; }
         if (acquired.status == Simple::VKFW::VKFW_SWAPCHAIN_NOT_READY) continue;
         vk.cxt_barrier.reset(ci_fen_in_flight[current_frame]);
 
@@ -458,29 +454,9 @@ int main(int argc, char **argv) {
         rec.reset();
         rec.begin();
 
-        rec.beginSwapchainRendering(acquired.image_index, clear_color);
-
-        rec.bindPipeline(ci_graphics_pip);
-        rec.bindVertexBuffers(ci_buffer_vertex);
-        rec.bindIndexBuffer(ci_buffer_index);
-
-        // Bind descriptor set (uniform buffer)
-        rec.bindDescriptorSets(ci_pip_layout, ci_descr_sets_ubo[current_frame]);
-
-        // Set viewport, scissor
-        rec.setViewportScissor(vk.cxt_swapchain.extent());
-
-        // Draw
-        // rec.draw(vertices.size());
-        // Draw (indexed)
-        rec.drawIndexed(indices.size());
-
-        // Draw GUI
         main_window_handler.imgui_handler.newFrame();
         main_window_handler.imgui_handler.render();
-        main_window_handler.imgui_handler.fillCommandBuffer(rec.handle());
-
-        rec.endSwapchainRendering(acquired.image_index);
+        graph.execute(rec, acquired.image_index);
         rec.end();
 
 
@@ -493,8 +469,10 @@ int main(int argc, char **argv) {
 
         // Present
         Simple::VKFW::SwapchainStatus presented = vk.present(ci_queue_present, ci_sem_render_finished[acquired.image_index], acquired.image_index);
-        if (presented != Simple::VKFW::VKFW_SWAPCHAIN_OK)
+        if (presented != Simple::VKFW::VKFW_SWAPCHAIN_OK) {
             vk.recreateSwapchain();
+            graph.compile();
+        }
 
         current_frame = (current_frame + 1) % FRAMES_IN_FLIGHT;
     } // main loop END
@@ -509,6 +487,7 @@ int main(int argc, char **argv) {
     main_window_handler.imgui_handler.destroyContext();
 
     // Destruction
+    graph.destroy();
     vk.destroyContext();
     main_window.destroy();
     Simple::glfw_init.terminate();
