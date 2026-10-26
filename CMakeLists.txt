@@ -169,11 +169,41 @@ PRIVATE
 
 
 ## RTAudio
-set(RTAUDIO_API_DS      ON)
-set(RTAUDIO_API_ALSA   OFF)
+# Note: RtAudio requires CMake 3.10, so its option() calls would ignore (and on the first configuration clear)
+#       the normal variables set here. CMP0077 makes option() keep them.
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+set(RTAUDIO_API_DS     OFF)
 set(RTAUDIO_API_ASIO   OFF)
-set(RTAUDIO_API_PULSE  OFF)
 set(RTAUDIO_API_WASAPI OFF)
+set(RTAUDIO_API_ALSA   OFF)
+set(RTAUDIO_API_PULSE  OFF)
+set(RTAUDIO_API_JACK   OFF)
+set(RTAUDIO_API_OSS    OFF)
+set(RTAUDIO_API_CORE   OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    set(RTAUDIO_API_DS    ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
+    # Each API is built when its dev package is installed (libasound2-dev, libpulse-dev).
+    # PipeWire serves both, so either one plays sound; without both RtAudio builds a silent dummy API.
+    find_package(ALSA QUIET)
+    if(ALSA_FOUND)
+        set(RTAUDIO_API_ALSA  ON)
+    endif()
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(SVKFW_PULSE QUIET libpulse-simple)
+    endif()
+    if(SVKFW_PULSE_FOUND)
+        set(RTAUDIO_API_PULSE ON)
+    endif()
+    if(NOT RTAUDIO_API_ALSA AND NOT RTAUDIO_API_PULSE)
+        message(WARNING ${SVKFW_MSG_PREFIX} "Neither ALSA nor PulseAudio dev libraries found, there will be no sound. "
+                        "Install libasound2-dev and/or libpulse-dev (Debian/Ubuntu names) and reconfigure.")
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    set(RTAUDIO_API_CORE  ON)
+endif()
+message(${SVKFW_MSG_PREFIX} "RtAudio APIs: DS=${RTAUDIO_API_DS} ALSA=${RTAUDIO_API_ALSA} PULSE=${RTAUDIO_API_PULSE} CORE=${RTAUDIO_API_CORE}")
 set(BUILD_TESTING OFF)
 set(RTAUDIO_BUILD_TESTING OFF)
 set(RTAUDIO_TARGETNAME_UNINSTALL "rtaudio_uninstall")
@@ -203,10 +233,21 @@ message(${SVKFW_MSG_PREFIX} "Looking for Python at: '${Python3_EXECUTABLE}'")
 #   vkfw_enum.h          - enum names       (vulkan_core.h)
 #   vkfw_struct_traits.h - pNext chain rules (vk.xml)
 #   vkfw_func.h          - Func wrappers    (vk.xml, ext_sources/volk/volk.h)
+# Note: the scripts get the SDK path from the environment. IDEs started from a desktop menu (VS Code) don't read
+#       ~/.bashrc, so if VULKAN_SDK isn't set, it is taken from the Vulkan headers CMake found (/usr for distro packages).
+if(DEFINED ENV{VULKAN_SDK})
+    set(SVKFW_VULKAN_SDK "$ENV{VULKAN_SDK}")
+elseif(DEFINED ENV{VK_SDK_PATH})
+    set(SVKFW_VULKAN_SDK "$ENV{VK_SDK_PATH}")
+else()
+    get_filename_component(SVKFW_VULKAN_SDK "${Vulkan_INCLUDE_DIR}" DIRECTORY)
+endif()
+message(${SVKFW_MSG_PREFIX} "Vulkan SDK for generated headers: '${SVKFW_VULKAN_SDK}'")
+
 foreach(SVKFW_GEN_SCRIPT IN ITEMS vkfw_enum_gen.py vkfw_struct_gen.py vkfw_func_gen.py)
     message(${SVKFW_MSG_PREFIX} "Running script: '${CMAKE_SOURCE_DIR}/source/meta/${SVKFW_GEN_SCRIPT}'")
     execute_process(
-        COMMAND ${Python3_EXECUTABLE} "source/meta/${SVKFW_GEN_SCRIPT}"
+        COMMAND ${CMAKE_COMMAND} -E env "VULKAN_SDK=${SVKFW_VULKAN_SDK}" ${Python3_EXECUTABLE} "source/meta/${SVKFW_GEN_SCRIPT}"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE SCRIPT_RES
         OUTPUT_VARIABLE SCRIPT_OUT
