@@ -1701,6 +1701,28 @@ namespace Simple {
                     wrap.queueFamilyIndexCount = queue_families.size();
                     wrap.pQueueFamilyIndices = queue_families.data();
                 }
+
+            // Scenarios
+
+                // Note: '_extent.depth' > 1 makes a 3D image, otherwise a 2D one (set 'imageType' through 'edit' for 1D)
+                void setWholeStruct(const std::vector<uint32_t> &_queue_families, VkSharingMode _sharing_mode, VkImageUsageFlags _usage_flags,
+                                    VkFormat _format, VkExtent3D _extent, uint32_t _mip_levels = 1u, uint32_t _array_layers = 1u,
+                                    VkSampleCountFlagBits _samples = VK_SAMPLE_COUNT_1_BIT, VkImageTiling _tiling = VK_IMAGE_TILING_OPTIMAL,
+                                    VkImageCreateFlags _flags = 0u) {
+                    queue_families = _queue_families;
+                    wrap.flags         = _flags;
+                    wrap.imageType     = _extent.depth > 1u ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
+                    wrap.format        = _format;
+                    wrap.extent        = _extent;
+                    wrap.mipLevels     = _mip_levels;
+                    wrap.arrayLayers   = _array_layers;
+                    wrap.samples       = _samples;
+                    wrap.tiling        = _tiling;
+                    wrap.usage         = _usage_flags;
+                    wrap.sharingMode   = _sharing_mode;
+                    wrap.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    updateWrap();
+                }
             }; // StructWrap<VkImageCreateInfo> END
 
             template <>

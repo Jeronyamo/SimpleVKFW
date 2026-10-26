@@ -73,24 +73,6 @@ namespace Simple {
         };
 
         namespace Detail {
-            inline bool hasDepth(VkFormat _format) {
-                switch (_format) {
-                    case VK_FORMAT_D16_UNORM: case VK_FORMAT_X8_D24_UNORM_PACK32: case VK_FORMAT_D32_SFLOAT:
-                    case VK_FORMAT_D16_UNORM_S8_UINT: case VK_FORMAT_D24_UNORM_S8_UINT: case VK_FORMAT_D32_SFLOAT_S8_UINT: return true;
-                    default: return false;
-                }
-            }
-            inline bool hasStencil(VkFormat _format) {
-                switch (_format) {
-                    case VK_FORMAT_S8_UINT: case VK_FORMAT_D16_UNORM_S8_UINT: case VK_FORMAT_D24_UNORM_S8_UINT: case VK_FORMAT_D32_SFLOAT_S8_UINT: return true;
-                    default: return false;
-                }
-            }
-            inline VkImageAspectFlags aspects(VkFormat _format) {
-                VkImageAspectFlags __aspects = (hasDepth(_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT) : 0u) | (hasStencil(_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_STENCIL_BIT) : 0u);
-                return __aspects ? __aspects : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT);
-            }
-
             // Note: only flags that exist without synchronization2, so the barriers can be converted
             const VkAccessFlags2 WRITE_ACCESS = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
                                                 VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -121,7 +103,7 @@ namespace Simple {
                     case VKFW_ACCESS_SAMPLED:
                         __info.stages = _shader_stages;
                         __info.access = VK_ACCESS_2_SHADER_READ_BIT;
-                        __info.layout = hasDepth(_format) || hasStencil(_format) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        __info.layout = VKFW::Detail::hasDepth(_format) || VKFW::Detail::hasStencil(_format) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         __info.usage  = VK_IMAGE_USAGE_SAMPLED_BIT;
                         __info.write  = false; break;
                     case VKFW_ACCESS_STORAGE_READ:
@@ -545,7 +527,7 @@ namespace Simple {
                     Func::BindImageMemory(__device, __res.image, __res.memory, 0u);
 
                     // Note: a depth/stencil texture that is only sampled gets a depth-only view (a sampled view can't have both aspects)
-                    VkImageAspectFlags __aspects = Detail::aspects(__res.desc.format);
+                    VkImageAspectFlags __aspects = VKFW::Detail::formatAspects(__res.desc.format);
                     if (__aspects == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) && !(__res_usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
                         __aspects = VK_IMAGE_ASPECT_DEPTH_BIT;
                     VkImageViewCreateInfo __view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -596,7 +578,7 @@ namespace Simple {
                     const Resource &__res = resources[_r];
                     if (__res.kind == VKFW_RESOURCE_SWAPCHAIN) swapchain_barriers.push_back(barriers.size());
                     barriers.push_back(imageBarrier(__res.image, _state.layout, _layout, __src_stages, __src_access, _stages, _access,
-                                                    Detail::aspects(format_(__res))));
+                                                    VKFW::Detail::formatAspects(format_(__res))));
                 }
 
                 if (__transition || _write) {
@@ -681,8 +663,8 @@ namespace Simple {
                             SVKFW_ASSERT(!__pass.has_depth && !__pass.has_stencil, std::runtime_error, "VKFW::Graph::RenderGraph :: compile",
                                             "the pass '" + __pass.name + "' has more than one depth attachment");
                             __pass.depth       = __attachment;
-                            __pass.has_depth   = Detail::hasDepth  (format_(__res));
-                            __pass.has_stencil = Detail::hasStencil(format_(__res));
+                            __pass.has_depth   = VKFW::Detail::hasDepth  (format_(__res));
+                            __pass.has_stencil = VKFW::Detail::hasStencil(format_(__res));
                         }
                     }
                     SVKFW_ASSERT(__pass.extent.width != 0u, std::runtime_error, "VKFW::Graph::RenderGraph :: compile",
@@ -740,8 +722,8 @@ namespace Simple {
                 __desc.samples        = __res.kind == VKFW_RESOURCE_SWAPCHAIN ? VK_SAMPLE_COUNT_1_BIT : __res.desc.samples;
                 __desc.loadOp         = _access.load_op;
                 __desc.storeOp        = _access.store_op;
-                __desc.stencilLoadOp  = Detail::hasStencil(__format) ? _access.load_op  : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                __desc.stencilStoreOp = Detail::hasStencil(__format) ? _access.store_op : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                __desc.stencilLoadOp  = VKFW::Detail::hasStencil(__format) ? _access.load_op  : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                __desc.stencilStoreOp = VKFW::Detail::hasStencil(__format) ? _access.store_op : VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 __desc.initialLayout  = _layout;
                 __desc.finalLayout    = _layout;
                 return __desc;

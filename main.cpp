@@ -159,6 +159,9 @@ int main(int argc, char **argv) {
 
     vk.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
     vk.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
+    // Note: lets 'cxt_memory' see the real free space of the memory heaps (see 'ContextMemory::heapBudget')
+    if (Simple::VKFW::Util::allDeviceExtAvailable(vk.cxt_core.phys_device.handle, {{ VK_EXT_MEMORY_BUDGET_EXTENSION_NAME }}))
+        vk.cxt_core.device.create_info.addExtensions({{ VK_EXT_MEMORY_BUDGET_EXTENSION_NAME }});
     vk.cxt_core.createDevice();
 
     // Queue
@@ -388,8 +391,10 @@ int main(int argc, char **argv) {
 
 // Other preparations:
     // Copy static vertex/index data (both copies go in one submit)
+    // Note: the buffers are EXCLUSIVE to the graphics family, so the batch hands them over from the transfer queue
     {
         Simple::VKFW::UploadBatch upload(vk, ci_queue_transfer, ci_cmdbuf_staging, ci_buffer_staging);
+        upload.setOwner(ci_queue_graphics, ci_pool_drawing);
         upload.copyToBuffer(ci_buffer_vertex, vertices.data(), vertices.size() * sizeof(Vertex  ));
         upload.copyToBuffer(ci_buffer_index ,  indices.data(),  indices.size() * sizeof(uint32_t));
         upload.submit();

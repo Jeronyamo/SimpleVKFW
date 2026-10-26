@@ -1,6 +1,8 @@
 #ifndef SVKFW_VKFW_H
 #define SVKFW_VKFW_H
 
+#include <algorithm>
+
 #include "vkfw_wrap.h"
 
 
@@ -45,6 +47,26 @@ namespace Simple {
             inline VkAccessFlags toAccessFlags1(VkAccessFlags2 _access) {
                 SVKFW_ASSERT((_access >> 32u) == 0u, std::invalid_argument, "VKFW::Detail :: toAccessFlags1", "the access needs synchronization2");
                 return VkAccessFlags(_access);
+            }
+
+            inline bool hasDepth(VkFormat _format) {
+                switch (_format) {
+                    case VK_FORMAT_D16_UNORM: case VK_FORMAT_X8_D24_UNORM_PACK32: case VK_FORMAT_D32_SFLOAT:
+                    case VK_FORMAT_D16_UNORM_S8_UINT: case VK_FORMAT_D24_UNORM_S8_UINT: case VK_FORMAT_D32_SFLOAT_S8_UINT: return true;
+                    default: return false;
+                }
+            }
+            inline bool hasStencil(VkFormat _format) {
+                switch (_format) {
+                    case VK_FORMAT_S8_UINT: case VK_FORMAT_D16_UNORM_S8_UINT: case VK_FORMAT_D24_UNORM_S8_UINT: case VK_FORMAT_D32_SFLOAT_S8_UINT: return true;
+                    default: return false;
+                }
+            }
+            // All aspects of the format (COLOR for color formats)
+            inline VkImageAspectFlags formatAspects(VkFormat _format) {
+                VkImageAspectFlags __aspects = (hasDepth  (_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT  ) : 0u) |
+                                               (hasStencil(_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_STENCIL_BIT) : 0u);
+                return __aspects ? __aspects : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT);
             }
         }; // Detail END
 
@@ -788,6 +810,9 @@ namespace Simple {
                 struct MemoryMapping {
                     VkDeviceSize offset; // offset in the allocated device memory
                     VkDeviceSize  range; // required device memory size in bytes
+                    // Note: the queue family that owns an EXCLUSIVE resource after the last ownership transfer by an 'UploadBatch'
+                    //       (VK_QUEUE_FAMILY_IGNORED: not transferred yet); set it by hand if the resource changes owner elsewhere
+                    uint32_t owner_family;
                 };
 
                 struct MemoryChunk {
@@ -801,7 +826,8 @@ namespace Simple {
                     std::vector<MemoryMapping> buffer_maps;
                     std::vector<MemoryMapping>  image_maps;
                     void *mapped_ptr = nullptr; // HOST_VISIBLE chunks stay mapped from allocation to destruction (persistent mapping)
-                    // 48 bytes left (2 vectors) for 256 bytes per chunk
+                    uint32_t memory_type = UINT32_MAX; // set by 'ContextMemory::allocateChunkMemory'
+                    uint32_t heap_index  = UINT32_MAX;
 
                     ContextCore *cxt_core = nullptr;
 
@@ -824,94 +850,41 @@ namespace Simple {
                         memory.destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
 
-                    void allocateChunkMemory(VkPhysicalDeviceMemoryProperties &_allowed_size) {
-                        VkMemoryRequirements __mem_req{ 0u, 0u, UINT32_MAX }, __mem_req_i{};
-
-                        // Compute all buffer offsets
-                        for (uint32_t ci = 0u; ci < buffers.size(); ++ci) {
-                            __mem_req_i = Func::GetBufferMemoryRequirements(cxt_core->device.handle, buffers[ci].handle);
-                            SVKFW_ASSERT(__mem_req.memoryTypeBits & __mem_req_i.memoryTypeBits, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
-                                            "No suitable memory type left for buffer " + std::to_string(ci));
-
-                            // printf("Buffer %d alignment: %d, CPU size: %d, GPU size: %d\n", ci, __mem_req_i.alignment, buffer_maps[ci].range, __mem_req_i.size);
-                            __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
-                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += __additional_offset;
-                            buffer_maps[ci].offset = __mem_req.size;
-
-                            // Note: the device may require more memory than requested by user ('range'), so the max is used
-                            __mem_req.size += std::max(buffer_maps[ci].range, __mem_req_i.size);
+                    // Computes the offsets of all buffers and images; returns the size and the memory types that fit all of them
+                    // Note: a linear resource (buffer, linear image) and an optimal image must not share a 'bufferImageGranularity' page,
+                    //       so a resource of the other kind starts on a new page
+                    VkMemoryRequirements computeLayout(VkDeviceSize _granularity) {
+                        VkMemoryRequirements __total{ 0u, 1u, UINT32_MAX };
+                        int __prev_linear = -1;
+                        for (uint32_t ci = 0u; ci < buffers.size(); ++ci)
+                            place_(__total, Func::GetBufferMemoryRequirements(cxt_core->device.handle, buffers[ci].handle), true,
+                                   __prev_linear, _granularity, buffer_maps[ci], "buffer " + std::to_string(ci));
+                        for (uint32_t ci = 0u; ci < images.size(); ++ci) {
+                            place_(__total, Func::GetImageMemoryRequirements(cxt_core->device.handle, images[ci].handle),
+                                   images[ci].create_info.peek().tiling == VK_IMAGE_TILING_LINEAR, __prev_linear, _granularity, image_maps[ci], "image " + std::to_string(ci));
+                            // Note: the user size has no meaning for images, the range is what the device needs
+                            image_maps[ci].range = std::max(image_maps[ci].range, Func::GetImageMemoryRequirements(cxt_core->device.handle, images[ci].handle).size);
                         }
-                        // Align last buffer
-                        if (!buffers.empty()) {
-                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += __additional_offset;
-                        }
+                        return __total;
+                    }
 
-                        // Compute all image offsets
-                        for (uint32_t ci = 0u; ci <  images.size(); ++ci) {
-                            __mem_req_i = Func::GetImageMemoryRequirements(cxt_core->device.handle, images[ci].handle);
-                            SVKFW_ASSERT(__mem_req.memoryTypeBits & __mem_req_i.memoryTypeBits, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
-                                            "No suitable memory type left for image " + std::to_string(ci));
-
-                            __mem_req.memoryTypeBits &= __mem_req_i.memoryTypeBits;
-                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += __additional_offset;
-                            image_maps[ci].offset = __mem_req.size;
-
-                            // Note: the device may require more memory than requested by user ('range'), so the max is used
-                            __mem_req.size += std::max(image_maps[ci].range, __mem_req_i.size);
-                        }
-                        // Align last image
-                        if (!images.empty()) {
-                            VkDeviceSize __additional_offset = (__mem_req_i.alignment - (__mem_req.size % __mem_req_i.alignment)) % __mem_req_i.alignment;
-                            __mem_req.size += __additional_offset;
-                        }
-
-                        uint32_t __supported_mem_type_index = VK_MAX_MEMORY_TYPES;
-                        for (uint32_t i = 0u; i < _allowed_size.memoryTypeCount; ++i) {
-                            bool __use_memtype = true;
-                            __use_memtype &= (__mem_req.memoryTypeBits & (1u << i)) != 0u; // can represent
-                            __use_memtype &= (_allowed_size.memoryTypes[i].propertyFlags & required_flags) == required_flags; // complies the user requirements
-                            __use_memtype &= __mem_req.size <= _allowed_size.memoryHeaps[_allowed_size.memoryTypes[i].heapIndex].size; // can fit
-
-                            if (__use_memtype) {
-                                __supported_mem_type_index = i;
-                                break;
-                            }
-                        }
-
-                        SVKFW_ASSERT(__supported_mem_type_index < VK_MAX_MEMORY_TYPES, std::runtime_error, "VKFW :: ContextMemory :: allocateChunkMemory",
-                                        "No device memory types to represent and fit buffers/images");
-
-                        _allowed_size.memoryHeaps[_allowed_size.memoryTypes[__supported_mem_type_index].heapIndex].size -= __mem_req.size;
-                        memory.allocate_info.edit().memoryTypeIndex = __supported_mem_type_index;
-                        memory.allocate_info.edit().allocationSize  = __mem_req.size;
-                        memory.createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
-
+                    // Binds all buffers and images to the allocated memory and maps HOST_VISIBLE memory
+                    void bindAndMap() {
                         // Note: mapping a memory object once and keeping it mapped is allowed and cheaper than mapping it every frame
                         if (required_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
                             mapped_ptr = Func::MapMemory(cxt_core->device.handle, memory.handle, 0u, VK_WHOLE_SIZE);
 
-                        // Bind all buffers to created memory
-                        VkResult __func_res = VK_SUCCESS;
-                        for (ContextIndex ci = 0u; ci < buffers.size(); ++ci) {
-                            __func_res = vkBindBufferMemory(cxt_core->device.handle, buffers[ci].handle, memory.handle, buffer_maps[ci].offset);
-                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind buffer error, code " + std::to_string(__func_res));
-                        }
-
-                        // Bind all images to created memory
-                        for (ContextIndex ci = 0u; ci < images.size(); ++ci) {
-                            __func_res = vkBindImageMemory(cxt_core->device.handle, images[ci].handle, memory.handle, image_maps[ci].offset);
-                            SVKFW_ASSERT(__func_res == VK_SUCCESS, std::runtime_error, "VKFW::MemoryChunk", "bind image error, code " + std::to_string(__func_res));
-                        }
+                        for (uint32_t ci = 0u; ci < buffers.size(); ++ci)
+                            Func::BindBufferMemory(cxt_core->device.handle, buffers[ci].handle, memory.handle, buffer_maps[ci].offset);
+                        for (uint32_t ci = 0u; ci <  images.size(); ++ci)
+                            Func::BindImageMemory (cxt_core->device.handle,  images[ci].handle, memory.handle,  image_maps[ci].offset);
                     }
 
                 // Manage Objects
 
                     // Note: return the object's index inside the chunk ('ContextMemory::addChunk*' wraps it into a typed Id)
-                    uint32_t addBuffer(uint32_t _buf_size = 0u) { buffers.emplace_back(); buffer_maps.push_back(MemoryMapping{0u, _buf_size}); return buffers.size() - 1; }
-                    uint32_t addImage (uint32_t _img_size = 0u) {  images.emplace_back();  image_maps.push_back(MemoryMapping{0u, _img_size}); return  images.size() - 1; }
+                    uint32_t addBuffer(uint32_t _buf_size = 0u) { buffers.emplace_back(); buffer_maps.push_back(MemoryMapping{0u, _buf_size, VK_QUEUE_FAMILY_IGNORED}); return buffers.size() - 1; }
+                    uint32_t addImage (uint32_t _img_size = 0u) {  images.emplace_back();  image_maps.push_back(MemoryMapping{0u, _img_size, VK_QUEUE_FAMILY_IGNORED}); return  images.size() - 1; }
                     uint32_t addBufferView() { buffer_views.emplace_back(); return buffer_views.size() - 1; }
                     uint32_t addImageView () {  image_views.emplace_back(); return  image_views.size() - 1; }
 
@@ -940,28 +913,78 @@ namespace Simple {
                     void destroyImageView (uint32_t  _image_view_index) {
                         image_views [ _image_view_index].destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
                     }
+
+                private:
+                    static void place_(VkMemoryRequirements &_total, const VkMemoryRequirements &_req, bool _linear, int &_prev_linear,
+                                       VkDeviceSize _granularity, MemoryMapping &_map, const std::string &_what) {
+                        SVKFW_ASSERT(_total.memoryTypeBits & _req.memoryTypeBits, std::runtime_error, "VKFW::ContextMemory :: allocateChunkMemory",
+                                        "no memory type left that fits all objects of the chunk, at " + _what);
+                        _total.memoryTypeBits &= _req.memoryTypeBits;
+
+                        VkDeviceSize __alignment = std::max(_req.alignment, VkDeviceSize(1u));
+                        if (_prev_linear != -1 && _prev_linear != int(_linear))
+                            __alignment = std::max(__alignment, _granularity);
+                        _total.size += (__alignment - _total.size % __alignment) % __alignment;
+                        _total.alignment = std::max(_total.alignment, __alignment);
+                        _map.offset = _total.size;
+
+                        // Note: the device may require more memory than requested by user ('range'), so the max is used
+                        _total.size += std::max(_map.range, _req.size);
+                        _prev_linear = int(_linear);
+                    }
                 }; // MemoryChunk END
                 Pool<MemoryChunk, MemoryTag> memory_chunks;
 
-                Struct::StructWrap<VkPhysicalDeviceMemoryProperties2> memory_properties;
-                VkDeviceSize non_coherent_atom_size = 1u; // loaded in 'initContext'
+                // Note: memory heaps may be views of the same physical memory (integrated GPUs, resizable BAR, the host-visible part of VRAM),
+                //       so heap sizes don't add up and the free space of a heap can't be derived from its size and our allocations.
+                //       With VK_EXT_memory_budget the driver reports the budget and usage of each heap (all processes accounted);
+                //       without it the heap size and our own allocations are only an estimate. Either way the budget is a hint:
+                //       'allocateChunkMemory' prefers memory types whose heap fits the budget and falls back to the others if an allocation fails
+                struct HeapBudget {
+                    VkDeviceSize budget; // how much this process may use without problems (heap size without VK_EXT_memory_budget)
+                    VkDeviceSize usage;  // how much this process uses (only our chunks without VK_EXT_memory_budget)
+                };
+
+                Struct::StructWrap<VkPhysicalDeviceMemoryProperties2> memory_properties; // Note: read-only, as reported by the device
+                VkDeviceSize heap_usage[VK_MAX_MEMORY_HEAPS];  // bytes allocated by the chunks, per heap
+                VkDeviceSize non_coherent_atom_size     = 1u;  // loaded in 'initContext'
+                VkDeviceSize buffer_image_granularity   = 1u;  // loaded in 'initContext'
+                bool         memory_budget_available = false;  // the device is created with VK_EXT_memory_budget
 
                 ContextCore *cxt_core = nullptr;
 
-                ContextMemory(ContextCore *_cxt_core) { cxt_core = _cxt_core; }
+                ContextMemory(ContextCore *_cxt_core) { cxt_core = _cxt_core; for (uint32_t i = 0u; i < VK_MAX_MEMORY_HEAPS; ++i) heap_usage[i] = 0u; }
                ~ContextMemory() { destroyContext(); }
 
+                // Note: after 'ContextCore::createDevice'
                 void initContext() {
                     memory_properties.loadForPhysicalDevice(cxt_core->phys_device.handle);
 
                     VkPhysicalDeviceProperties __properties{};
                     vkGetPhysicalDeviceProperties(cxt_core->phys_device.handle, &__properties);
-                    non_coherent_atom_size = std::max(__properties.limits.nonCoherentAtomSize, VkDeviceSize(1u));
+                    non_coherent_atom_size   = std::max(__properties.limits.nonCoherentAtomSize,    VkDeviceSize(1u));
+                    buffer_image_granularity = std::max(__properties.limits.bufferImageGranularity, VkDeviceSize(1u));
+
+                    const std::vector<std::string> &__extensions = cxt_core->device.create_info.extensions.list;
+                    memory_budget_available = std::find(__extensions.begin(), __extensions.end(), std::string(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) != __extensions.end();
                 }
 
                 void destroyContext() {
-                    memory_chunks.forEach([](MemoryId, MemoryChunk &_chunk) { _chunk.destroyChunk(); });
+                    memory_chunks.forEach([this](MemoryId, MemoryChunk &_chunk) { releaseChunk_(_chunk); });
                     memory_chunks.clear();
+                }
+
+                HeapBudget heapBudget(uint32_t _heap_index) const {
+                    const VkPhysicalDeviceMemoryProperties &__props = memory_properties.peek().memoryProperties;
+                    SVKFW_ASSERT(_heap_index < __props.memoryHeapCount, std::out_of_range, "VKFW::ContextMemory :: heapBudget", "heap index is out of range");
+                    HeapBudget __budget = { __props.memoryHeaps[_heap_index].size, heap_usage[_heap_index] };
+                    if (memory_budget_available) {
+                        StructChain<VkPhysicalDeviceMemoryProperties2, VkPhysicalDeviceMemoryBudgetPropertiesEXT> __chain;
+                        vkGetPhysicalDeviceMemoryProperties2(cxt_core->phys_device.handle, &__chain.head());
+                        __budget.budget = __chain.get<VkPhysicalDeviceMemoryBudgetPropertiesEXT>().heapBudget[_heap_index];
+                        __budget.usage  = __chain.get<VkPhysicalDeviceMemoryBudgetPropertiesEXT>().heapUsage [_heap_index];
+                    }
+                    return __budget;
                 }
 
             // Access by Id (throws if the Id is none, stale or out of its chunk)
@@ -994,12 +1017,53 @@ namespace Simple {
                 // Destroys the chunk with all its buffers, images and views; their Ids become invalid
                 void removeMemoryChunk(MemoryId _memory_id) {
                     if (!memory_chunks.contains(_memory_id)) return;
-                    memory_chunks.get(_memory_id).destroyChunk();
+                    releaseChunk_(memory_chunks.get(_memory_id));
                     memory_chunks.remove(_memory_id);
                 }
 
+                // Allocates one memory object for all buffers and images of the chunk (they must be created) and binds them
+                // Note: memory types are tried in the device order (it lists the preferred types first): first the types whose heap
+                //       fits the budget, then the others; a type is skipped if its allocation fails with an out-of-memory error
                 void allocateChunkMemory(MemoryId _memory_id) {
-                    chunk(_memory_id).allocateChunkMemory(memory_properties.edit().memoryProperties);
+                    MemoryChunk &__chunk = chunk(_memory_id);
+                    SVKFW_ASSERT(__chunk.memory.handle == VK_NULL_HANDLE, std::logic_error, "VKFW::ContextMemory :: allocateChunkMemory", "the chunk is already allocated");
+                    const VkMemoryRequirements __req = __chunk.computeLayout(buffer_image_granularity);
+                    SVKFW_ASSERT(__req.size > 0u, std::logic_error, "VKFW::ContextMemory :: allocateChunkMemory", "the chunk has no buffers or images");
+
+                    const VkPhysicalDeviceMemoryProperties &__props = memory_properties.peek().memoryProperties;
+                    bool     __any_type = false;
+                    VkResult __vk_res   = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                    for (uint32_t __fits_pass = 0u; __fits_pass < 2u && __chunk.memory.handle == VK_NULL_HANDLE; ++__fits_pass) {
+                        for (uint32_t i = 0u; i < __props.memoryTypeCount; ++i) {
+                            if ((__req.memoryTypeBits & (1u << i)) == 0u) continue; // can't hold the objects
+                            if ((__props.memoryTypes[i].propertyFlags & __chunk.required_flags) != __chunk.required_flags) continue;
+                            __any_type = true;
+
+                            const uint32_t   __heap   = __props.memoryTypes[i].heapIndex;
+                            const HeapBudget __budget = heapBudget(__heap);
+                            const bool       __fits   = __budget.usage <= __budget.budget && __req.size <= __budget.budget - __budget.usage;
+                            if (__fits != (__fits_pass == 0u)) continue;
+
+                            __chunk.memory.allocate_info.edit().memoryTypeIndex = i;
+                            __chunk.memory.allocate_info.edit().allocationSize  = __req.size;
+                            VkDeviceMemory __memory = VK_NULL_HANDLE;
+                            __vk_res = vkAllocateMemory(cxt_core->device.handle, &__chunk.memory.allocate_info.get(), cxt_core->alloc_cb.get(), &__memory);
+                            if (__vk_res == VK_SUCCESS) {
+                                __chunk.memory.handle = __memory;
+                                __chunk.memory_type   = i;
+                                __chunk.heap_index    = __heap;
+                                heap_usage[__heap]   += __req.size;
+                                break;
+                            }
+                            SVKFW_ASSERT(__vk_res == VK_ERROR_OUT_OF_DEVICE_MEMORY || __vk_res == VK_ERROR_OUT_OF_HOST_MEMORY, std::runtime_error,
+                                            "VKFW::ContextMemory :: allocateChunkMemory", "allocation failed, code " + std::to_string(__vk_res));
+                        }
+                    }
+                    SVKFW_ASSERT(__any_type, std::runtime_error, "VKFW::ContextMemory :: allocateChunkMemory",
+                                    "no memory type has the required properties and can hold the buffers/images of the chunk");
+                    SVKFW_ASSERT(__chunk.memory.handle != VK_NULL_HANDLE, std::runtime_error, "VKFW::ContextMemory :: allocateChunkMemory",
+                                    "out of memory: could not allocate " + std::to_string(__req.size) + " bytes, code " + std::to_string(__vk_res));
+                    __chunk.bindAndMap();
                 }
 
                 BufferId     addChunkBuffer    (MemoryId _memory_id, uint32_t _buf_size = 0u) { return BufferId    (_memory_id, chunk(_memory_id).addBuffer(_buf_size)); }
@@ -1074,7 +1138,60 @@ namespace Simple {
                     buffer(_buffer_id).create_info.setWholeStruct(__qfamilies, _sharing_mode, _usage_flags, bufferMapping(_buffer_id).range);
                 }
 
+                // Note: '_extent.depth' > 1 makes a 3D image. An image used on queues of several families (e.g. uploaded with an
+                //       'UploadBatch' on the transfer queue and sampled on the graphics queue) needs all of them with VK_SHARING_MODE_CONCURRENT,
+                //       otherwise its contents need a queue family ownership transfer; repeated families are merged, and with one family
+                //       left the sharing mode becomes EXCLUSIVE
+                void setWholeImageCreateInfoStruct(ImageId _image_id, Span<QueueFamilyId> _qfamilies_id, VkSharingMode _sharing_mode,
+                                                   VkImageUsageFlags _usage_flags, VkFormat _format, VkExtent3D _extent,
+                                                   uint32_t _mip_levels = 1u, uint32_t _array_layers = 1u, VkSampleCountFlagBits _samples = VK_SAMPLE_COUNT_1_BIT,
+                                                   VkImageTiling _tiling = VK_IMAGE_TILING_OPTIMAL, VkImageCreateFlags _flags = 0u) {
+                    std::vector<uint32_t> __qfamilies;
+                    for (uint32_t i = 0u; i < _qfamilies_id.size(); ++i) {
+                        const uint32_t __family = cxt_core->queueFamily(_qfamilies_id[i]).handle;
+                        if (std::find(__qfamilies.begin(), __qfamilies.end(), __family) == __qfamilies.end()) __qfamilies.push_back(__family);
+                    }
+                    if (__qfamilies.size() < 2u) {
+                        _sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+                        __qfamilies.clear();
+                    }
+                    image(_image_id).create_info.setWholeStruct(__qfamilies, _sharing_mode, _usage_flags, _format, _extent,
+                                                               _mip_levels, _array_layers, _samples, _tiling, _flags);
+                }
+
+                // Fills the view create info from the image: its format, all mip levels and layers, identity swizzle.
+                // '_aspect' == 0: all aspects of the format, but only DEPTH for a depth/stencil image that isn't an attachment
+                // (a sampled view has one aspect); '_type' == VK_IMAGE_VIEW_TYPE_MAX_ENUM: 3D, CUBE(_ARRAY), 2D_ARRAY or 2D from the image
+                void setWholeImageViewCreateInfoStruct(ImageViewId _img_view_id, ImageId _image_id, VkImageAspectFlags _aspect = 0u,
+                                                       VkImageViewType _type = VK_IMAGE_VIEW_TYPE_MAX_ENUM) {
+                    const VkImageCreateInfo &__image = image(_image_id).create_info.peek();
+                    if (_aspect == 0u) {
+                        _aspect = Detail::formatAspects(__image.format);
+                        if (_aspect == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) && !(__image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
+                            _aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+                    }
+                    if (_type == VK_IMAGE_VIEW_TYPE_MAX_ENUM) {
+                        const bool __cube = (__image.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) && __image.arrayLayers % 6u == 0u;
+                        _type = __image.imageType == VK_IMAGE_TYPE_3D ? VK_IMAGE_VIEW_TYPE_3D :
+                                __image.imageType == VK_IMAGE_TYPE_1D ? (__image.arrayLayers > 1u ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D) :
+                                __cube                                ? (__image.arrayLayers > 6u ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE) :
+                                                                        (__image.arrayLayers > 1u ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D);
+                    }
+                    Struct::StructWrap<VkImageViewCreateInfo> &__view = imageView(_img_view_id).create_info;
+                    __view.edit().viewType = _type;
+                    __view.edit().format   = __image.format;
+                    __view.setComponents();
+                    __view.setRange(_aspect, 0u, __image.mipLevels, 0u, __image.arrayLayers);
+                }
+
             private:
+                void releaseChunk_(MemoryChunk &_chunk) {
+                    if (_chunk.memory.handle != VK_NULL_HANDLE && _chunk.heap_index < VK_MAX_MEMORY_HEAPS)
+                        heap_usage[_chunk.heap_index] -= _chunk.memory.allocate_info.peek().allocationSize;
+                    _chunk.destroyChunk();
+                    _chunk.memory_type = _chunk.heap_index = UINT32_MAX;
+                }
+
                 void* checkMappedRange_(BufferId _buffer_id, VkDeviceSize _offset, VkDeviceSize _size, const char *_where) const {
                     void *__ptr = getMappedBuffer(_buffer_id);
                     SVKFW_ASSERT(__ptr != nullptr, std::invalid_argument, "VKFW::ContextMemory", "buffer memory is not HOST_VISIBLE or not allocated, in " + std::string(_where));
@@ -1644,11 +1761,40 @@ namespace Simple {
                 fence_id = cxt.cxt_barrier.addFence(false);
             }
            ~UploadBatch() {
-                // Note: the fence and the staging buffer must not be in use when the batch is gone
+                // Note: the fence, the semaphore and the staging buffer must not be in use when the batch is gone
                 if (cxt.cxt_barrier.fences.contains(fence_id)) {
                     try { wait(); } catch (...) {}
                     cxt.cxt_barrier.destroyFence(fence_id);
                 }
+                if (cxt.cxt_barrier.semaphores.contains(owner_semaphore_id))
+                    cxt.cxt_barrier.destroySemaphore(owner_semaphore_id);
+                if (cxt.cxt_barrier.semaphores.contains(return_semaphore_id))
+                    cxt.cxt_barrier.destroySemaphore(return_semaphore_id);
+                if (cxt.cxt_command.cmd_buffers.contains(owner_cmd_buffers_id))
+                    cxt.cxt_command.removeCmdBuffers(owner_cmd_buffers_id);
+            }
+
+            // Hands the uploaded buffers and images over to the queue family of '_owner_queue_id' (queue family ownership transfer).
+            // Needed for VK_SHARING_MODE_EXCLUSIVE resources used by another family than the queue of the batch (e.g. uploaded on the
+            // transfer queue, used on the graphics queue); skipped for CONCURRENT resources and when the families are the same.
+            // In each submit:
+            //   1. owner queue: buffers the owner got from an earlier upload are released back to the batch queue (their contents are kept);
+            //   2. batch queue: they are acquired, the copies are done, all copied resources are released to the owner;
+            //   3. owner queue: the resources are acquired; the fence of the batch is signaled here.
+            // Note: the batch allocates two command buffers from '_owner_cmd_pool_id' (of the owner family, created with
+            //       VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT). Work on the owner queue is ordered around the transfer by the
+            //       submission order: work submitted before 'submit' finishes before the copies, work submitted after it sees the new data.
+            //       Images are not given back before a copy: 'copyToImage' discards their contents anyway
+            void setOwner(QueueId _owner_queue_id, CommandPoolId _owner_cmd_pool_id) {
+                SVKFW_ASSERT(!is_submitted && regions.empty() && image_regions.empty() && released_buffers.empty() && owner_queue_id.isNone(),
+                                std::logic_error, "VKFW::UploadBatch :: setOwner", "the owner is set once, before the copies");
+                owner_queue_id = _owner_queue_id;
+                if (!transfersOwnership_()) return;
+
+                owner_cmd_buffers_id = cxt.cxt_command.addCmdBuffer();
+                cxt.cxt_command.createCmdBuffersPrimary(owner_cmd_buffers_id, _owner_cmd_pool_id, 2u);
+                return_semaphore_id = cxt.cxt_barrier.addSemaphore();
+                owner_semaphore_id  = cxt.cxt_barrier.addSemaphore();
             }
 
             // Copies the data into the staging buffer now, the device buffer is written after 'submit'
@@ -1661,7 +1807,8 @@ namespace Simple {
                 wait(); // the staging buffer may still be read by the previous submit
                 const uint8_t *__src = (const uint8_t*)_data;
                 while (_size > 0u) {
-                    if (staging_used == staging_size) { submit(); wait(); }
+                    // Note: the buffer is still being written, so it is released in a later submit
+                    if (staging_used == staging_size) { submit_(_dst_buffer_id); wait(); }
 
                     VkDeviceSize __part = std::min(_size, staging_size - staging_used);
                     memcpy(staging_ptr + staging_used, __src, __part);
@@ -1680,26 +1827,45 @@ namespace Simple {
                 }
             }
 
-            // Records and submits all collected copies; returns the fence signaled when they are done (none if there was nothing to submit)
-            FenceId submit() {
-                if (regions.empty()) return FenceId();
-                cxt.cxt_memory.flushBuffer(staging_buffer_id, 0u, staging_used);
+            // Copies tightly packed texels into mip level 0 of all layers of the image (the copy is done after 'submit');
+            // in the submit the image goes from UNDEFINED (old contents are discarded) to TRANSFER_DST and then to '_final_layout'
+            // Note: an EXCLUSIVE image used by another queue family needs 'setOwner' (or the image is CONCURRENT, see
+            //       'ContextMemory::setWholeImageCreateInfoStruct'). Other mip levels are not filled; the data of one image must fit the staging buffer; depth/stencil images get the depth aspect
+            void copyToImage(ImageId _dst_image_id, const void *_data, VkDeviceSize _size,
+                             VkImageLayout _final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                const VkImageCreateInfo &__image = cxt.cxt_memory.image(_dst_image_id).create_info.peek();
+                if ((__image.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0u)
+                    fprintf(svkfwwarn, "%s (%u, %u)\n", SVKFW_WRAPWARN("VKFW::UploadBatch :: copyToImage", "image is not set as transfer destination:"), _dst_image_id.parent.index, _dst_image_id.index);
+                SVKFW_ASSERT(_size <= staging_size, std::length_error, "VKFW::UploadBatch :: copyToImage",
+                                "image data doesn't fit the staging buffer: " + std::to_string(_size) + " > " + std::to_string(staging_size));
+                for (uint32_t i = 0u; i < image_regions.size(); ++i)
+                    SVKFW_ASSERT(image_regions[i].dst_image_id.parent.index != _dst_image_id.parent.index || image_regions[i].dst_image_id.index != _dst_image_id.index,
+                                    std::invalid_argument, "VKFW::UploadBatch :: copyToImage", "the image is already copied in this batch");
 
-                CommandRecorder __rec(cxt, cmd_buffer_id);
-                __rec.reset();
-                __rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-                for (uint32_t i = 0u; i < regions.size(); ++i)
-                    __rec.copyBuffer(staging_buffer_id, regions[i].dst_buffer_id, regions[i].copy);
-                __rec.end();
+                wait(); // the staging buffer may still be read by the previous submit
+                // Note: 'bufferOffset' must be a multiple of the texel block size (1-16 bytes, 3/6/12 for RGB formats) and of 4: 48 fits all
+                const VkDeviceSize __alignment = 48u;
+                VkDeviceSize __offset = staging_used + (__alignment - staging_used % __alignment) % __alignment;
+                if (__offset + _size > staging_size) { submit_(BufferId()); wait(); __offset = 0u; }
+                memcpy(staging_ptr + __offset, _data, _size);
+                staging_used = __offset + _size;
 
-                SubmitDesc __submit;
-                __submit.commands(cmd_buffer_id);
-                cxt.submit(queue_id, __submit, fence_id);
+                VkImageAspectFlags __aspect = Detail::formatAspects(__image.format);
+                if (__aspect & VK_IMAGE_ASPECT_DEPTH_BIT) __aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-                regions.clear();
-                is_submitted = true;
-                return fence_id;
+                ImageRegion __region;
+                __region.dst_image_id = _dst_image_id;
+                __region.final_layout = _final_layout;
+                __region.aspect       = __aspect;
+                __region.copy = VkBufferImageCopy{};
+                __region.copy.bufferOffset     = __offset;
+                __region.copy.imageSubresource = { __aspect, 0u, 0u, __image.arrayLayers };
+                __region.copy.imageExtent      = __image.extent;
+                image_regions.push_back(__region);
             }
+
+            // Records and submits all collected copies; returns the fence signaled when they are done (none if there was nothing to submit)
+            FenceId submit() { return submit_(BufferId()); }
 
             // Waits for the submitted copies; after it the staging buffer is free again
             void wait() {
@@ -1713,9 +1879,193 @@ namespace Simple {
             bool isSubmitted() const { return is_submitted; }
 
         private:
+            bool transfersOwnership_() const {
+                return !owner_queue_id.isNone() && cxt.get(owner_queue_id.parent) != cxt.get(queue_id.parent);
+            }
+
+            static VkBufferMemoryBarrier2 bufferBarrier_(VkBuffer _buffer, uint32_t _src_family, uint32_t _dst_family,
+                                                         VkPipelineStageFlags2 _src_stages, VkAccessFlags2 _src_access,
+                                                         VkPipelineStageFlags2 _dst_stages, VkAccessFlags2 _dst_access) {
+                VkBufferMemoryBarrier2 __barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+                __barrier.srcStageMask        = _src_stages;
+                __barrier.srcAccessMask       = _src_access;
+                __barrier.dstStageMask        = _dst_stages;
+                __barrier.dstAccessMask       = _dst_access;
+                __barrier.srcQueueFamilyIndex = _src_family;
+                __barrier.dstQueueFamilyIndex = _dst_family;
+                __barrier.buffer              = _buffer;
+                __barrier.offset              = 0u;
+                __barrier.size                = VK_WHOLE_SIZE;
+                return __barrier;
+            }
+
+            // '_keep_buffer_id' is still being written: its release waits for a later submit
+            FenceId submit_(BufferId _keep_buffer_id) {
+                if (regions.empty() && image_regions.empty()) return FenceId();
+                cxt.cxt_memory.flushBuffer(staging_buffer_id, 0u, staging_used);
+
+                const bool     __transfer   = transfersOwnership_();
+                const uint32_t __src_family = cxt.get(queue_id.parent);
+                const uint32_t __dst_family = __transfer ? cxt.get(owner_queue_id.parent) : uint32_t(VK_QUEUE_FAMILY_IGNORED);
+                const VkAccessFlags2 __any_access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+
+                // Buffers owned by another family: given back by the owner before the copies (step 1)
+                std::vector<VkBufferMemoryBarrier2> __return_release, __return_acquire;
+                for (uint32_t i = 0u; i < regions.size(); ++i) {
+                    const BufferId __id = regions[i].dst_buffer_id;
+                    VulkanContext::ContextMemory::MemoryMapping &__mapping = cxt.cxt_memory.bufferMapping(__id);
+                    if (cxt.cxt_memory.buffer(__id).create_info.peek().sharingMode == VK_SHARING_MODE_CONCURRENT) continue;
+                    if (__mapping.owner_family == VK_QUEUE_FAMILY_IGNORED || __mapping.owner_family == __src_family) continue;
+                    SVKFW_ASSERT(__transfer && __mapping.owner_family == __dst_family, std::logic_error, "VKFW::UploadBatch :: submit",
+                                    "the buffer (" + std::to_string(__id.parent.index) + ", " + std::to_string(__id.index) + ") is owned by another queue family, "
+                                    "set it as the owner of the batch ('setOwner')");
+                    const VkBuffer __buffer = cxt.get(__id);
+                    // Note: work submitted earlier on the owner queue may use the buffer in any stage
+                    __return_release.push_back(bufferBarrier_(__buffer, __dst_family, __src_family, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, __any_access,
+                                                              VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE));
+                    __return_acquire.push_back(bufferBarrier_(__buffer, __dst_family, __src_family, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE,
+                                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT));
+                    __mapping.owner_family = __src_family;
+                }
+
+                // Buffers to hand over to the owner (EXCLUSIVE ones, once each); '_keep_buffer_id' stays for the next submit
+                std::vector<BufferId> __release_buffers;
+                if (__transfer) {
+                    for (uint32_t i = 0u; i < regions.size(); ++i) {
+                        const BufferId __id = regions[i].dst_buffer_id;
+                        if (cxt.cxt_memory.buffer(__id).create_info.peek().sharingMode == VK_SHARING_MODE_CONCURRENT) continue;
+                        if (!containsBuffer_(released_buffers, __id)) released_buffers.push_back(__id);
+                    }
+                    for (uint32_t i = 0u; i < released_buffers.size(); ++i)
+                        if (!sameBuffer_(released_buffers[i], _keep_buffer_id)) __release_buffers.push_back(released_buffers[i]);
+                    released_buffers.clear();
+                    if (!_keep_buffer_id.isNone() && cxt.cxt_memory.buffer(_keep_buffer_id).create_info.peek().sharingMode != VK_SHARING_MODE_CONCURRENT)
+                        released_buffers.push_back(_keep_buffer_id);
+                }
+
+                // Step 1: the owner gives the buffers back
+                const bool __return = !__return_release.empty();
+                if (__return) {
+                    CommandRecorder __return_rec(cxt, CommandBufferId(owner_cmd_buffers_id, 0u));
+                    __return_rec.reset();
+                    __return_rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                    __return_rec.barrier({}, __return_release);
+                    __return_rec.end();
+
+                    SubmitDesc __return_submit;
+                    __return_submit.commands(CommandBufferId(owner_cmd_buffers_id, 0u)).signal(return_semaphore_id, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+                    cxt.submit(owner_queue_id, __return_submit);
+                }
+
+                // Step 2: copies on the queue of the batch
+                CommandRecorder __rec(cxt, cmd_buffer_id);
+                __rec.reset();
+                __rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                if (__return) __rec.barrier({}, __return_acquire);
+                for (uint32_t i = 0u; i < regions.size(); ++i)
+                    __rec.copyBuffer(staging_buffer_id, regions[i].dst_buffer_id, regions[i].copy);
+
+                // Released by the queue of the batch and acquired by the owner queue: same barriers, the stages and accesses
+                // of the other side are ignored (NONE)
+                std::vector<VkImageMemoryBarrier2>  __image_release,  __image_acquire;
+                std::vector<VkBufferMemoryBarrier2> __buffer_release, __buffer_acquire;
+
+                if (!image_regions.empty()) {
+                    std::vector<VkImageMemoryBarrier2> __barriers(image_regions.size());
+                    for (uint32_t i = 0u; i < image_regions.size(); ++i)
+                        __barriers[i] = imageBarrier(cxt.get(image_regions[i].dst_image_id), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                     VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                     image_regions[i].aspect);
+                    __rec.barrier(__barriers);
+                    for (uint32_t i = 0u; i < image_regions.size(); ++i)
+                        __rec.copyBufferToImage(staging_buffer_id, image_regions[i].dst_image_id, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_regions[i].copy);
+
+                    __barriers.clear();
+                    for (uint32_t i = 0u; i < image_regions.size(); ++i) {
+                        const ImageRegion &__region = image_regions[i];
+                        const VkImage      __image  = cxt.get(__region.dst_image_id);
+                        const bool __release = __transfer && cxt.cxt_memory.image(__region.dst_image_id).create_info.peek().sharingMode != VK_SHARING_MODE_CONCURRENT;
+                        if (!__release) {
+                            // Note: later users wait for the fence (or a semaphore), so the destination is any stage
+                            __barriers.push_back(imageBarrier(__image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, __region.final_layout,
+                                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                              VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, __region.aspect));
+                            continue;
+                        }
+                        // Note: the layout transition is done once, between the release and the acquire
+                        VkImageMemoryBarrier2 __barrier = imageBarrier(__image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, __region.final_layout,
+                                                                       VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                                       VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE, __region.aspect);
+                        __barrier.srcQueueFamilyIndex = __src_family;
+                        __barrier.dstQueueFamilyIndex = __dst_family;
+                        __image_release.push_back(__barrier);
+                        __barrier.srcStageMask  = VK_PIPELINE_STAGE_2_NONE;
+                        __barrier.srcAccessMask = VK_ACCESS_2_NONE;
+                        __barrier.dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                        __barrier.dstAccessMask = __any_access;
+                        __image_acquire.push_back(__barrier);
+                        cxt.cxt_memory.imageMapping(__region.dst_image_id).owner_family = __dst_family;
+                    }
+                    if (!__barriers.empty()) __rec.barrier(__barriers);
+                }
+
+                for (uint32_t i = 0u; i < __release_buffers.size(); ++i) {
+                    const VkBuffer __buffer = cxt.get(__release_buffers[i]);
+                    __buffer_release.push_back(bufferBarrier_(__buffer, __src_family, __dst_family, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                              VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE));
+                    __buffer_acquire.push_back(bufferBarrier_(__buffer, __src_family, __dst_family, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE,
+                                                              VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, __any_access));
+                    cxt.cxt_memory.bufferMapping(__release_buffers[i]).owner_family = __dst_family;
+                }
+                const bool __acquire = !__image_release.empty() || !__buffer_release.empty();
+                if (__acquire) __rec.barrier(__image_release, __buffer_release);
+                __rec.end();
+
+                SubmitDesc __submit;
+                __submit.commands(cmd_buffer_id);
+                if (__return) __submit.wait(return_semaphore_id, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+                if (!__acquire) {
+                    cxt.submit(queue_id, __submit, fence_id);
+                }
+                else {
+                    // Step 3: the owner acquires the resources
+                    __submit.signal(owner_semaphore_id, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+                    cxt.submit(queue_id, __submit);
+
+                    CommandRecorder __owner_rec(cxt, CommandBufferId(owner_cmd_buffers_id, 1u));
+                    __owner_rec.reset();
+                    __owner_rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                    __owner_rec.barrier(__image_acquire, __buffer_acquire);
+                    __owner_rec.end();
+
+                    SubmitDesc __owner_submit;
+                    __owner_submit.wait(owner_semaphore_id, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT).commands(CommandBufferId(owner_cmd_buffers_id, 1u));
+                    cxt.submit(owner_queue_id, __owner_submit, fence_id);
+                }
+
+                regions.clear();
+                image_regions.clear();
+                is_submitted = true;
+                return fence_id;
+            }
+
+            static bool sameBuffer_(BufferId _a, BufferId _b) {
+                return _a.parent.index == _b.parent.index && _a.parent.generation == _b.parent.generation && _a.index == _b.index;
+            }
+            static bool containsBuffer_(const std::vector<BufferId> &_buffers, BufferId _id) {
+                for (uint32_t i = 0u; i < _buffers.size(); ++i) if (sameBuffer_(_buffers[i], _id)) return true;
+                return false;
+            }
+
             struct Region {
                 BufferId     dst_buffer_id;
                 VkBufferCopy copy;
+            };
+            struct ImageRegion {
+                ImageId            dst_image_id;
+                VkBufferImageCopy  copy;
+                VkImageLayout      final_layout;
+                VkImageAspectFlags aspect;
             };
 
             VulkanContext  &cxt;
@@ -1728,7 +2078,14 @@ namespace Simple {
             VkDeviceSize staging_size = 0u;
             VkDeviceSize staging_used = 0u;
             bool         is_submitted = false;
-            std::vector<Region> regions;
+            std::vector<Region>      regions;
+            std::vector<ImageRegion> image_regions;
+            std::vector<BufferId>    released_buffers; // copied, but not released to the owner yet
+
+            QueueId          owner_queue_id;
+            CommandBuffersId owner_cmd_buffers_id; // [0]: gives buffers back (step 1), [1]: acquires the uploads (step 3)
+            SemaphoreId      return_semaphore_id;  // step 1 -> step 2
+            SemaphoreId      owner_semaphore_id;   // step 2 -> step 3
 
             UploadBatch(const UploadBatch &);
             UploadBatch& operator=(const UploadBatch &);
