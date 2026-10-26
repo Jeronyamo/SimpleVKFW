@@ -113,12 +113,28 @@ namespace Simple {
             AudioStreamConfig stream_config;
 
 
-            AudioHandler() : rta_cback{nullptr} {}
+            AudioHandler() : rta_handler{preferredApi_()}, rta_cback{nullptr} {}
            ~AudioHandler() {
                 if (rta_handler.isStreamRunning())
                     rta_handler.abortStream();
                 if (rta_handler.isStreamOpen())
                     rta_handler.closeStream();
+            }
+
+
+            // RtAudio picks the first compiled API with devices, which is ALSA on Linux. Its "default" device goes through
+            // the sound server anyway and can't open duplex streams there, so the server's own API is preferred when it runs.
+            static RtAudio::Api preferredApi_() {
+                std::vector<RtAudio::Api> __apis;
+                RtAudio::getCompiledApi(__apis);
+                for (RtAudio::Api __api : __apis) {
+                    if (__api != RtAudio::LINUX_PULSE)
+                        continue;
+                    RtAudio __probe{__api, [](RtAudioErrorType, const std::string &) {}};
+                    if (__probe.getDeviceCount() > 0)
+                        return __api;
+                }
+                return RtAudio::UNSPECIFIED;
             }
 
 
