@@ -233,10 +233,21 @@ message(${SVKFW_MSG_PREFIX} "Looking for Python at: '${Python3_EXECUTABLE}'")
 #   vkfw_enum.h          - enum names       (vulkan_core.h)
 #   vkfw_struct_traits.h - pNext chain rules (vk.xml)
 #   vkfw_func.h          - Func wrappers    (vk.xml, ext_sources/volk/volk.h)
+# Note: the scripts get the SDK path from the environment. IDEs started from a desktop menu (VS Code) don't read
+#       ~/.bashrc, so if VULKAN_SDK isn't set, it is taken from the Vulkan headers CMake found (/usr for distro packages).
+if(DEFINED ENV{VULKAN_SDK})
+    set(SVKFW_VULKAN_SDK "$ENV{VULKAN_SDK}")
+elseif(DEFINED ENV{VK_SDK_PATH})
+    set(SVKFW_VULKAN_SDK "$ENV{VK_SDK_PATH}")
+else()
+    get_filename_component(SVKFW_VULKAN_SDK "${Vulkan_INCLUDE_DIR}" DIRECTORY)
+endif()
+message(${SVKFW_MSG_PREFIX} "Vulkan SDK for generated headers: '${SVKFW_VULKAN_SDK}'")
+
 foreach(SVKFW_GEN_SCRIPT IN ITEMS vkfw_enum_gen.py vkfw_struct_gen.py vkfw_func_gen.py)
     message(${SVKFW_MSG_PREFIX} "Running script: '${CMAKE_SOURCE_DIR}/source/meta/${SVKFW_GEN_SCRIPT}'")
     execute_process(
-        COMMAND ${Python3_EXECUTABLE} "source/meta/${SVKFW_GEN_SCRIPT}"
+        COMMAND ${CMAKE_COMMAND} -E env "VULKAN_SDK=${SVKFW_VULKAN_SDK}" ${Python3_EXECUTABLE} "source/meta/${SVKFW_GEN_SCRIPT}"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE SCRIPT_RES
         OUTPUT_VARIABLE SCRIPT_OUT
