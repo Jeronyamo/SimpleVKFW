@@ -808,6 +808,7 @@ namespace Simple {
             uint32_t descr_pool_size = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
             std::vector<WidgetItf*> widgets; // Main Menu Bar or Window widgets
             bool backends_initialized = false;
+            VkFormat color_format = VK_FORMAT_UNDEFINED; // Note: the attachment format for dynamic rendering, must outlive the backend
 
 
             ImGuiHandler() {  createContext(); }
@@ -884,7 +885,17 @@ namespace Simple {
                 imgui_info.Device                      = _vkfw.cxt_core.device.handle;
                 imgui_info.QueueFamily                 = _vkfw.get(_qfamily_id);
                 imgui_info.Queue                       = _vkfw.get(_graphics_queue_id);
-                imgui_info.PipelineInfoMain.RenderPass = _vkfw.cxt_core.render_pass.handle;
+                imgui_info.ApiVersion                  = _vkfw.cxt_core.apiVersion();
+                // Note: ImGui draws inside the rendering of the swapchain image ('CommandRecorder::beginSwapchainRendering')
+                if (_vkfw.cxt_core.profile.dynamic_rendering) {
+                    color_format = _vkfw.cxt_swapchain.format();
+                    imgui_info.UseDynamicRendering = true;
+                    imgui_info.PipelineInfoMain.PipelineRenderingCreateInfo = VkPipelineRenderingCreateInfoKHR{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
+                    imgui_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount    = 1u;
+                    imgui_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &color_format;
+                }
+                else
+                    imgui_info.PipelineInfoMain.RenderPass = _vkfw.cxt_core.render_pass.handle;
                 // imgui_info.DescriptorPool = _vkfw.get(_ci_descr_pool);
                 imgui_info.MinImageCount = getMinImageCount();
                 imgui_info.ImageCount = std::max(_image_count, getMinImageCount());

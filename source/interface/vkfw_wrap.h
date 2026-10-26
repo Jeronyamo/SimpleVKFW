@@ -2787,6 +2787,36 @@ namespace Simple {
                 void updateWrap() {}
             }; // StructWrap<VkPipelineTessellationStateCreateInfo> END
 
+            // Note: attachment formats of a graphics pipeline used with dynamic rendering (instead of a render pass)
+            template <>
+            struct StructWrap<VkPipelineRenderingCreateInfo> {
+            private:
+                VkPipelineRenderingCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkPipelineRenderingCreateInfo)
+
+                std::vector<VkFormat> color_formats;
+
+                StructWrap() {}
+
+                void clear() {
+                    wrap = VkPipelineRenderingCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+                    color_formats.clear();
+                }
+
+                void updateWrap() {
+                    wrap.colorAttachmentCount    = color_formats.size();
+                    wrap.pColorAttachmentFormats = color_formats.data();
+                }
+
+            // Scenarios
+
+                void setFormats(Span<VkFormat> _color_formats, VkFormat _depth_format = VK_FORMAT_UNDEFINED, VkFormat _stencil_format = VK_FORMAT_UNDEFINED) {
+                    color_formats.assign(_color_formats.begin(), _color_formats.end());
+                    wrap.depthAttachmentFormat   = _depth_format;
+                    wrap.stencilAttachmentFormat = _stencil_format;
+                }
+            }; // StructWrap<VkPipelineRenderingCreateInfo> END
+
 
 //  == === ==== >   Vulkan: CreateInfo (Pipeline)
 
@@ -2808,6 +2838,10 @@ namespace Simple {
                 std::vector<StructWrap<VkPipelineShaderStageCreateInfo>>  shader_stages_wrap;
                 PipelineStateFlags active_state_flags = PipelineStateBits(0u);
 
+                // Note: used instead of 'renderPass'/'subpass' if 'use_dynamic_rendering' is set (see 'Object::Pipeline::createObject')
+                StructWrap<VkPipelineRenderingCreateInfo> rendering_wrap;
+                bool use_dynamic_rendering = false;
+
                 std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
 
                 StructWrap() {}
@@ -2819,6 +2853,9 @@ namespace Simple {
 
                     active_state_flags = PipelineStateBits(0u);
                     shader_stages_wrap.clear();
+
+                    rendering_wrap.clear();
+                    use_dynamic_rendering = false;
                 }
 
                 void updateWrap() {
@@ -3611,13 +3648,25 @@ namespace Simple {
                 }
 
                 // Returns VK_SUCCESS or another success code (e.g. VK_PIPELINE_COMPILE_REQUIRED, VK_OPERATION_DEFERRED_KHR), throws on errors
-                // Note: the render pass and the subpass are taken from the create info
+                // Note: the render pass and the subpass are taken from the create info;
+                //       with 'use_dynamic_rendering' the attachment formats ('rendering_wrap') are chained first and the render pass is ignored
                 VkResult createObject(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
                                       VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                       const VkAllocationCallbacks *_create_cb = nullptr) {
                     (void)_render_pass; (void)_subpass;
                     switch (pipeline_type) {
-                        case VKFW_PIPELINE_TYPE_GRAPHICS:    return Func::CreateGraphicsPipelines     (_device,               _pipeline_cache,   graphics_create_info_wrap.get(), _create_cb, &handle);
+                        case VKFW_PIPELINE_TYPE_GRAPHICS: {
+                            VkGraphicsPipelineCreateInfo __info = graphics_create_info_wrap.get();
+                            VkPipelineRenderingCreateInfo __rendering;
+                            if (graphics_create_info_wrap.use_dynamic_rendering) {
+                                __rendering       = graphics_create_info_wrap.rendering_wrap.get();
+                                __rendering.pNext = __info.pNext;
+                                __info.pNext      = &__rendering;
+                                __info.renderPass = VK_NULL_HANDLE;
+                                __info.subpass    = 0u;
+                            }
+                            return Func::CreateGraphicsPipelines(_device, _pipeline_cache, __info, _create_cb, &handle);
+                        }
                         case VKFW_PIPELINE_TYPE_COMPUTE:     return Func::CreateComputePipelines      (_device,               _pipeline_cache,    compute_create_info_wrap.get(), _create_cb, &handle);
                         case VKFW_PIPELINE_TYPE_RAY_TRACING: return Func::CreateRayTracingPipelinesKHR(_device, _deferred_op, _pipeline_cache, raytracing_create_info_wrap.get(), _create_cb, &handle);
                         case VKFW_PIPELINE_TYPE_UNDEFINED:  return VK_SUCCESS;

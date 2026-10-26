@@ -24,18 +24,76 @@ namespace Simple {
             uint32_t   image_index; // UINT32_MAX if no image was acquired
         }; // AcquireResult END
 
+        // Note: which way of rendering and synchronization the contexts use; set it before 'ContextCore::createDevice'.
+        //       The default needs Vulkan 1.3. Turning both options off needs only Vulkan 1.1 (e.g. for older mobile devices):
+        //       rendering goes through VkRenderPass/VkFramebuffer, barriers and submits use the original commands.
+        struct DeviceProfile {
+            bool dynamic_rendering = true; // false: VkRenderPass + VkFramebuffer ('ContextCore::render_pass', swapchain framebuffers)
+            bool synchronization2  = true; // false: vkCmdPipelineBarrier / vkQueueSubmit (64-bit stage/access flags are not available)
+
+            uint32_t minApiVersion() const {
+                return (dynamic_rendering || synchronization2) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+            }
+        }; // DeviceProfile END
+
+        namespace Detail {
+            // Note: synchronization2 flags without the 64-bit ones are the original flags; 'NONE' becomes '_none_stage'
+            inline VkPipelineStageFlags toStageFlags1(VkPipelineStageFlags2 _stages, VkPipelineStageFlags _none_stage) {
+                SVKFW_ASSERT((_stages >> 32u) == 0u, std::invalid_argument, "VKFW::Detail :: toStageFlags1", "the stage needs synchronization2");
+                return _stages == 0u ? _none_stage : VkPipelineStageFlags(_stages);
+            }
+            inline VkAccessFlags toAccessFlags1(VkAccessFlags2 _access) {
+                SVKFW_ASSERT((_access >> 32u) == 0u, std::invalid_argument, "VKFW::Detail :: toAccessFlags1", "the access needs synchronization2");
+                return VkAccessFlags(_access);
+            }
+        }; // Detail END
+
+        // Barrier for one image (all mips and layers of '_aspect'); used with 'CommandRecorder::barrier'
+        inline VkImageMemoryBarrier2 imageBarrier(VkImage _image, VkImageLayout _old_layout, VkImageLayout _new_layout,
+                                                  VkPipelineStageFlags2 _src_stages, VkAccessFlags2 _src_access,
+                                                  VkPipelineStageFlags2 _dst_stages, VkAccessFlags2 _dst_access,
+                                                  VkImageAspectFlags _aspect = VK_IMAGE_ASPECT_COLOR_BIT) {
+            VkImageMemoryBarrier2 __barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+            __barrier.srcStageMask        = _src_stages;
+            __barrier.srcAccessMask       = _src_access;
+            __barrier.dstStageMask        = _dst_stages;
+            __barrier.dstAccessMask       = _dst_access;
+            __barrier.oldLayout           = _old_layout;
+            __barrier.newLayout           = _new_layout;
+            __barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            __barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            __barrier.image               = _image;
+            __barrier.subresourceRange    = { _aspect, 0u, VK_REMAINING_MIP_LEVELS, 0u, VK_REMAINING_ARRAY_LAYERS };
+            return __barrier;
+        }
+
+        // Attachment for 'CommandRecorder::beginRendering'
+        inline VkRenderingAttachmentInfo renderingAttachment(VkImageView _view, VkImageLayout _layout,
+                                                             VkAttachmentLoadOp _load_op, VkAttachmentStoreOp _store_op,
+                                                             const VkClearValue &_clear_value = VkClearValue()) {
+            VkRenderingAttachmentInfo __info{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+            __info.imageView   = _view;
+            __info.imageLayout = _layout;
+            __info.loadOp      = _load_op;
+            __info.storeOp     = _store_op;
+            __info.clearValue  = _clear_value;
+            return __info;
+        }
+
         #define VKFW_MAX_SUBMIT_SEMAPHORES      8u
         #define VKFW_MAX_SUBMIT_COMMAND_BUFFERS 8u
 
-        // Note: one VkSubmitInfo described by Ids; stored inline, so it can be filled every frame without allocations
+        // Note: one VkSubmitInfo(2) described by Ids; stored inline, so it can be filled every frame without allocations.
+        //       Stages are synchronization2 flags; without synchronization2 they must fit the original 32-bit flags
         struct SubmitDesc {
             SemaphoreId          wait_semaphores  [VKFW_MAX_SUBMIT_SEMAPHORES];
-            VkPipelineStageFlags wait_stages      [VKFW_MAX_SUBMIT_SEMAPHORES];
+            VkPipelineStageFlags2 wait_stages     [VKFW_MAX_SUBMIT_SEMAPHORES];
             CommandBufferId      command_buffers  [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
             SemaphoreId          signal_semaphores[VKFW_MAX_SUBMIT_SEMAPHORES];
+            VkPipelineStageFlags2 signal_stages   [VKFW_MAX_SUBMIT_SEMAPHORES]; // Note: used only with synchronization2
             uint32_t wait_count = 0u, command_count = 0u, signal_count = 0u;
 
-            SubmitDesc& wait(SemaphoreId _semaphore_id, VkPipelineStageFlags _stage) {
+            SubmitDesc& wait(SemaphoreId _semaphore_id, VkPipelineStageFlags2 _stage) {
                 SVKFW_ASSERT(wait_count < VKFW_MAX_SUBMIT_SEMAPHORES, std::length_error, "VKFW::SubmitDesc :: wait", "too many wait semaphores");
                 wait_semaphores[wait_count] = _semaphore_id;
                 wait_stages    [wait_count] = _stage;
@@ -47,9 +105,11 @@ namespace Simple {
                 command_buffers[command_count++] = _cmd_buffer_id;
                 return *this;
             }
-            SubmitDesc& signal(SemaphoreId _semaphore_id) {
+            SubmitDesc& signal(SemaphoreId _semaphore_id, VkPipelineStageFlags2 _stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT) {
                 SVKFW_ASSERT(signal_count < VKFW_MAX_SUBMIT_SEMAPHORES, std::length_error, "VKFW::SubmitDesc :: signal", "too many signal semaphores");
-                signal_semaphores[signal_count++] = _semaphore_id;
+                signal_semaphores[signal_count] = _semaphore_id;
+                signal_stages    [signal_count] = _stage;
+                ++signal_count;
                 return *this;
             }
             void clear() { wait_count = command_count = signal_count = 0u; }
@@ -78,7 +138,13 @@ namespace Simple {
                     Object::Queue       queues;
                 };
                 Pool<QueueFamilyEntry, QueueFamilyTag> queue_families; // TODO: USE ONE QUEUE_FAMILY WRAP! DATA IS DUPLICATED
-                Object::RenderPass render_pass;
+                Object::RenderPass render_pass; // Note: used only without 'profile.dynamic_rendering'
+
+                DeviceProfile profile;
+                // Note: features enabled in 'createDevice' (Vulkan 1.0 features are set through 'device.create_info.req_features');
+                //       the structures of versions the device doesn't support are not chained
+                StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan11Features,
+                            VkPhysicalDeviceVulkan12Features, VkPhysicalDeviceVulkan13Features> device_features;
 
                 Struct::StructWrap<VkAllocationCallbacks> alloc_cb;
                 ContextDebug cxt_debug;
@@ -148,13 +214,41 @@ namespace Simple {
                 void findQueueFamilies() {
                     queue_families.forEach([](QueueFamilyId, QueueFamilyEntry &_qfam) { _qfam.family.createObject(); });
                 }
+                // Note: the API version used with the device (instance and device versions, whichever is lower); valid after 'findPhysicalDevice'
+                uint32_t apiVersion() const {
+                    StructChain<VkPhysicalDeviceProperties2> __props;
+                    queryProperties(__props);
+                    return std::min(instance.create_info.app_info_wrap.peek().apiVersion, __props.head().properties.apiVersion);
+                }
+                // Throws if the selected physical device can't be used with 'profile'
+                void checkProfileSupport() const {
+                    SVKFW_ASSERT(apiVersion() >= profile.minApiVersion(), std::runtime_error, "VKFW::ContextCore :: checkProfileSupport",
+                                    "the device profile needs Vulkan " + std::to_string(VK_API_VERSION_MAJOR(profile.minApiVersion())) + "." +
+                                                                         std::to_string(VK_API_VERSION_MINOR(profile.minApiVersion())));
+                }
                 void createDevice() {
+                    checkProfileSupport();
+                    const uint32_t __api_version = apiVersion();
+                    // Note: the features of the profile are mandatory in Vulkan 1.3, so they are only enabled
+                    if (profile.dynamic_rendering) device_features.get<VkPhysicalDeviceVulkan13Features>().dynamicRendering = VK_TRUE;
+                    if (profile.synchronization2 ) device_features.get<VkPhysicalDeviceVulkan13Features>().synchronization2 = VK_TRUE;
+
+                    device_features.link();
+                    if (__api_version < VK_API_VERSION_1_2) {
+                        device_features.unlink<VkPhysicalDeviceVulkan11Features>();
+                        device_features.unlink<VkPhysicalDeviceVulkan12Features>();
+                    }
+                    if (__api_version < VK_API_VERSION_1_3)
+                        device_features.unlink<VkPhysicalDeviceVulkan13Features>();
+                    device.create_info.setNext(device_features);
+
                     device.createObject(phys_device.handle, alloc_cb.get());
                 }
                 void acquireQueues() {
                     queue_families.forEach([this](QueueFamilyId, QueueFamilyEntry &_qfam) { _qfam.queues.createObject(device.handle); });
                 }
                 void createRenderPass() {
+                    SVKFW_ASSERT(!profile.dynamic_rendering, std::logic_error, "VKFW::ContextCore :: createRenderPass", "the render pass is not used with dynamic rendering");
                     render_pass.createObject(device.handle, alloc_cb.get());
                 }
 
@@ -210,8 +304,9 @@ namespace Simple {
             struct ContextSwapchain {
                 Object::SwapchainKHR swapchain;
                 Object::  SurfaceKHR   surface;
+                std::vector<VkImage>       images;
                 std::vector<VkImageView> image_views;
-                std::vector<VkFramebuffer> framebuffers;
+                std::vector<VkFramebuffer> framebuffers; // Note: created only without dynamic rendering
                 GLFWwindow *window = nullptr;
 
                 Struct::StructWrap<  VkImageViewCreateInfo>  image_view_wrap;
@@ -224,8 +319,6 @@ namespace Simple {
 
                 void destroyContext() {
                     destroySwapchainWithDependencies();
-                    image_views.clear();
-                    framebuffers.clear();
                     destroySurface();
                 }
 
@@ -242,15 +335,16 @@ namespace Simple {
                     framebuffer_wrap.setBufferSize(swapchain.create_info.peek().imageExtent);
                 }
                 void createImageViews() {
-                    std::vector<VkImage> __swapchain_images{Func::GetSwapchainImagesKHR(cxt_core->device.handle, swapchain.handle)};
+                    images = Func::GetSwapchainImagesKHR(cxt_core->device.handle, swapchain.handle);
 
-                    image_views.resize(__swapchain_images.size());
-                    for (ContextIndex ci = 0u; ci < __swapchain_images.size(); ++ci) {
-                        image_view_wrap.edit().image = __swapchain_images[ci];
+                    image_views.resize(images.size());
+                    for (ContextIndex ci = 0u; ci < images.size(); ++ci) {
+                        image_view_wrap.edit().image = images[ci];
                         image_views[ci] = Func::CreateImageView(cxt_core->device.handle, &image_view_wrap.get(), cxt_core->alloc_cb.get());
                     }
                 }
                 void createFramebuffers() {
+                    if (cxt_core->profile.dynamic_rendering) return;
                     framebuffers.resize(image_views.size());
                     framebuffer_wrap.edit().renderPass = cxt_core->render_pass.handle;
 
@@ -270,10 +364,13 @@ namespace Simple {
                 void destroyImageViews() {
                     for (auto    img_view :  image_views)
                         vkDestroyImageView(cxt_core->device.handle, img_view, cxt_core->alloc_cb.get());
+                    image_views.clear();
+                    images.clear(); // Note: the images belong to the swapchain
                 }
                 void destroyFramebuffers() {
                     for (auto framebuffer : framebuffers)
                         vkDestroyFramebuffer(cxt_core->device.handle, framebuffer, cxt_core->alloc_cb.get());
+                    framebuffers.clear();
                 }
 
             // Scenarios
@@ -303,12 +400,19 @@ namespace Simple {
                     SVKFW_ASSERT(_image_index < framebuffers.size(), std::out_of_range, "VKFW::ContextSwapchain :: framebuffer", "image index is out of the swapchain");
                     return framebuffers[_image_index];
                 }
+                VkImage image(uint32_t _image_index) const {
+                    SVKFW_ASSERT(_image_index < images.size(), std::out_of_range, "VKFW::ContextSwapchain :: image", "image index is out of the swapchain");
+                    return images[_image_index];
+                }
                 VkImageView imageView(uint32_t _image_index) const {
                     SVKFW_ASSERT(_image_index < image_views.size(), std::out_of_range, "VKFW::ContextSwapchain :: imageView", "image index is out of the swapchain");
                     return image_views[_image_index];
                 }
                 VkExtent2D extent() const {
                     return swapchain.create_info.peek().imageExtent;
+                }
+                VkFormat format() const {
+                    return swapchain.create_info.peek().imageFormat;
                 }
 
             // Functions
@@ -540,7 +644,9 @@ namespace Simple {
                     VkPipelineLayout  __layout   = layouts  .get(_layout_id).handle;
                     switch (__pipeline.pipeline_type) {
                         case VKFW_PIPELINE_TYPE_GRAPHICS:
-                            __pipeline.  graphics_create_info_wrap.edit().renderPass = cxt_core->render_pass.handle;
+                            // Note: with dynamic rendering the attachment formats are set through 'graphics_create_info_wrap.rendering_wrap'
+                            __pipeline.  graphics_create_info_wrap.use_dynamic_rendering = cxt_core->profile.dynamic_rendering;
+                            __pipeline.  graphics_create_info_wrap.edit().renderPass = cxt_core->profile.dynamic_rendering ? VK_NULL_HANDLE : cxt_core->render_pass.handle;
                             __pipeline.  graphics_create_info_wrap.edit().subpass    = _subpass;
 
                             __pipeline.  graphics_create_info_wrap.edit().layout = __layout; break;
@@ -1137,33 +1243,10 @@ namespace Simple {
 
         // Functions
 
+            // Note: uses vkQueueSubmit2 with 'profile.synchronization2', vkQueueSubmit otherwise
             void submit(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id = FenceId()) const {
-                struct Handles {
-                    VkSemaphore     wait  [VKFW_MAX_SUBMIT_SEMAPHORES];
-                    VkCommandBuffer cmd   [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
-                    VkSemaphore     signal[VKFW_MAX_SUBMIT_SEMAPHORES];
-                };
-                InlineArray<Handles,      4u> __handles(_submits.size());
-                InlineArray<VkSubmitInfo, 4u> __infos  (_submits.size());
-
-                for (uint32_t i = 0u; i < _submits.size(); ++i) {
-                    const SubmitDesc &__desc = _submits[i];
-                    fill(Span<SemaphoreId    >(__desc.wait_semaphores,   __desc.wait_count   ), __handles[i].wait  );
-                    fill(Span<CommandBufferId>(__desc.command_buffers,   __desc.command_count), __handles[i].cmd   );
-                    fill(Span<SemaphoreId    >(__desc.signal_semaphores, __desc.signal_count ), __handles[i].signal);
-
-                    __infos[i] = VkSubmitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-                    __infos[i].waitSemaphoreCount   = __desc.wait_count;
-                    __infos[i].pWaitSemaphores      = __handles[i].wait;
-                    __infos[i].pWaitDstStageMask    = __desc.wait_stages;
-                    __infos[i].commandBufferCount   = __desc.command_count;
-                    __infos[i].pCommandBuffers      = __handles[i].cmd;
-                    __infos[i].signalSemaphoreCount = __desc.signal_count;
-                    __infos[i].pSignalSemaphores    = __handles[i].signal;
-                }
-
-                VkResult __res = vkQueueSubmit(get(_queue_id), __infos.size(), __infos.data(), get(_fence_id));
-                SVKFW_ASSERT(__res == VK_SUCCESS, std::runtime_error, "VKFW::VulkanContext :: submit", "could not submit to queue, code " + std::to_string(__res));
+                if (cxt_core.profile.synchronization2) submit2_(_queue_id, _submits, _fence_id);
+                else                                   submit1_(_queue_id, _submits, _fence_id);
             }
 
             AcquireResult acquireNextImage(SemaphoreId _semaphore_id, FenceId _fence_id = FenceId(), uint64_t _timeout = UINT64_MAX) {
@@ -1193,6 +1276,75 @@ namespace Simple {
             }
 
         private:
+            void submit2_(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id) const {
+                struct Infos {
+                    VkSemaphoreSubmitInfo     wait  [VKFW_MAX_SUBMIT_SEMAPHORES];
+                    VkCommandBufferSubmitInfo cmd   [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
+                    VkSemaphoreSubmitInfo     signal[VKFW_MAX_SUBMIT_SEMAPHORES];
+                };
+                InlineArray<Infos,         4u> __infos  (_submits.size());
+                InlineArray<VkSubmitInfo2, 4u> __submits(_submits.size());
+
+                for (uint32_t i = 0u; i < _submits.size(); ++i) {
+                    const SubmitDesc &__desc = _submits[i];
+                    for (uint32_t j = 0u; j < __desc.wait_count; ++j) {
+                        __infos[i].wait[j] = VkSemaphoreSubmitInfo{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                        __infos[i].wait[j].semaphore = get(__desc.wait_semaphores[j]);
+                        __infos[i].wait[j].stageMask = __desc.wait_stages[j];
+                    }
+                    for (uint32_t j = 0u; j < __desc.command_count; ++j) {
+                        __infos[i].cmd[j] = VkCommandBufferSubmitInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+                        __infos[i].cmd[j].commandBuffer = get(__desc.command_buffers[j]);
+                    }
+                    for (uint32_t j = 0u; j < __desc.signal_count; ++j) {
+                        __infos[i].signal[j] = VkSemaphoreSubmitInfo{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                        __infos[i].signal[j].semaphore = get(__desc.signal_semaphores[j]);
+                        __infos[i].signal[j].stageMask = __desc.signal_stages[j];
+                    }
+
+                    __submits[i] = VkSubmitInfo2{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+                    __submits[i].waitSemaphoreInfoCount   = __desc.wait_count;
+                    __submits[i].pWaitSemaphoreInfos      = __infos[i].wait;
+                    __submits[i].commandBufferInfoCount   = __desc.command_count;
+                    __submits[i].pCommandBufferInfos      = __infos[i].cmd;
+                    __submits[i].signalSemaphoreInfoCount = __desc.signal_count;
+                    __submits[i].pSignalSemaphoreInfos    = __infos[i].signal;
+                }
+
+                Func::QueueSubmit2(get(_queue_id), Span<VkSubmitInfo2>(__submits.data(), __submits.size()), get(_fence_id));
+            }
+
+            void submit1_(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id) const {
+                struct Handles {
+                    VkSemaphore          wait  [VKFW_MAX_SUBMIT_SEMAPHORES];
+                    VkPipelineStageFlags stages[VKFW_MAX_SUBMIT_SEMAPHORES];
+                    VkCommandBuffer      cmd   [VKFW_MAX_SUBMIT_COMMAND_BUFFERS];
+                    VkSemaphore          signal[VKFW_MAX_SUBMIT_SEMAPHORES];
+                };
+                InlineArray<Handles,      4u> __handles(_submits.size());
+                InlineArray<VkSubmitInfo, 4u> __infos  (_submits.size());
+
+                for (uint32_t i = 0u; i < _submits.size(); ++i) {
+                    const SubmitDesc &__desc = _submits[i];
+                    fill(Span<SemaphoreId    >(__desc.wait_semaphores,   __desc.wait_count   ), __handles[i].wait  );
+                    fill(Span<CommandBufferId>(__desc.command_buffers,   __desc.command_count), __handles[i].cmd   );
+                    fill(Span<SemaphoreId    >(__desc.signal_semaphores, __desc.signal_count ), __handles[i].signal);
+                    for (uint32_t j = 0u; j < __desc.wait_count; ++j)
+                        __handles[i].stages[j] = Detail::toStageFlags1(__desc.wait_stages[j], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+
+                    __infos[i] = VkSubmitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                    __infos[i].waitSemaphoreCount   = __desc.wait_count;
+                    __infos[i].pWaitSemaphores      = __handles[i].wait;
+                    __infos[i].pWaitDstStageMask    = __handles[i].stages;
+                    __infos[i].commandBufferCount   = __desc.command_count;
+                    __infos[i].pCommandBuffers      = __handles[i].cmd;
+                    __infos[i].signalSemaphoreCount = __desc.signal_count;
+                    __infos[i].pSignalSemaphores    = __handles[i].signal;
+                }
+
+                Func::QueueSubmit(get(_queue_id), Span<VkSubmitInfo>(__infos.data(), __infos.size()), get(_fence_id));
+            }
+
             // Note: contexts keep pointers to each other, so a copy would point into the original
             VulkanContext(const VulkanContext &);
             VulkanContext& operator=(const VulkanContext &);
@@ -1252,6 +1404,61 @@ namespace Simple {
             }
             void endRenderPass() {
                 vkCmdEndRenderPass(cmd);
+            }
+
+        // Dynamic rendering (needs 'profile.dynamic_rendering')
+
+            void beginRendering(const VkRenderingInfo &_info) {
+                vkCmdBeginRendering(cmd, &_info);
+            }
+            // Note: render area starts at (0, 0)
+            void beginRendering(VkExtent2D _extent, Span<VkRenderingAttachmentInfo> _color_attachments,
+                                const VkRenderingAttachmentInfo *_depth_attachment = nullptr, const VkRenderingAttachmentInfo *_stencil_attachment = nullptr,
+                                uint32_t _layer_count = 1u, VkRenderingFlags _flags = 0u) {
+                VkRenderingInfo __info{VK_STRUCTURE_TYPE_RENDERING_INFO};
+                __info.flags                = _flags;
+                __info.renderArea.extent    = _extent;
+                __info.layerCount           = _layer_count;
+                __info.colorAttachmentCount = _color_attachments.size();
+                __info.pColorAttachments    = _color_attachments.data();
+                __info.pDepthAttachment     = _depth_attachment;
+                __info.pStencilAttachment   = _stencil_attachment;
+                vkCmdBeginRendering(cmd, &__info);
+            }
+            void endRendering() {
+                vkCmdEndRendering(cmd);
+            }
+
+        // Swapchain image (works with both profiles)
+
+            // Starts rendering into a swapchain image, clearing it with '_clear_value':
+            //   - dynamic rendering: transitions the image to COLOR_ATTACHMENT_OPTIMAL and begins rendering;
+            //   - render pass: begins the render pass of the core context with the image framebuffer
+            //     (layouts and the clear are defined by the render pass)
+            // Note: the wait on the 'image available' semaphore must include COLOR_ATTACHMENT_OUTPUT
+            void beginSwapchainRendering(uint32_t _image_index, const VkClearValue &_clear_value) {
+                const VulkanContext::ContextSwapchain &__swapchain = cxt.cxt_swapchain;
+                if (!cxt.cxt_core.profile.dynamic_rendering) {
+                    beginRenderPass(__swapchain.framebuffer(_image_index), __swapchain.extent(), _clear_value);
+                    return;
+                }
+                barrier(imageBarrier(__swapchain.image(_image_index), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT));
+                VkRenderingAttachmentInfo __color = renderingAttachment(__swapchain.imageView(_image_index), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                                        VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, _clear_value);
+                beginRendering(__swapchain.extent(), __color);
+            }
+            // Ends rendering into a swapchain image and makes it ready for presentation
+            void endSwapchainRendering(uint32_t _image_index) {
+                if (!cxt.cxt_core.profile.dynamic_rendering) {
+                    endRenderPass();
+                    return;
+                }
+                endRendering();
+                barrier(imageBarrier(cxt.cxt_swapchain.image(_image_index), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE));
             }
 
         // Bind
@@ -1340,6 +1547,59 @@ namespace Simple {
             }
 
         // Synchronization
+
+            // Note: vkCmdPipelineBarrier2 with 'profile.synchronization2'; otherwise the barriers are converted to vkCmdPipelineBarrier
+            //       (one call per barrier, so the stages of each barrier are kept; 64-bit flags throw)
+            void barrier(Span<VkImageMemoryBarrier2> _image_barriers, Span<VkBufferMemoryBarrier2> _buffer_barriers = {},
+                         Span<VkMemoryBarrier2> _memory_barriers = {}, VkDependencyFlags _flags = 0u) {
+                if (cxt.cxt_core.profile.synchronization2) {
+                    VkDependencyInfo __info{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                    __info.dependencyFlags          = _flags;
+                    __info.memoryBarrierCount       = _memory_barriers.size();
+                    __info.pMemoryBarriers          = _memory_barriers.data();
+                    __info.bufferMemoryBarrierCount = _buffer_barriers.size();
+                    __info.pBufferMemoryBarriers    = _buffer_barriers.data();
+                    __info.imageMemoryBarrierCount  = _image_barriers.size();
+                    __info.pImageMemoryBarriers     = _image_barriers.data();
+                    vkCmdPipelineBarrier2(cmd, &__info);
+                    return;
+                }
+                for (uint32_t i = 0u; i < _memory_barriers.size(); ++i) {
+                    const VkMemoryBarrier2 &__b = _memory_barriers[i];
+                    VkMemoryBarrier __barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    __barrier.srcAccessMask = Detail::toAccessFlags1(__b.srcAccessMask);
+                    __barrier.dstAccessMask = Detail::toAccessFlags1(__b.dstAccessMask);
+                    pipelineBarrier(Detail::toStageFlags1(__b.srcStageMask, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT),
+                                    Detail::toStageFlags1(__b.dstStageMask, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT), __barrier, {}, {}, _flags);
+                }
+                for (uint32_t i = 0u; i < _buffer_barriers.size(); ++i) {
+                    const VkBufferMemoryBarrier2 &__b = _buffer_barriers[i];
+                    VkBufferMemoryBarrier __barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    __barrier.srcAccessMask       = Detail::toAccessFlags1(__b.srcAccessMask);
+                    __barrier.dstAccessMask       = Detail::toAccessFlags1(__b.dstAccessMask);
+                    __barrier.srcQueueFamilyIndex = __b.srcQueueFamilyIndex;
+                    __barrier.dstQueueFamilyIndex = __b.dstQueueFamilyIndex;
+                    __barrier.buffer              = __b.buffer;
+                    __barrier.offset              = __b.offset;
+                    __barrier.size                = __b.size;
+                    pipelineBarrier(Detail::toStageFlags1(__b.srcStageMask, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT),
+                                    Detail::toStageFlags1(__b.dstStageMask, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT), {}, __barrier, {}, _flags);
+                }
+                for (uint32_t i = 0u; i < _image_barriers.size(); ++i) {
+                    const VkImageMemoryBarrier2 &__b = _image_barriers[i];
+                    VkImageMemoryBarrier __barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+                    __barrier.srcAccessMask       = Detail::toAccessFlags1(__b.srcAccessMask);
+                    __barrier.dstAccessMask       = Detail::toAccessFlags1(__b.dstAccessMask);
+                    __barrier.oldLayout           = __b.oldLayout;
+                    __barrier.newLayout           = __b.newLayout;
+                    __barrier.srcQueueFamilyIndex = __b.srcQueueFamilyIndex;
+                    __barrier.dstQueueFamilyIndex = __b.dstQueueFamilyIndex;
+                    __barrier.image               = __b.image;
+                    __barrier.subresourceRange    = __b.subresourceRange;
+                    pipelineBarrier(Detail::toStageFlags1(__b.srcStageMask, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT),
+                                    Detail::toStageFlags1(__b.dstStageMask, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT), {}, {}, __barrier, _flags);
+                }
+            }
 
             void pipelineBarrier(VkPipelineStageFlags _src_stages, VkPipelineStageFlags _dst_stages,
                                  Span<VkMemoryBarrier> _memory_barriers, Span<VkBufferMemoryBarrier> _buffer_barriers = {},

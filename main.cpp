@@ -122,11 +122,11 @@ int main(int argc, char **argv) {
     vk.cxt_core.loadPhysicalDeviceInfo();
     vk.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
 
-    // Note: Vulkan 1.3 is required (instance and device)
-    Simple::VKFW::StructChain<VkPhysicalDeviceProperties2> phys_device_props;
-    vk.cxt_core.queryProperties(phys_device_props);
-    SVKFW_ASSERT(Simple::VKFW::VulkanAPIVersion::available() >= VK_API_VERSION_1_3 && phys_device_props.head().properties.apiVersion >= VK_API_VERSION_1_3,
-                    std::runtime_error, "main()", "Vulkan 1.3 is not supported");
+    // Device profile: dynamic rendering + synchronization2 need Vulkan 1.3;
+    //                 with both set to false rendering goes through VkRenderPass with the original barriers (Vulkan 1.1)
+    vk.cxt_core.profile.dynamic_rendering = true;
+    vk.cxt_core.profile.synchronization2  = true;
+    vk.cxt_core.checkProfileSupport();
 
     // Queue family
     QueueFamilyId ci_qfam_graphics = vk.cxt_core.addQueueFamily();
@@ -152,14 +152,9 @@ int main(int argc, char **argv) {
     vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_transfer, QUEUES_COUNT_TRANSFER);
     vk.cxt_core.setDeviceQueueInfo();
 
-    // Device features: Vulkan 1.0 features are set through 'req_features', newer ones through the chain
-    // Note: the chain must outlive 'createDevice'; these features are mandatory in Vulkan 1.3
-    Simple::VKFW::StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan11Features,
-                              VkPhysicalDeviceVulkan12Features, VkPhysicalDeviceVulkan13Features> device_features;
-    device_features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore = VK_TRUE;
-    device_features.get<VkPhysicalDeviceVulkan13Features>().synchronization2  = VK_TRUE;
-    device_features.get<VkPhysicalDeviceVulkan13Features>().dynamicRendering  = VK_TRUE;
-    vk.cxt_core.device.create_info.setNext(device_features);
+    // Device features: Vulkan 1.0 features are set through 'req_features', newer ones through 'device_features'
+    // Note: the features of the profile are enabled by 'createDevice'; structures of versions the device doesn't support are ignored
+    vk.cxt_core.device_features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore = VK_TRUE;
 
     vk.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
     vk.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
@@ -178,34 +173,37 @@ int main(int argc, char **argv) {
     vk.cxt_swapchain.createSurface();
 
 
-// Render pass:
-    // Attachment description
-    ContextIndex ci_attachment = vk.cxt_core.addSctRenderPassAttachment();
-    auto         ce_attachment = vk.cxt_core.render_pass.create_info.shortcutAttachment(ci_attachment);
-
+// Render pass (only without dynamic rendering):
     vk.cxt_swapchain.pickSwapchainImageFormat();
-    vk.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
-    ce_attachment->edit().samples = VK_SAMPLE_COUNT_1_BIT;
-    ce_attachment->setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR,     VK_ATTACHMENT_STORE_OP_STORE);
-    ce_attachment->setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
-    ce_attachment->setLayouts   (VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    // Subpass description
-    ContextIndex ci_subpass_descr = vk.cxt_core.addSctRenderPassSubpassDescription();
-    auto         ce_subpass_descr = vk.cxt_core.render_pass.create_info.shortcutSubpassDescription(ci_subpass_descr);
+    if (!vk.cxt_core.profile.dynamic_rendering) {
+        // Attachment description
+        ContextIndex ci_attachment = vk.cxt_core.addSctRenderPassAttachment();
+        auto         ce_attachment = vk.cxt_core.render_pass.create_info.shortcutAttachment(ci_attachment);
 
-    ce_subpass_descr->addColorAttachment(0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    ce_subpass_descr->edit().pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
+        vk.cxt_swapchain.setRenderPassAttachmentImageFormat (ci_attachment);
+        ce_attachment->edit().samples = VK_SAMPLE_COUNT_1_BIT;
+        ce_attachment->setColorOps  (VK_ATTACHMENT_LOAD_OP_CLEAR,     VK_ATTACHMENT_STORE_OP_STORE);
+        ce_attachment->setStencilOps(VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+        ce_attachment->setLayouts   (VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    // Subpass dependency
-    ContextIndex ci_subpass_dep = vk.cxt_core.addSctRenderPassSubpassDependency();
-    auto         ce_subpass_dep = vk.cxt_core.render_pass.create_info.shortcutSubpassDependency(ci_subpass_dep);
-    ce_subpass_dep->setSubpasses(VK_SUBPASS_EXTERNAL, 0u);
-    ce_subpass_dep->setSrcMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
-    ce_subpass_dep->setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        // Subpass description
+        ContextIndex ci_subpass_descr = vk.cxt_core.addSctRenderPassSubpassDescription();
+        auto         ce_subpass_descr = vk.cxt_core.render_pass.create_info.shortcutSubpassDescription(ci_subpass_descr);
 
-    vk.cxt_core.createRenderPass();
+        ce_subpass_descr->addColorAttachment(0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        ce_subpass_descr->edit().pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        // Note: 'pColorBlendState->attachmentCount' must be == 'pSubpasses[0].colorAttachmentCount'
+
+        // Subpass dependency
+        ContextIndex ci_subpass_dep = vk.cxt_core.addSctRenderPassSubpassDependency();
+        auto         ce_subpass_dep = vk.cxt_core.render_pass.create_info.shortcutSubpassDependency(ci_subpass_dep);
+        ce_subpass_dep->setSubpasses(VK_SUBPASS_EXTERNAL, 0u);
+        ce_subpass_dep->setSrcMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
+        ce_subpass_dep->setDstMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+
+        vk.cxt_core.createRenderPass();
+    }
 
 
 // Swapchain:
@@ -367,6 +365,8 @@ int main(int argc, char **argv) {
 
     // Graphics pipeline
     graphics_pip.graphics_create_info_wrap.setPipelineStates(0xfffu);
+    // Note: attachment formats for dynamic rendering (ignored with the render pass)
+    graphics_pip.graphics_create_info_wrap.rendering_wrap.setFormats(vk.cxt_swapchain.format());
     vk.cxt_pipeline.createPipeline(ci_graphics_pip, 0u, ci_pip_layout);
 
     // Command pool
@@ -425,7 +425,7 @@ int main(int argc, char **argv) {
 // Main loop:
     // Preparations
 
-    // Note: 'acquired.image_index' matches the swapchain framebuffers and image views
+    // Note: 'acquired.image_index' matches the swapchain images, image views and framebuffers
     uint32_t current_frame = 0u;
     const VkClearValue clear_color = {{{0.f, 0.f, 0.f, 1.f}}};
 
@@ -458,7 +458,7 @@ int main(int argc, char **argv) {
         rec.reset();
         rec.begin();
 
-        rec.beginRenderPass(vk.cxt_swapchain.framebuffer(acquired.image_index), vk.cxt_swapchain.extent(), clear_color);
+        rec.beginSwapchainRendering(acquired.image_index, clear_color);
 
         rec.bindPipeline(ci_graphics_pip);
         rec.bindVertexBuffers(ci_buffer_vertex);
@@ -480,7 +480,7 @@ int main(int argc, char **argv) {
         main_window_handler.imgui_handler.render();
         main_window_handler.imgui_handler.fillCommandBuffer(rec.handle());
 
-        rec.endRenderPass();
+        rec.endSwapchainRendering(acquired.image_index);
         rec.end();
 
 
