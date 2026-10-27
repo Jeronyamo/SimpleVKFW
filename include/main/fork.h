@@ -21,13 +21,9 @@ namespace Simple {
     struct Pipe {
         int pipe_fdescriptors[2]{0,0};
 
-        Pipe(bool _get_fdescriptors = true) {
-            
-        }
+        Pipe(bool _get_fdescriptors = true);
 
-        void getDescriptors() {
-            // _pipe();
-        }
+        void getDescriptors();
     }; // Pipe END
 }; // Simple END
 

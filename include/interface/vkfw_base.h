@@ -23,8 +23,8 @@ namespace Simple {
         typedef uint32_t    ContextIndex;
         typedef std::pair<uint32_t, uint32_t> ContextIndex2;
 
-        inline bool shouldIgnoreCI(ContextIndex   _ci_check) { return _ci_check == VKFW_CI_IGNORE; }
-        inline bool shouldIgnoreCI(ContextIndex2 _ci2_check) { return _ci2_check.first == VKFW_CI_IGNORE || _ci2_check.second == VKFW_CI_IGNORE; }
+        bool shouldIgnoreCI(ContextIndex   _ci_check);
+        bool shouldIgnoreCI(ContextIndex2 _ci2_check);
 
         template <typename T>
         struct ContextEntity {
@@ -274,28 +274,11 @@ namespace Simple {
         }; // CompareOp END
 
         namespace VulkanAPIVersion {
-            inline uint32_t available(uint32_t *_variant = nullptr) {
-                uint32_t _version = VK_API_VERSION_1_0;
+            uint32_t available(uint32_t *_variant = nullptr);
 
-                if (vkEnumerateInstanceVersion != nullptr)
-                    vkEnumerateInstanceVersion( &_version);
+            uint32_t join(const vec3u &_version, uint32_t _variant = 0u);
 
-                if (_variant != nullptr)
-                    *_variant = VK_API_VERSION_VARIANT(_version);
-                return _version & ~VK_MAKE_API_VERSION(0x7u, 0u, 0u, 0u); // variant bits are cleared
-            }
-
-            inline uint32_t join(const vec3u &_version, uint32_t _variant = 0u) {
-                return VK_MAKE_API_VERSION(_variant, _version.x, _version.y, _version.z);
-            }
-
-            inline vec3u split(uint32_t _version, uint32_t *_variant = nullptr) {
-                if (_variant != nullptr)
-                    *_variant = VK_API_VERSION_VARIANT(_version);
-                return { VK_API_VERSION_MAJOR(_version),
-                         VK_API_VERSION_MINOR(_version),
-                         VK_API_VERSION_PATCH(_version) };
-            }
+            vec3u split(uint32_t _version, uint32_t *_variant = nullptr);
         }; // VulkanAPIVersion END
 
 
@@ -303,101 +286,36 @@ namespace Simple {
         struct StructPtrChain {
         // Static
 
-            static std::vector<VkBaseOutStructure*> ExpandPtrChain(VkBaseOutStructure *_chain_begin) {
-                std::vector<VkBaseOutStructure*> __res;
+            static std::vector<VkBaseOutStructure*> ExpandPtrChain(VkBaseOutStructure *_chain_begin);
 
-                while (_chain_begin != nullptr) {
-                    __res.push_back(_chain_begin);
-                    _chain_begin = _chain_begin->pNext;
+            static std::vector<VkStructureType> GetAllTypes(VkBaseOutStructure *_chain_begin);
 
-                    // Safeguard from loops
-                    for (uint32_t i = 0u; i < __res.size() - 1; ++i)
-                        if (__res[i] == __res.back()) {
-                            __res.pop_back();
-                            _chain_begin = nullptr;
-                            break;
-                        }
-                }
+            static VkBaseOutStructure* GetChainElem(VkBaseOutStructure *_chain_begin, uint32_t _id);
 
-                return __res;
-            }
-
-            static std::vector<VkStructureType> GetAllTypes(VkBaseOutStructure *_chain_begin) {
-                auto __all_ptrs = ExpandPtrChain(_chain_begin);
-                std::vector<VkStructureType> __res;
-
-                __res.reserve(__all_ptrs.size());
-                for (auto p : __all_ptrs) {
-                    // TODO: check if having multiple structures of same type is never allowed
-                    for (VkStructureType res_t : __res)
-                        if (p->sType == res_t)
-                            throw std::runtime_error(SVKFW_WRAPERR("VKFW :: StructPtrChain :: GetAllTypes", "structure chain has multiple structures of type " + std::to_string(res_t)));
-
-                    __res.push_back(p->sType);
-                }
-                return __res;
-            }
-
-            static VkBaseOutStructure* GetChainElem(VkBaseOutStructure *_chain_begin, uint32_t _id) {
-                auto __res = ExpandPtrChain(_chain_begin);
-                return _id < __res.size() ? __res[_id] : nullptr;
-            }
-
-            static VkBaseOutStructure* GetChainLastElem(VkBaseOutStructure *_chain_begin) {
-                auto __res = ExpandPtrChain(_chain_begin);
-                return __res.empty() ? nullptr : __res.back();
-            }
+            static VkBaseOutStructure* GetChainLastElem(VkBaseOutStructure *_chain_begin);
 
             // Note: 'offset' means "insert before this index". If offset is equal to/greater than length of the chain, inserts as last element.
             //     General:                chain_begin -> ... -> chain_before -> subchain_begin -> ... -> subchain_end -> chain_after -> ... -> chain_end
             //     offset == 0:         subchain_begin -> ... -> subchain_end ->    chain_begin -> ... ->    chain_end
             //     offset >= chain len:    chain_begin -> ... ->    chain_end -> subchain_begin -> ... -> subchain_end
             // Returns the new beginning of the chain ('subchain_begin' if offset == 0, otherwise 'chain_begin').
-            static VkBaseOutStructure* InsertStructs(VkBaseOutStructure *_chain_begin, VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX) {
-                if (_subchain_begin == nullptr || _chain_begin == nullptr)
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: StructPtrChain :: InsertStructs", "null pointer(s) passed"));
-
-                VkBaseOutStructure *_subchain_end = GetChainLastElem(_subchain_begin);
-                VkBaseOutStructure *_chain_before = nullptr;
-                VkBaseOutStructure *_chain_after  = _chain_begin;
-
-                if (_offset > 0u) {
-                    std::vector<VkBaseOutStructure*> __chain = ExpandPtrChain(_chain_begin);
-                    _chain_before = __chain[std::min<size_t>(_offset, __chain.size()) - 1];
-                    _chain_after  = _chain_before->pNext;
-                    _chain_before->pNext = _subchain_begin;
-                }
-                _subchain_end->pNext = _chain_after;
-                return _offset > 0u ? _chain_begin : _subchain_begin;
-            }
+            static VkBaseOutStructure* InsertStructs(VkBaseOutStructure *_chain_begin, VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX);
 
         // StructPtrChain class
 
             std::vector<VkBaseOutStructure*> chain;
 
-            StructPtrChain(VkBaseOutStructure *_chain_begin = nullptr) : chain{ExpandPtrChain(_chain_begin)} {}
-            StructPtrChain(const std::vector<void *> &_chain_vec) {
-                chain.resize(_chain_vec.size());
-                for (uint32_t i = 0; i < chain.size(); ++i)
-                    chain[i] = (VkBaseOutStructure *) _chain_vec[i];
-                updateChainLinks();
-            }
-            StructPtrChain(StructPtrChain &&_chain) : chain{_chain.chain} { _chain.chain.clear(); }
-           ~StructPtrChain() { clear(); }
+            StructPtrChain(VkBaseOutStructure *_chain_begin = nullptr);
+            StructPtrChain(const std::vector<void *> &_chain_vec);
+            StructPtrChain(StructPtrChain &&_chain);
+           ~StructPtrChain();
 
             // Note: Vulkan structures are trivially destructible, so it's enough to deallocate the memory.
             //       Calling 'delete' through 'VkBaseOutStructure*' for an object of another type is UB, while
             //       '::operator delete' accepts any pointer returned by 'new T' (for non-overaligned 'T').
-            void clear() {
-                for (auto p : chain) ::operator delete(static_cast<void*>(p));
-                chain.clear();
-            }
+            void clear();
 
-            void updateChainLinks() {
-                for (uint32_t i = 1u; i < chain.size(); ++i)
-                    chain[i-1]->pNext = chain[i];
-                if (!chain.empty()) chain.back()->pNext = nullptr;
-            }
+            void updateChainLinks();
 
         // Scenarios
 
@@ -432,30 +350,11 @@ namespace Simple {
                 return nullptr;
             }
 
-            void setChain(VkBaseOutStructure *_chain_begin) {
-                chain = ExpandPtrChain(_chain_begin);
-            }
+            void setChain(VkBaseOutStructure *_chain_begin);
 
-            std::vector<VkStructureType> getAllTypes() const {
-                std::vector<VkStructureType> __res(chain.size());
-                for (uint32_t i = 0u; i < __res.size(); ++i)
-                    __res[i] = chain[i]->sType;
-                return __res;
-            }
+            std::vector<VkStructureType> getAllTypes() const;
 
-            void insertStructs(VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX) {
-                auto __subchain = ExpandPtrChain(_subchain_begin);
-
-                if (__subchain.empty())
-                    throw std::invalid_argument(SVKFW_WRAPERR("VKFW :: StructPtrChain :: insertStructs", "subchain is empty"));
-
-                auto __iter_begin = chain.end();
-                if (_offset < chain.size())
-                    __iter_begin = chain.begin() + _offset;
-
-                chain.insert(__iter_begin, __subchain.begin(), __subchain.end());
-                updateChainLinks();
-            }
+            void insertStructs(VkBaseOutStructure *_subchain_begin, uint32_t _offset = UINT32_MAX);
 
             template <typename T>
             void addStructBack(VkStructureType _s_type) {

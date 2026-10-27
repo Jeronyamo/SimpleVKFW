@@ -126,7 +126,7 @@
 
 
 namespace Simple {
-    FILE *svkfwwarn = stderr;
+    extern FILE *svkfwwarn;
 
     namespace TermCtrl {
         enum class TFlag : uint8_t {
@@ -167,10 +167,7 @@ namespace Simple {
         }; // TColor END
 
 
-        TColor getTermColor(bool _red, bool _green, bool _blue, bool _bright) {
-            return TColor((uint8_t(_red       ) | (uint8_t(_green ) << 1) |
-                          (uint8_t(_blue) << 2) | (uint8_t(_bright) << 3)));
-        }
+        TColor getTermColor(bool _red, bool _green, bool _blue, bool _bright);
 
 
         struct TextStyle {
@@ -183,14 +180,7 @@ namespace Simple {
 
             TextStyle(const std::vector<TFlag> &_properties = {},
                       TColor _fg_col8 = TColor::Default, TColor _bg_col8 = TColor::Default,
-                      Col24 _fg_col24 = {}, Col24 _bg_col24 = {}) {
-                for (TFlag prop : _properties) {
-                    if (prop == TFlag::BG_RGB8 || prop == TFlag::BG_RGB24)
-                        set(prop, _bg_col8, _bg_col24);
-                    else
-                        set(prop, _fg_col8, _fg_col24);
-                }
-            }
+                      Col24 _fg_col24 = {}, Col24 _bg_col24 = {});
 
 
             // 0 - bold, 1 - faint, 2 - color mode, 3-4 - fg rgb8/24, 5-6 - bg rgb8/24,
@@ -245,27 +235,7 @@ namespace Simple {
                 return (T) Bits::unpack(flags, FlagOffset<T>(), FlagSizeBits<T>());
             }
 
-            void set(TFlag _property, TColor _col8 = TColor::Default, Col24 _col24 = {}) {
-                switch (_property) {
-                    case TFlag::BOLD:             set(Emphasis::Bold); break;
-                    case TFlag::FAINT:            set(Emphasis::Faint); break;
-                    case TFlag::COLORS_INV:       set(ColorMode::Inverted); break;
-                    case TFlag::FG_RGB8:          if (_col8 != TColor::Default) setColorFG(_col8); break;
-                    case TFlag::FG_RGB24:         setColorFG(_col24.r, _col24.g, _col24.b); break;
-                    case TFlag::BG_RGB8:          if (_col8 != TColor::Default) setColorBG(_col8); break;
-                    case TFlag::BG_RGB24:         setColorBG(_col24.r, _col24.g, _col24.b); break;
-                    case TFlag::HIDDEN:           set(HideMode::Hide); break;
-                    case TFlag::STRIKEOUT:        set(Strikeout::On); break;
-                    case TFlag::OVERLINE:         set(Overline::On); break;
-                    case TFlag::SINGLE_UNDERLINE: set(Underline::On); break;
-                    case TFlag::DOUBLE_UNDERLINE: set(Underline::Double); break;
-                    case TFlag::SLOW_BLINK:       set(Blinking::Slow); break;
-                    case TFlag::FAST_BLINK:       set(Blinking::Fast); break;
-                    case TFlag::ITALIC:           set(FontStyle::Italic); break;
-                    case TFlag::GOTHIC:           set(FontStyle::Gothic); break;
-                    case TFlag::BOLDFAINT:        set(Emphasis::BoldFaint); break;
-                }
-            }
+            void set(TFlag _property, TColor _col8 = TColor::Default, Col24 _col24 = {});
             template <TFlag TERM_PROPERTY>
             bool getActive() const {
                 if (TERM_PROPERTY <  TFlag::HAS_UNDERLINE)
@@ -285,22 +255,10 @@ namespace Simple {
                 throw std::invalid_argument(SVKFW_WRAPERR("TermCtrl :: TextStyle :: getActive flag property", "TFlag template argument is out of bounds"));
             }
 
-            void setColorFG(TermCtrl::TColor _fg_color) {
-                fgcolor = _fg_color;
-                set(TermCtrl::RGBModeFG::RGB8);
-            }
-            void setColorFG(uint8_t _r, uint8_t _g, uint8_t _b) {
-                rgbFG = {_r, _g, _b};
-                set(TermCtrl::RGBModeFG::RGB24);
-            }
-            void setColorBG(TermCtrl::TColor _bg_color) {
-                bgcolor = _bg_color;
-                set(TermCtrl::RGBModeBG::RGB8);
-            }
-            void setColorBG(uint8_t _r, uint8_t _g, uint8_t _b) {
-                rgbBG = {_r, _g, _b};
-                set(TermCtrl::RGBModeBG::RGB24);
-            }
+            void setColorFG(TermCtrl::TColor _fg_color);
+            void setColorFG(uint8_t _r, uint8_t _g, uint8_t _b);
+            void setColorBG(TermCtrl::TColor _bg_color);
+            void setColorBG(uint8_t _r, uint8_t _g, uint8_t _b);
         }; // TextStyle END
     }; // TermCtrl END
 }; // Simple END

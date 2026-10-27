@@ -43,7 +43,7 @@ namespace Simple {
     }
 
 // A deleter for unique_ptr/shared_ptr pointers, when memory is provided by malloc.
-    struct FreeDeleter { void operator()(void *ptr) const { free(ptr); } };
+    struct FreeDeleter { void operator()(void *ptr) const; };
 }; // Simple END
 
 #endif

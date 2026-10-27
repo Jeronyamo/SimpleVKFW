@@ -13,8 +13,7 @@ namespace Simple {
             const uint32_t is_big_endian;
             const uint32_t is_little_endian;
 
-            EndiannessCheckSct() : is_big_endian   {reinterpret_cast<const unsigned char*>(&byte_check_)[0] == 0x01},
-                                   is_little_endian{reinterpret_cast<const unsigned char*>(&byte_check_)[0] == 0x04} {}
+            EndiannessCheckSct();
 
             template <typename T>
             static T SwapBytes(T _in_value) {
@@ -48,7 +47,8 @@ namespace Simple {
             void bigEndianToCurrentInplace(T &_in_value) const {
                 if (is_little_endian) SwapBytesInplace(_in_value);
             }
-        } Endianness;
+        };
+        extern EndiannessCheckSct Endianness;
 
 
 //  ============  Bytestream  ============  \\
@@ -58,7 +58,7 @@ namespace Simple {
             uint32_t byte_offset;
             uint32_t pad;
 
-            BytestreamReader(const std::vector<unsigned char> &_byte_stream) : byte_stream{_byte_stream}, byte_offset{0u} {}
+            BytestreamReader(const std::vector<unsigned char> &_byte_stream);
 
             template <typename T>
             bool readValue(T &_in_value, bool _swap_bytes) {
@@ -87,18 +87,9 @@ namespace Simple {
             }
 
             // Note: offset can be moved to the end of the stream (byte_offset == size)
-            bool moveOffset(int _offset) {
-                int __clamped_offset = int(byte_stream.size()) - int(byte_offset);
-                __clamped_offset =          _offset >=  __clamped_offset ?  __clamped_offset : _offset;
-                __clamped_offset = __clamped_offset <  -int(byte_offset) ? -int(byte_offset) : __clamped_offset;
-                byte_offset    += __clamped_offset;
-                return _offset == __clamped_offset;
-            }
+            bool moveOffset(int _offset);
 
-            const unsigned char *getData(int _offset = 0u) {
-                if (_offset) moveOffset(_offset);
-                return byte_stream.data() + byte_offset;
-            }
+            const unsigned char *getData(int _offset = 0u);
         }; // BytestreamReader END
 
         struct BytestreamWriter {
@@ -106,7 +97,7 @@ namespace Simple {
             uint32_t byte_offset;
             uint32_t pad;
 
-            BytestreamWriter(std::vector<unsigned char> &_byte_stream) : byte_stream{_byte_stream}, byte_offset{0u} {}
+            BytestreamWriter(std::vector<unsigned char> &_byte_stream);
 
             // Returns true if bytes were added to stream
             template <typename T>
@@ -143,18 +134,9 @@ namespace Simple {
             }
 
             // Note: offset can be moved to the end of the stream (byte_offset == size)
-            bool moveOffset(int _offset) {
-                int __clamped_offset = int(byte_stream.size()) - int(byte_offset);
-                __clamped_offset =          _offset >=  __clamped_offset ?  __clamped_offset : _offset;
-                __clamped_offset = __clamped_offset <  -int(byte_offset) ? -int(byte_offset) : __clamped_offset;
-                byte_offset    += __clamped_offset;
-                return _offset == __clamped_offset;
-            }
+            bool moveOffset(int _offset);
 
-            unsigned char *getData(int _offset = 0u) {
-                if (_offset) moveOffset(_offset);
-                return byte_stream.data() + byte_offset;
-            }
+            unsigned char *getData(int _offset = 0u);
         }; // BytestreamWriter END
     }; // Bytes END
 }; // Simple END

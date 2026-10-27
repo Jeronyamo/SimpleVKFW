@@ -42,17 +42,18 @@ namespace Simple {
 
         namespace Handle {
             struct HandleBase {
-                HandleBase() {}
-                HandleBase(const HandleBase &_handle_b) {}
-                virtual ~HandleBase() {}
+                HandleBase();
+                HandleBase(const HandleBase &_handle_b);
+                virtual ~HandleBase();
 
-                virtual void handle(EventHandler*, uint32_t) {}
+                virtual void handle(EventHandler*, uint32_t);
 
                 // This function is called after handle().
                 // Returned value: 0 - endless, >0 - number of uses. Default: 0.
                 // When returns 1, EventHandler unbinds this handler for this event.
-                virtual uint32_t usageCount() { return 0u; }
-            } Empty_Handle; // HandlerBase END
+                virtual uint32_t usageCount();
+            }; // HandlerBase END
+            extern HandleBase Empty_Handle;
 
 
     // EventHandle type for functions
@@ -61,65 +62,51 @@ namespace Simple {
                 using void_func_void = void (*)(void);
                 void_func_void func_handle = nullptr;
 
-                FuncHandle() {}
-                FuncHandle(const FuncHandle &_func_handle) : func_handle{_func_handle.func_handle} {}
-                FuncHandle(void_func_void _func_handle) : func_handle{_func_handle} {}
-                virtual ~FuncHandle() {}
+                FuncHandle();
+                FuncHandle(const FuncHandle &_func_handle);
+                FuncHandle(void_func_void _func_handle);
+                virtual ~FuncHandle();
 
 
-                void set(void_func_void _func_handle) { func_handle = _func_handle; }
+                void set(void_func_void _func_handle);
 
-                void_func_void replace(void_func_void _func_handle) {
-                    void_func_void __prev_func = func_handle;
-                    func_handle = _func_handle;
-                    return __prev_func;
-                }
+                void_func_void replace(void_func_void _func_handle);
 
-                void handle(EventHandler*, uint32_t _event_type) override { func_handle(); }
+                void handle(EventHandler*, uint32_t _event_type) override;
             }; // FuncHandle END
 
             struct FuncEventHandle : HandleBase {
                 using void_func_event = void (*)(uint32_t);
                 void_func_event func_handle = nullptr;
 
-                FuncEventHandle() {}
-                FuncEventHandle(const FuncEventHandle &_func_handle) : func_handle{_func_handle.func_handle} {}
-                FuncEventHandle(void_func_event _func_handle) : func_handle{_func_handle} {}
-                virtual ~FuncEventHandle() {}
+                FuncEventHandle();
+                FuncEventHandle(const FuncEventHandle &_func_handle);
+                FuncEventHandle(void_func_event _func_handle);
+                virtual ~FuncEventHandle();
 
 
-                void set(void_func_event _func_handle) { func_handle = _func_handle; }
+                void set(void_func_event _func_handle);
 
-                void_func_event replace(void_func_event _func_handle) {
-                    void_func_event __prev_func = func_handle;
-                    func_handle = _func_handle;
-                    return __prev_func;
-                }
+                void_func_event replace(void_func_event _func_handle);
 
-                void handle(EventHandler*, uint32_t _event_type) override { func_handle(_event_type); }
+                void handle(EventHandler*, uint32_t _event_type) override;
             }; // FuncEventHandle END
 
             struct FuncExtHandle : HandleBase {
                 using void_func_handler_event = void (*)(EventHandler*, uint32_t);
                 void_func_handler_event func_handle = nullptr;
 
-                FuncExtHandle() {}
-                FuncExtHandle(const FuncExtHandle &_func_handle) : func_handle{_func_handle.func_handle} {}
-                FuncExtHandle(void_func_handler_event _func_handle) : func_handle{_func_handle} {}
-                virtual ~FuncExtHandle() {}
+                FuncExtHandle();
+                FuncExtHandle(const FuncExtHandle &_func_handle);
+                FuncExtHandle(void_func_handler_event _func_handle);
+                virtual ~FuncExtHandle();
 
 
-                void set(void_func_handler_event _func_handle) { func_handle = _func_handle; }
+                void set(void_func_handler_event _func_handle);
 
-                void_func_handler_event replace(void_func_handler_event _func_handle) {
-                    void_func_handler_event __prev_func = func_handle;
-                    func_handle = _func_handle;
-                    return __prev_func;
-                }
+                void_func_handler_event replace(void_func_handler_event _func_handle);
 
-                void handle(EventHandler* _this_ev_handler, uint32_t _event_type) override {
-                    func_handle(_this_ev_handler, _event_type);
-                }
+                void handle(EventHandler* _this_ev_handler, uint32_t _event_type) override;
             }; // FuncExtHandle END
 
 
@@ -130,7 +117,8 @@ namespace Simple {
                 std::mutex handles_events_mutex;
 
 
-            } Handle_Deleter;
+            };
+            extern DelHandle Handle_Deleter;
 
 
     // EventHandle 
@@ -166,137 +154,44 @@ namespace Simple {
         public:
         // methods used from outside
 
-            uint32_t writeEvent(uint32_t _event) {
-                std::lock_guard<std::mutex> lk(event_list_mutex);
-                if (!stop_event_writing) {
-                    events.push_back(_event);
-                    return 0u;
-                }
-                return 1u;
-            }
+            uint32_t writeEvent(uint32_t _event);
             // inline std::future<uint32_t> writeEventAsync(uint32_t _event) {
             //     return std::async(writeEvent, this, _event);
             // }
 
-            uint32_t writeEventSeq(const std::vector<uint32_t> &_events) {
-                std::lock_guard<std::mutex> lk(event_list_mutex);
-                if (!stop_event_writing) {
-                    events.insert(events.end(), _events.begin(), _events.end());
-                    return 0u;
-                }
-                return 1u;
-            }
+            uint32_t writeEventSeq(const std::vector<uint32_t> &_events);
             // inline std::future<uint32_t> writeEventSeqAsync(const std::vector<uint32_t> &_events) {
             //     return std::async(writeEventSeq, this, _events);
             // }
 
 
-            uint32_t setHandle(uint32_t _event, Handle::HandleBase* _handler = &Handle::Empty_Handle) {
-                std::lock_guard<std::mutex> lk(event_handling_mutex);
-                if (!stop_event_handling) {
-                    event_handles[_event] = _handler;
-                    return 0u;
-                }
-                return 1u;
-            }
+            uint32_t setHandle(uint32_t _event, Handle::HandleBase* _handler = &Handle::Empty_Handle);
             // inline std::future<uint32_t> setHandleAsync(uint32_t _event, Handle::HandleBase* _handler = &Handle::Empty_Handle) {
             //     return std::async(setHandle, this, _event, _handler);
             // }
 
-            inline void stopEventHandling() {
-                stop_event_handling = true;
-            }
+            void stopEventHandling();
 
-            inline void stopEventWriting() {
-                stop_event_writing = true;
-            }
+            void stopEventWriting();
 
         // methods used in handlers (they are guaranteed to have access to EventHandler members (mutexes already locked))
 
-            uint32_t handlerWriteEventSeq(const std::vector<uint32_t> &_events) {
-                if (!stop_event_writing) {
-                    events.insert(events.end(), _events.begin(), _events.end());
-                    return 0u;
-                }
-                return 1u;
-            }
+            uint32_t handlerWriteEventSeq(const std::vector<uint32_t> &_events);
 
         // poll events
 
-            void pollEvents() {
-                std::lock_guard<std::mutex> lk1(event_list_mutex);
-                std::lock_guard<std::mutex> lk2(event_handling_mutex);
-
-                while (!events.empty()) {
-                    uint32_t __curr_event = events.front();
-                    events.pop_front();
-
-                    if (event_handles.find(__curr_event) != event_handles.end())
-                        event_handles[__curr_event]->handle(this, __curr_event);
-                    else
-                        printf("%s %d\n", SVKFW_WRAPINFO("EventHandler", "unhandled event:"), __curr_event);
-                }
-            }
+            void pollEvents();
 
         // handling loops
 
-            void runEventHandling() {
-                while (!stop_event_handling) {
-                    {
-                    // should be locked the entire time because the event may: stop event writing/clear event list
-                    std::lock_guard<std::mutex> lk1(event_list_mutex);
-
-                    if (!events.empty()) {
-                        uint32_t __curr_event = events.front();
-                        events.pop_front();
-
-                        std::lock_guard<std::mutex> lk2(event_handling_mutex);
-                        if (event_handles.find(__curr_event) != event_handles.end())
-                            event_handles[__curr_event]->handle(this, __curr_event);
-                        else
-                            printf("%s %d\n", SVKFW_WRAPINFO("EventHandler", "unhandled event:"), __curr_event);
-                    }
-                    }
-                    std::this_thread::yield(); // let other threads write events (the list mutex is released here)
-                }
-            }
+            void runEventHandling();
 
             // Note: the event list is not locked while waiting for the next event, but it is locked while handling,
             //       because handlers may call 'handlerWriteEventSeq()' (which expects the list mutex to be locked).
-            void runEventHandlingLong() {
-                bool has_event = false;
-                uint32_t __curr_event = 0u;
-                while (!stop_event_handling) {
-                    has_event = false;
-
-                    // Get event
-                    {
-                        std::lock_guard<std::mutex> lk(event_list_mutex);
-                        has_event = !events.empty();
-                        if (has_event) {
-                            __curr_event = events.front();
-                            events.pop_front();
-                        }
-                    }
-
-                    // Handle event
-                    if (has_event) {
-                        std::lock_guard<std::mutex> lk1(event_list_mutex);
-                        std::lock_guard<std::mutex> lk(event_handling_mutex);
-
-                        if (event_handles.find(__curr_event) != event_handles.end())
-                            event_handles[__curr_event]->handle(this, __curr_event);
-                        else
-                            printf("%s %d\n", SVKFW_WRAPINFO("EventHandler", "unhandled event:"), __curr_event);
-                    }
-                    else
-                        std::this_thread::yield();
-                }
-            }
-            inline void runEventHandlingAsync() {
-                // std::async(runEventHandling, this);
-            }
-        } Event_Handler; // EventHandler END
+            void runEventHandlingLong();
+            void runEventHandlingAsync();
+        }; // EventHandler END
+        extern EventHandler Event_Handler;
     }; // Event END
 }; // Simple END
 

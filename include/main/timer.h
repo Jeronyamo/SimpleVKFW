@@ -16,17 +16,9 @@ namespace Simple {
         int64_t h;
         uint8_t m, s;
 
-        TimeHMS(int64_t _h, uint8_t _m, uint8_t _s) : h{_h}, m{_m}, s{_s} {}
-        TimeHMS(const TimeHMS &_t) : h{_t.h}, m{_t.m}, s{_t.s} {}
-        TimeHMS(double _t) {
-            double __s = 0.;
-            Math::modf(_t, &__s);
-            h = (int64_t) __s;
-            s = h % 60;
-            h /= 60;
-            m = h % 60;
-            h /= 60;
-        }
+        TimeHMS(int64_t _h, uint8_t _m, uint8_t _s);
+        TimeHMS(const TimeHMS &_t);
+        TimeHMS(double _t);
     };
 
     struct TimeHMSf {
@@ -34,23 +26,15 @@ namespace Simple {
         uint16_t m, s;
         float fract;
 
-        TimeHMSf(int64_t _h, uint16_t _m, uint16_t _s, float _f = 0.f) : h{_h}, m{_m}, s{_s}, fract{_f} {}
-        TimeHMSf(const TimeHMSf &_t) : h{_t.h}, m{_t.m}, s{_t.s}, fract{_t.fract} {}
-        TimeHMSf(double _t) {
-            double __s = 0.;
-            fract = (float) Math::modf(_t, &__s);
-            h = (int64_t) __s;
-            s = h % 60;
-            h /= 60;
-            m = h % 60;
-            h /= 60;
-        }
+        TimeHMSf(int64_t _h, uint16_t _m, uint16_t _s, float _f = 0.f);
+        TimeHMSf(const TimeHMSf &_t);
+        TimeHMSf(double _t);
 
-        uint32_t ms() { return 1000       * fract; }
-        uint32_t us() { return 1000000    * fract; }
+        uint32_t ms();
+        uint32_t us();
 
-        uint32_t ns() { return 1000000000 * fract; }
-        uint64_t fraction(uint64_t _coef) { return uint64_t(_coef * fract); }
+        uint32_t ns();
+        uint64_t fraction(uint64_t _coef);
     };
 
 
@@ -77,12 +61,12 @@ namespace Simple {
         TClock::time_point clock_start;
 public:
 
-        Clock() : clock_start{TClock::now()} {}
+        Clock();
         Clock(const Clock &_t) = default;
 
-        double get() const { return std::chrono::duration<double, std::chrono::seconds::period>(TClock::now() - clock_start).count(); }
-        void reset() { clock_start = TClock::now(); }
-        float diff(double _sub) const { return get() - _sub; }
+        double get() const;
+        void reset();
+        float diff(double _sub) const;
         // TimeHMS  toTimeHMS ()   const { return get(); }
         // TimeHMSf toTimeHMSf()   const { return get(); }
     }; // Clock END
@@ -95,21 +79,16 @@ public:
 public:
 
         Timer(const Timer &_t) = default;
-        Timer(double _time) : time{Math::abs(_time)} {}
+        Timer(double _time);
 
 
-        double update() { time -= clock_tick.tick(); return time; }
-        double lastTime() const { return time; }
-        float diff(double _sub) const { return time - _sub; }
+        double update();
+        double lastTime() const;
+        float diff(double _sub) const;
         // TimeHMS  toTimeHMS ()   const { return time; }
         // TimeHMSf toTimeHMSf()   const { return time; }
 
-        void set(double _new_time) {
-            if (_new_time <= 0.)
-                fprintf(svkfwwarn, SVKFW_WRAPWARN("Timer :: set", "negative time, using absolute value"));
-            time = Math::abs(_new_time);
-            clock_tick.tick();
-        }
+        void set(double _new_time);
     }; // Timer END
 
 
@@ -121,26 +100,17 @@ public:
         static const double Start, End;
 
         TimerEven(const TimerEven &_t) = default;
-        TimerEven(double _time) : time{_time + Start} {
-            if (time <= Start || time > End)
-                throw std::invalid_argument(SVKFW_WRAPERR("TimerEven constructor", "time value must lie in (0, 2^32]"));
-        }
+        TimerEven(double _time);
 
 
-        double update() { time -= clock_tick.tick(); return time - Start; }
-        double lastTime() const { return time - Start; }
-        float diff(double _sub) const { return lastTime() - _sub; }
+        double update();
+        double lastTime() const;
+        float diff(double _sub) const;
         // TimeHMS  toTimeHMS ()   const { return lastTime(); }
         // TimeHMSf toTimeHMSf()   const { return lastTime(); }
 
-        void set(double _new_time) {
-            if (_new_time <= 0. || _new_time > Start)
-                throw std::invalid_argument(SVKFW_WRAPERR("TimerEven :: set", "time value must lie in (0, 2^32]"));
-            time = _new_time + Start;
-            clock_tick.tick();
-        }
+        void set(double _new_time);
     }; // TimerEven END
-    const double TimerEven::Start = 4294967296., TimerEven::End = 8589934592.;
 
 
 // These might work, but there's nowhere to use them

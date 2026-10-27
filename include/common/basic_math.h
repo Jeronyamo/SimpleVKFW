@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <climits>
+#include <cstdint>
 #include <stdexcept>
 #include <cfloat>
 #include <type_traits>
@@ -65,8 +66,8 @@ namespace Simple {
         template <typename T> inline T sign(T _val) { return _val < 0 ? -1 : 1; }
 
         // Zero check using absolute epsilon, use if value must be finite when inversed: (1.0 / 'val')
-        inline bool notZero (float  _val) { return _val <= -SVKFW_AEPS_FLT || _val >= SVKFW_AEPS_FLT; }
-        inline bool notZero (double _val) { return _val <= -SVKFW_AEPS_DBL || _val >= SVKFW_AEPS_DBL; }
+        bool notZero (float  _val);
+        bool notZero (double _val);
         // Note: for integer types the default epsilon is 1 (SVKFW_EPS would be truncated to 0, making any value "not zero")
         template <class T>
         inline bool notZero (T _val, T _eps = std::is_integral<T>::value ? T(1) : T(SVKFW_EPS)) { return _val <= -_eps || _val >= _eps; }
@@ -137,10 +138,10 @@ namespace Simple {
 
     // Basic angle transforms
 
-        inline float  toRad(float  _angle_deg) { return _angle_deg * SVKFW_DEG_TO_RAD; }
-        inline double toRad(double _angle_deg) { return _angle_deg * SVKFW_DEG_TO_RAD_D; }
-        inline float  toDeg(float  _angle_rad) { return _angle_rad * SVKFW_RAD_TO_DEG; }
-        inline double toDeg(double _angle_rad) { return _angle_rad * SVKFW_RAD_TO_DEG_D; }
+        float  toRad(float  _angle_deg);
+        double toRad(double _angle_deg);
+        float  toDeg(float  _angle_rad);
+        double toDeg(double _angle_rad);
     }; // Math END
 
     template <typename T>

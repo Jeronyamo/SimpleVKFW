@@ -13,37 +13,37 @@
 
 
 namespace Simple {
-    std::minstd_rand vecRandNG;
-    std::uniform_real_distribution <float> vecRandNGf(0.f, 1.f);
-    std::uniform_int_distribution <int> vecRandNGi(-RAND_MAX, RAND_MAX);
+    extern std::minstd_rand vecRandNG;
+    extern std::uniform_real_distribution <float> vecRandNGf;
+    extern std::uniform_int_distribution <int> vecRandNGi;
 
-    inline vec2u rand2() { return {vecRandNG(), vecRandNG()}; }
-    inline vec3u rand3() { return {vecRandNG(), vecRandNG(), vecRandNG()}; }
-    inline vec4u rand4() { return {vecRandNG(), vecRandNG(), vecRandNG(), vecRandNG()}; }
+    vec2u rand2();
+    vec3u rand3();
+    vec4u rand4();
 
-    inline vec2i rand2i() { return {vecRandNGi(vecRandNG), vecRandNGi(vecRandNG)}; }
-    inline vec3i rand3i() { return {vecRandNGi(vecRandNG), vecRandNGi(vecRandNG), vecRandNGi(vecRandNG)}; }
-    inline vec4i rand4i() { return {vecRandNGi(vecRandNG), vecRandNGi(vecRandNG), vecRandNGi(vecRandNG), vecRandNGi(vecRandNG)}; }
+    vec2i rand2i();
+    vec3i rand3i();
+    vec4i rand4i();
 
-    inline vec2  rand2f() { return {vecRandNGf(vecRandNG), vecRandNGf(vecRandNG)}; }
-    inline vec3  rand3f() { return {vecRandNGf(vecRandNG), vecRandNGf(vecRandNG), vecRandNGf(vecRandNG)}; }
-    inline vec4  rand4f() { return {vecRandNGf(vecRandNG), vecRandNGf(vecRandNG), vecRandNGf(vecRandNG), vecRandNGf(vecRandNG)}; }
+    vec2  rand2f();
+    vec3  rand3f();
+    vec4  rand4f();
 
-    inline vec2 RandVec2(float _max = 1.f) { return rand2f() * _max; }
-    inline vec3 RandVec3(float _max = 1.f) { return rand3f() * _max; }
-    inline vec4 RandVec4(float _max = 1.f) { return rand4f() * _max; }
+    vec2 RandVec2(float _max = 1.f);
+    vec3 RandVec3(float _max = 1.f);
+    vec4 RandVec4(float _max = 1.f);
 
-    inline vec2 RandVec2(vec2 _max) { return rand2f() * _max; }
-    inline vec3 RandVec3(vec3 _max) { return rand3f() * _max; }
-    inline vec4 RandVec4(vec4 _max) { return rand4f() * _max; }
+    vec2 RandVec2(vec2 _max);
+    vec3 RandVec3(vec3 _max);
+    vec4 RandVec4(vec4 _max);
 
-    inline vec2 RandVec2(float _max, float _min) { return rand2f() * (_max - _min) + _min; }
-    inline vec3 RandVec3(float _max, float _min) { return rand3f() * (_max - _min) + _min; }
-    inline vec4 RandVec4(float _max, float _min) { return rand4f() * (_max - _min) + _min; }
+    vec2 RandVec2(float _max, float _min);
+    vec3 RandVec3(float _max, float _min);
+    vec4 RandVec4(float _max, float _min);
 
-    inline vec2 RandVec2(vec2 _max, vec2 _min) { return rand2f() * (_max - _min) + _min; }
-    inline vec3 RandVec3(vec3 _max, vec3 _min) { return rand3f() * (_max - _min) + _min; }
-    inline vec4 RandVec4(vec4 _max, vec4 _min) { return rand4f() * (_max - _min) + _min; }
+    vec2 RandVec2(vec2 _max, vec2 _min);
+    vec3 RandVec3(vec3 _max, vec3 _min);
+    vec4 RandVec4(vec4 _max, vec4 _min);
 }; // Simple END
 
 #endif

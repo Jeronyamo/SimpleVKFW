@@ -15,10 +15,7 @@ namespace Simple {
         vec2u wsize, tsize;
 
         TileSampler3D(const vec3 &_pos, const vec3 &_dir, float _fovy_deg, const vec3 &_up,
-                      const vec2u &_window, const vec2u &_tile = 8u) :
-                      pos{_pos}, dir{_dir}, wsize{_window}, tsize{_tile} {
-            
-        }
+                      const vec2u &_window, const vec2u &_tile = 8u);
     };
 
     struct Sampler3D {

@@ -27,7 +27,9 @@
 namespace Simple {
     namespace WinInner {
         // Enables ANSI escape code support for the terminal on Windows 10|11
-        struct ConsoleSupportANSICodes {
+        // Note: the object is 'static' and stays in the header, so every program that includes it runs the constructor
+        //       (a definition in svkfw_lib could be dropped by the linker when nothing else in its .cpp is used)
+        static struct ConsoleSupportANSICodes {
             ConsoleSupportANSICodes() {
                 // Set output mode to handle virtual terminal sequences
                 HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -69,7 +71,9 @@ namespace Simple {
 namespace Simple {
     namespace WinInner {
         // Taken from: https://stackoverflow.com/questions/23471873/change-console-code-page-in-windows-c
-        struct UTF8CodePage {
+        // Note: 'static' and in the header for the same reason as ConsoleSupportANSICodes. Each translation unit has its own
+        //       object, they are destroyed in reverse order, so the first one restores the original code page last
+        static struct UTF8CodePage {
             UTF8CodePage() : old_code_page(GetConsoleOutputCP()) { SetConsoleOutputCP(CP_UTF8); }
            ~UTF8CodePage() { SetConsoleOutputCP(old_code_page); }
 
@@ -86,46 +90,17 @@ namespace Simple {
         int    flag = 0; // if !=0, deletes argv arrays
         char **argv = nullptr;
 
-        ArgHandler() {}
-        ArgHandler(int _argc, char** _argv) : argc{_argc}, argv{_argv} { processArgs(); }
-       ~ArgHandler() { clear(); }
+        ArgHandler();
+        ArgHandler(int _argc, char** _argv);
+       ~ArgHandler();
 
-        void clear() {
-            if (flag) {
-                for (int i = 0; i < argc; ++i)
-                    delete[] argv[i];
-                delete[] argv;
-            }
-            argv = nullptr;
-            argc = 0;
-            flag = 0;
-        }
+        void clear();
 
-        void initArgs(int _argc, char** _argv) {
-            clear();
-            argc = _argc;
-            argv = _argv;
-            processArgs();
-        }
+        void initArgs(int _argc, char** _argv);
 
-        char* getArg(int _arg_id) { return _arg_id < argc ? argv[_arg_id] : nullptr; }
+        char* getArg(int _arg_id);
 
-        void processArgs() {
-#ifdef WIN32
-            clear();
-            flag = 1;
-
-            LPWSTR *__cmd_line_w = CommandLineToArgvW(GetCommandLineW(), &argc);
-            argv = new char*[argc]{};
-
-            for (int i = 0; i < argc; ++i) {
-                int arg_size = WideCharToMultiByte(CP_UTF8, 0, __cmd_line_w[i], -1, nullptr, 0, nullptr, nullptr);
-                argv[i] = new char[arg_size]{};
-                WideCharToMultiByte(CP_UTF8, 0, __cmd_line_w[i], -1, argv[i], arg_size, nullptr, nullptr);
-            }
-            LocalFree(__cmd_line_w);
-#endif
-        }
+        void processArgs();
     }; // ArgHandler END
 }; // Simple END
 

@@ -17,103 +17,43 @@ namespace Simple {
         struct EnumCollector {
             std::map<std::string, std::vector<std::string>> enum_collection;
 
-            void addEnum(const std::string &_enum_name, std::vector<std::string> _enum_values) {
-                for (const auto& en_data : enum_collection) {
-                    SVKFW_WASSERT(en_data.first != _enum_name, "Util :: EnumCollector", "Enum '" + _enum_name + "' - already exists");
-                    if (en_data.first == _enum_name) return;
-                }
-
-                for (char ch : _enum_name) {
-                    SVKFW_ASSERT(!isspace(ch), std::invalid_argument, "Util :: EnumCollector",
-                                "Enum '" + _enum_name + "' - enum name contains space character");
-                }
-
-                for (uint32_t i = 0u; i < _enum_values.size(); ++i) {
-                    std::vector<uint32_t> __dups;
-
-                    for (char ch : _enum_values[i]) {
-                        SVKFW_ASSERT(!isspace(ch), std::invalid_argument, "Util :: EnumCollector",
-                                  "Enum '" + _enum_name + "', value '" + _enum_values[i] + "' - contains space character");
-                    }
-
-                    for (uint32_t j = _enum_values.size()-1; j > i; --j)
-                        if (_enum_values[i] == _enum_values[j]) __dups.push_back(j);
-
-                    SVKFW_WASSERT(__dups.empty(), "Util :: EnumCollector",
-                                  "Enum '" + _enum_name + "', value '" + _enum_values[i] + "' - met " + std::to_string(__dups.size() + 1) + " times");
-
-                    for (uint32_t j : __dups)
-                        _enum_values.erase(_enum_values.begin()+j);
-                }
-
-                enum_collection[_enum_name] = _enum_values;
-            }
+            void addEnum(const std::string &_enum_name, std::vector<std::string> _enum_values);
         }; // EnumCollector END
 
     // Used to simplify work with all the "const char **" struct members in Vulkan
         struct StringVec {
             std::vector<std::string> list;
 
-            StringVec() {}
-            StringVec(const std::vector<std::string> &_l) : list{_l} { updateEntriesPtr(); }
-            StringVec(const StringVec &_sv) : list{_sv.list} { updateEntriesPtr(); }
-            StringVec(StringVec &&_sv) : list{std::move(_sv.list)}, _ptr{_sv._ptr} { _sv._ptr = nullptr; }
-            StringVec(const char **_arr, uint32_t _count) {
-                list.insert(list.end(), _arr, _arr + _count);
-                updateEntriesPtr();
-            }
-           ~StringVec() { clear(); }
+            StringVec();
+            StringVec(const std::vector<std::string> &_l);
+            StringVec(const StringVec &_sv);
+            StringVec(StringVec &&_sv);
+            StringVec(const char **_arr, uint32_t _count);
+           ~StringVec();
 
-            const StringVec &operator=(const StringVec &_sv) {
-                setEntries(_sv);
-                return *this;
-            }
+            const StringVec &operator=(const StringVec &_sv);
 
-            void clear() {
-                list.clear();
-                safeDeleteArr(_ptr);
-            }
+            void clear();
 
-            uint32_t count() const { return list.size(); }
+            uint32_t count() const;
 
 
-            void setEntries(const StringVec &_sv) {
-                list = _sv.list;
-                updateEntriesPtr();
-            }
+            void setEntries(const StringVec &_sv);
 
-            void addEntries(const std::vector<std::string> &_l) {
-                list.insert(list.end(), _l.begin(), _l.end());
-                updateEntriesPtr();
-            }
+            void addEntries(const std::vector<std::string> &_l);
 
-            const char **getEntries() const {
-                return _ptr;
-            }
+            const char **getEntries() const;
 
         private:
             const char **_ptr = nullptr;
 
-            void updateEntriesPtr() {
-                safeDeleteArr(_ptr);
-
-                if (list.size()) {
-                    _ptr = new const char *[list.size()];
-                    for (uint32_t i = 0u; i < list.size(); ++i)
-                        _ptr[i] = list[i].c_str();
-                }
-            }
+            void updateEntriesPtr();
         }; // StringVec END
 
 
         //  Functions
 
-        inline std::string stringStrip(const std::string &_in_str) {
-            long __offset1 = 0, __offset2 = long(_in_str.size()) - 1;
-            for (; __offset1 <= __offset2 && std::isspace((unsigned char)_in_str[__offset1]); ++__offset1);
-            for (; __offset2 >= __offset1 && std::isspace((unsigned char)_in_str[__offset2]); --__offset2);
-            return _in_str.substr(__offset1, __offset2 - __offset1 + 1); // second argument is length
-        }
+        std::string stringStrip(const std::string &_in_str);
 
 
 
