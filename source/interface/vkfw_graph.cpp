@@ -1,5 +1,7 @@
 #include "interface/vkfw_graph.h"
 
+#include <cstring>
+
 namespace Simple {
     namespace VKFW {
         namespace Graph {
@@ -169,6 +171,7 @@ namespace Simple {
                     __states[r].write_access = __end.write_access;
                 }
                 track_(__states, true);
+                end_states = __states;
 
                 setupRendering_();
                 if (!cxt.cxt_core.profile.dynamic_rendering) {
@@ -222,6 +225,76 @@ namespace Simple {
 
                 if (final_count)
                     _rec.barrier(Span<VkImageMemoryBarrier2>(&barriers[final_first], final_count));
+            }
+
+            void RenderGraph::readback(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback, VkImageAspectFlags _aspects) {
+                SVKFW_ASSERT(compiled, std::logic_error, "VKFW::Graph::RenderGraph :: readback", "the graph is not compiled");
+                const Resource  &__res    = resource_(_res);
+                const VkFormat   __format = format_(__res);
+                const VkExtent2D __extent = extent_(__res);
+
+                VkImage           __image = __res.image;
+                VkImageUsageFlags __usage = __res.usage;
+                if (__res.kind == VKFW_RESOURCE_SWAPCHAIN) {
+                    __image = cxt.cxt_swapchain.image(_image_index);
+                    __usage = cxt.cxt_swapchain.swapchain.create_info.peek().imageUsage;
+                }
+                else if (__res.kind == VKFW_RESOURCE_IMPORTED)
+                    __usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // Note: not known to the graph, the caller is responsible
+                SVKFW_ASSERT(__image != VK_NULL_HANDLE && __res.used, std::logic_error, "VKFW::Graph::RenderGraph :: readback",
+                                "the resource '" + __res.name + "' is not used by a live pass");
+                SVKFW_ASSERT(__usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT, std::invalid_argument, "VKFW::Graph::RenderGraph :: readback",
+                                "the resource '" + __res.name + "' needs VK_IMAGE_USAGE_TRANSFER_SRC_BIT");
+
+                const VkImageAspectFlags __all = VKFW::Detail::formatAspects(__format);
+                if (_aspects == 0u) _aspects = __all;
+                SVKFW_ASSERT((_aspects & ~__all) == 0u, std::invalid_argument, "VKFW::Graph::RenderGraph :: readback",
+                                "the format of '" + __res.name + "' doesn't have the requested aspects");
+
+                // One block per aspect; buffer offsets of depth/stencil copies must be multiples of 4
+                const VkImageAspectFlagBits __bits[3] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_ASPECT_STENCIL_BIT };
+                std::vector<VkBufferImageCopy> __regions;
+                VkDeviceSize __size = 0u, __offsets[3] = {0u, 0u, 0u};
+                for (uint32_t a = 0u; a < 3u; ++a) {
+                    if (!(_aspects & __bits[a])) continue;
+                    __offsets[a] = (__size + 3u) & ~VkDeviceSize(3u);
+                    VkBufferImageCopy __region{};
+                    __region.bufferOffset     = __offsets[a];
+                    __region.imageSubresource = { VkImageAspectFlags(__bits[a]), 0u, 0u, 1u };
+                    __region.imageExtent      = { __extent.width, __extent.height, 1u };
+                    __regions.push_back(__region);
+                    __size = __offsets[a] + VkDeviceSize(__extent.width) * __extent.height * VKFW::Detail::texelSize(__format, __bits[a]);
+                }
+
+                _readback.reserve_(cxt, __size);
+                _readback.format  = __format;
+                _readback.extent  = __extent;
+                _readback.aspects = _aspects;
+                for (uint32_t a = 0u; a < 3u; ++a) _readback.offsets[a] = __offsets[a];
+
+                // Note: the image is in its end-of-frame state; it goes back to the same layout, and the barrier to all later
+                //       commands keeps the first barriers of the next frame valid (they wait for the stages of this state)
+                const State &__end = end_states[_res.index];
+                const VkPipelineStageFlags2 __end_stages = (__end.write_stages | __end.read_stages) ? (__end.write_stages | __end.read_stages)
+                                                                                                    : VkPipelineStageFlags2(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+                _rec.barrier(imageBarrier(__image, __end.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, __end_stages, __end.write_access,
+                                          VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, __all));
+                _rec.copyImageToBuffer(__image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _readback.buffer_id, __regions);
+
+                VkBufferMemoryBarrier2 __host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+                __host.srcStageMask        = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                __host.srcAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                __host.dstStageMask        = VK_PIPELINE_STAGE_2_HOST_BIT;
+                __host.dstAccessMask       = VK_ACCESS_2_HOST_READ_BIT;
+                __host.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                __host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                __host.buffer              = cxt.get(_readback.buffer_id);
+                __host.offset              = 0u;
+                __host.size                = VK_WHOLE_SIZE;
+                VkImageMemoryBarrier2 __back = imageBarrier(__image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, __end.layout,
+                                                            VK_PIPELINE_STAGE_2_TRANSFER_BIT, 0u, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                                            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, __all);
+                _rec.barrier(__back, __host);
             }
 
             void RenderGraph::destroy() {
@@ -640,6 +713,91 @@ namespace Simple {
 
             PassBuilder& PassBuilder::execute(const std::function<void(CommandRecorder&)> &_callback) {
                 graph->pass_(id).callback = _callback; return *this;
+            }
+
+            ImageReadback::ImageReadback() {}
+
+            bool ImageReadback::isNone() const { return cxt == nullptr || buffer_id.isNone(); }
+
+            bool ImageReadback::has(VkImageAspectFlagBits _aspect) const { return (aspects & _aspect) != 0u; }
+
+            VkDeviceSize ImageReadback::offset(VkImageAspectFlagBits _aspect) const {
+                SVKFW_ASSERT(has(_aspect), std::invalid_argument, "VKFW::Graph::ImageReadback :: offset", "the copy doesn't have this aspect");
+                return offsets[_aspect == VK_IMAGE_ASPECT_COLOR_BIT ? 0u : _aspect == VK_IMAGE_ASPECT_DEPTH_BIT ? 1u : 2u];
+            }
+
+            const void *ImageReadback::data(VkImageAspectFlagBits _aspect) const {
+                SVKFW_ASSERT(!isNone(), std::logic_error, "VKFW::Graph::ImageReadback :: data", "nothing was read back");
+                const VkDeviceSize __offset = offset(_aspect);
+                cxt->cxt_memory.invalidateBuffer(buffer_id);
+                return (const uint8_t*)cxt->cxt_memory.getMappedBuffer(buffer_id) + __offset;
+            }
+
+            void ImageReadback::readColor(Img::Image4u &_image) const {
+                const uint8_t *__src = (const uint8_t*)data(VK_IMAGE_ASPECT_COLOR_BIT);
+                bool __bgra = false;
+                switch (format) {
+                    case VK_FORMAT_R8G8B8A8_UNORM: case VK_FORMAT_R8G8B8A8_SRGB: case VK_FORMAT_A8B8G8R8_UNORM_PACK32: case VK_FORMAT_A8B8G8R8_SRGB_PACK32: break;
+                    case VK_FORMAT_B8G8R8A8_UNORM: case VK_FORMAT_B8G8R8A8_SRGB: __bgra = true; break;
+                    default: SVKFW_ASSERT(false, std::invalid_argument, "VKFW::Graph::ImageReadback :: readColor",
+                                             "not an 8-bit RGBA/BGRA format, format " + std::to_string(format) + " (use 'data')");
+                }
+                _image.imgResize((int)extent.width, (int)extent.height);
+                for (size_t i = 0u; i < _image.img.size(); ++i, __src += 4u)
+                    _image.img[i] = Img::Image4u::ColorType{ __src[__bgra ? 2 : 0], __src[1], __src[__bgra ? 0 : 2], __src[3] };
+            }
+
+            void ImageReadback::readDepth(Img::Image1f &_image) const {
+                const uint8_t *__src = (const uint8_t*)data(VK_IMAGE_ASPECT_DEPTH_BIT);
+                _image.imgResize((int)extent.width, (int)extent.height);
+                for (size_t i = 0u; i < _image.img.size(); ++i) {
+                    if (format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D16_UNORM_S8_UINT) {
+                        uint16_t __value; memcpy(&__value, __src + 2u*i, 2u);
+                        _image.img[i] = __value / 65535.f;
+                    }
+                    else if (format == VK_FORMAT_X8_D24_UNORM_PACK32 || format == VK_FORMAT_D24_UNORM_S8_UINT) {
+                        // Note: the depth is in the low 24 bits, the high 8 bits are undefined
+                        uint32_t __value; memcpy(&__value, __src + 4u*i, 4u);
+                        _image.img[i] = (__value & 0xffffffu) / 16777215.f;
+                    }
+                    else memcpy(&_image.img[i], __src + 4u*i, 4u);
+                }
+            }
+
+            void ImageReadback::readStencil(Img::Image1u &_image) const {
+                const uint8_t *__src = (const uint8_t*)data(VK_IMAGE_ASPECT_STENCIL_BIT);
+                _image.imgResize((int)extent.width, (int)extent.height);
+                memcpy(_image.img.data(), __src, _image.img.size());
+            }
+
+            void ImageReadback::destroy() {
+                if (!isNone()) cxt->cxt_memory.removeMemoryChunk(memory_id);
+                memory_id = MemoryId();
+                buffer_id = BufferId();
+                capacity  = 0u;
+                aspects   = 0u;
+            }
+
+            void ImageReadback::reserve_(VulkanContext &_cxt, VkDeviceSize _size) {
+                if (!isNone() && cxt == &_cxt && capacity >= _size) return;
+                destroy();
+                cxt = &_cxt;
+                // Note: the CPU reads the data, so cached memory is preferred (uncached reads are slow)
+                VkMemoryPropertyFlags __flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                const VkPhysicalDeviceMemoryProperties &__props = _cxt.cxt_memory.memory_properties.peek().memoryProperties;
+                for (uint32_t t = 0u; t < __props.memoryTypeCount; ++t)
+                    if ((__props.memoryTypes[t].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) ==
+                                                                (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                        __flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+                        break;
+                    }
+                SVKFW_ASSERT(_size <= UINT32_MAX, std::invalid_argument, "VKFW::Graph::ImageReadback", "the image is too big for one readback");
+                memory_id = _cxt.cxt_memory.addMemoryChunk(__flags);
+                buffer_id = _cxt.cxt_memory.addChunkBuffer(memory_id, (uint32_t)_size);
+                _cxt.cxt_memory.setWholeBufferCreateInfoStruct(buffer_id, {}, VK_SHARING_MODE_EXCLUSIVE, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+                _cxt.cxt_memory.createChunkBuffer(buffer_id);
+                _cxt.cxt_memory.allocateChunkMemory(memory_id);
+                capacity = _size;
             }
 
             TextureInfo::TextureInfo() {}

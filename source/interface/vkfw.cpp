@@ -4,7 +4,7 @@ namespace Simple {
     namespace VKFW {
 
         uint32_t DeviceProfile::minApiVersion() const {
-            return (dynamic_rendering || synchronization2) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+            return (dynamic_rendering || synchronization2 || extended_dynamic_state) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
         }
 
         namespace Detail {
@@ -38,6 +38,44 @@ namespace Simple {
                 VkImageAspectFlags __aspects = (hasDepth  (_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT  ) : 0u) |
                                                (hasStencil(_format) ? VkImageAspectFlags(VK_IMAGE_ASPECT_STENCIL_BIT) : 0u);
                 return __aspects ? __aspects : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT);
+            }
+
+            uint32_t texelSize(VkFormat _format, VkImageAspectFlagBits _aspect) {
+                if (_aspect == VK_IMAGE_ASPECT_STENCIL_BIT) {
+                    SVKFW_ASSERT(hasStencil(_format), std::invalid_argument, "VKFW::Detail :: texelSize", "the format has no stencil, format " + std::to_string(_format));
+                    return 1u;
+                }
+                if (_aspect == VK_IMAGE_ASPECT_DEPTH_BIT) {
+                    SVKFW_ASSERT(hasDepth(_format), std::invalid_argument, "VKFW::Detail :: texelSize", "the format has no depth, format " + std::to_string(_format));
+                    return (_format == VK_FORMAT_D16_UNORM || _format == VK_FORMAT_D16_UNORM_S8_UINT) ? 2u : 4u;
+                }
+                switch (_format) {
+                    case VK_FORMAT_R8_UNORM: case VK_FORMAT_R8_SNORM: case VK_FORMAT_R8_UINT: case VK_FORMAT_R8_SINT: case VK_FORMAT_R8_SRGB:
+                        return 1u;
+                    case VK_FORMAT_R8G8_UNORM: case VK_FORMAT_R8G8_SNORM: case VK_FORMAT_R8G8_UINT: case VK_FORMAT_R8G8_SINT: case VK_FORMAT_R8G8_SRGB:
+                    case VK_FORMAT_R16_UNORM: case VK_FORMAT_R16_SNORM: case VK_FORMAT_R16_UINT: case VK_FORMAT_R16_SINT: case VK_FORMAT_R16_SFLOAT:
+                    case VK_FORMAT_R5G6B5_UNORM_PACK16: case VK_FORMAT_B5G6R5_UNORM_PACK16:
+                        return 2u;
+                    case VK_FORMAT_R8G8B8A8_UNORM: case VK_FORMAT_R8G8B8A8_SNORM: case VK_FORMAT_R8G8B8A8_UINT: case VK_FORMAT_R8G8B8A8_SINT: case VK_FORMAT_R8G8B8A8_SRGB:
+                    case VK_FORMAT_B8G8R8A8_UNORM: case VK_FORMAT_B8G8R8A8_SNORM: case VK_FORMAT_B8G8R8A8_UINT: case VK_FORMAT_B8G8R8A8_SINT: case VK_FORMAT_B8G8R8A8_SRGB:
+                    case VK_FORMAT_A8B8G8R8_UNORM_PACK32: case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+                    case VK_FORMAT_A2R10G10B10_UNORM_PACK32: case VK_FORMAT_A2B10G10R10_UNORM_PACK32: case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+                    case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+                    case VK_FORMAT_R16G16_UNORM: case VK_FORMAT_R16G16_SNORM: case VK_FORMAT_R16G16_UINT: case VK_FORMAT_R16G16_SINT: case VK_FORMAT_R16G16_SFLOAT:
+                    case VK_FORMAT_R32_UINT: case VK_FORMAT_R32_SINT: case VK_FORMAT_R32_SFLOAT:
+                        return 4u;
+                    case VK_FORMAT_R16G16B16A16_UNORM: case VK_FORMAT_R16G16B16A16_SNORM: case VK_FORMAT_R16G16B16A16_UINT: case VK_FORMAT_R16G16B16A16_SINT:
+                    case VK_FORMAT_R16G16B16A16_SFLOAT:
+                    case VK_FORMAT_R32G32_UINT: case VK_FORMAT_R32G32_SINT: case VK_FORMAT_R32G32_SFLOAT:
+                        return 8u;
+                    case VK_FORMAT_R32G32B32_UINT: case VK_FORMAT_R32G32B32_SINT: case VK_FORMAT_R32G32B32_SFLOAT:
+                        return 12u;
+                    case VK_FORMAT_R32G32B32A32_UINT: case VK_FORMAT_R32G32B32A32_SINT: case VK_FORMAT_R32G32B32A32_SFLOAT:
+                        return 16u;
+                    default:
+                        SVKFW_ASSERT(false, std::invalid_argument, "VKFW::Detail :: texelSize", "unknown texel size of format " + std::to_string(_format));
+                }
+                return 0u;
             }
         }; // Detail END
 
@@ -1458,6 +1496,45 @@ namespace Simple {
 
         void CommandRecorder::setLineWidth(float _line_width) { vkCmdSetLineWidth(cmd, _line_width); }
 
+        void CommandRecorder::setStencilReference  (VkStencilFaceFlags _faces, uint32_t _reference) { vkCmdSetStencilReference  (cmd, _faces, _reference); }
+
+        void CommandRecorder::setStencilCompareMask(VkStencilFaceFlags _faces, uint32_t _mask)      { vkCmdSetStencilCompareMask(cmd, _faces, _mask);      }
+
+        void CommandRecorder::setStencilWriteMask  (VkStencilFaceFlags _faces, uint32_t _mask)      { vkCmdSetStencilWriteMask  (cmd, _faces, _mask);      }
+
+        void CommandRecorder::setStencilTestEnable(bool _enable) {
+            SVKFW_ASSERT(cxt.cxt_core.profile.extended_dynamic_state, std::logic_error, "VKFW::CommandRecorder :: setStencilTestEnable", "needs 'profile.extended_dynamic_state'");
+            vkCmdSetStencilTestEnable(cmd, _enable);
+        }
+
+        void CommandRecorder::setStencilOp(VkStencilFaceFlags _faces, VkCompareOp _compare_op, VkStencilOp _pass_op,
+                                           VkStencilOp _fail_op, VkStencilOp _depth_fail_op) {
+            SVKFW_ASSERT(cxt.cxt_core.profile.extended_dynamic_state, std::logic_error, "VKFW::CommandRecorder :: setStencilOp", "needs 'profile.extended_dynamic_state'");
+            vkCmdSetStencilOp(cmd, _faces, _fail_op, _pass_op, _depth_fail_op, _compare_op);
+        }
+
+        void CommandRecorder::setStencil(VkStencilFaceFlags _faces, const VkStencilOpState &_state) {
+            setStencilOp(_faces, _state.compareOp, _state.passOp, _state.failOp, _state.depthFailOp);
+            setStencilCompareMask(_faces, _state.compareMask);
+            setStencilWriteMask  (_faces, _state.writeMask);
+            setStencilReference  (_faces, _state.reference);
+        }
+
+        void CommandRecorder::setDepthTestEnable(bool _enable) {
+            SVKFW_ASSERT(cxt.cxt_core.profile.extended_dynamic_state, std::logic_error, "VKFW::CommandRecorder :: setDepthTestEnable", "needs 'profile.extended_dynamic_state'");
+            vkCmdSetDepthTestEnable(cmd, _enable);
+        }
+
+        void CommandRecorder::setDepthWriteEnable(bool _enable) {
+            SVKFW_ASSERT(cxt.cxt_core.profile.extended_dynamic_state, std::logic_error, "VKFW::CommandRecorder :: setDepthWriteEnable", "needs 'profile.extended_dynamic_state'");
+            vkCmdSetDepthWriteEnable(cmd, _enable);
+        }
+
+        void CommandRecorder::setDepthCompareOp(VkCompareOp _compare_op) {
+            SVKFW_ASSERT(cxt.cxt_core.profile.extended_dynamic_state, std::logic_error, "VKFW::CommandRecorder :: setDepthCompareOp", "needs 'profile.extended_dynamic_state'");
+            vkCmdSetDepthCompareOp(cmd, _compare_op);
+        }
+
         void CommandRecorder::setViewportScissor(VkExtent2D _extent) {
             VkViewport __viewport{};
             __viewport.width    = (float)_extent.width;
@@ -1495,6 +1572,14 @@ namespace Simple {
 
         void CommandRecorder::copyBufferToImage(BufferId _src_id, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkBufferImageCopy> _regions) {
             vkCmdCopyBufferToImage(cmd, cxt.get(_src_id), cxt.get(_dst_id), _dst_layout, _regions.size(), _regions.data());
+        }
+
+        void CommandRecorder::copyImageToBuffer(ImageId _src_id, VkImageLayout _src_layout, BufferId _dst_id, Span<VkBufferImageCopy> _regions) {
+            copyImageToBuffer(cxt.get(_src_id), _src_layout, _dst_id, _regions);
+        }
+
+        void CommandRecorder::copyImageToBuffer(VkImage _src, VkImageLayout _src_layout, BufferId _dst_id, Span<VkBufferImageCopy> _regions) {
+            vkCmdCopyImageToBuffer(cmd, _src, _src_layout, cxt.get(_dst_id), _regions.size(), _regions.data());
         }
 
         void CommandRecorder::blitImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageBlit> _regions,

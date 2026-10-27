@@ -42,21 +42,27 @@ int main(int argc, char **argv) {
 
     // Geometry
     struct Vertex {
-        Simple::vec2 pos;
+        Simple::vec3 pos;
         Simple::vec3 color;
         Simple::vec2 uv;
     };
-    // Note: the texture repeats twice along each side of the quad
-    const std::vector<Vertex> vertices = { {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-                                           {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {2.0f, 0.0f}},
-                                           {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {2.0f, 2.0f}},
-                                           {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 2.0f}}
+    // Note: two quads crossing along the Y axis (the depth test sorts them); the texture repeats twice along each side
+    const std::vector<Vertex> vertices = { {{-0.5f, -0.5f,  0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+                                           {{ 0.5f, -0.5f,  0.0f}, {0.0f, 1.0f, 0.0f}, {2.0f, 0.0f}},
+                                           {{ 0.5f,  0.5f,  0.0f}, {0.0f, 0.0f, 1.0f}, {2.0f, 2.0f}},
+                                           {{-0.5f,  0.5f,  0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 2.0f}},
+
+                                           {{ 0.0f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+                                           {{ 0.0f, -0.5f,  0.5f}, {0.0f, 1.0f, 1.0f}, {2.0f, 0.0f}},
+                                           {{ 0.0f,  0.5f,  0.5f}, {1.0f, 0.0f, 1.0f}, {2.0f, 2.0f}},
+                                           {{ 0.0f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 2.0f}}
     };
 
     // Texture (RGBA8, loaded with stb_image)
     Simple::Img::Image4u texture_image("resources/textures/checker.png");
     static_assert(sizeof(Simple::Img::Image4u::ColorType) == 4u, "texels must be tightly packed RGBA8");
-    const std::vector<uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
+    const std::vector<uint32_t> indices = { 0, 1, 2, 2, 3, 0,
+                                            4, 5, 6, 6, 7, 4 };
 
     // Camera
     struct UniformBufferObjectCamera {
@@ -130,10 +136,12 @@ int main(int argc, char **argv) {
     vk.cxt_core.loadPhysicalDeviceInfo();
     vk.cxt_core.findPhysicalDevice(); // Graphics + discrete GPU test by default
 
-    // Device profile: dynamic rendering + synchronization2 need Vulkan 1.3;
-    //                 with both set to false rendering goes through VkRenderPass with the original barriers (Vulkan 1.1)
+    // Device profile: dynamic rendering + synchronization2 + extended dynamic state need Vulkan 1.3;
+    //                 with all set to false rendering goes through VkRenderPass with the original barriers (Vulkan 1.1)
+    //                 and the stencil ops are fixed in the pipeline (only the reference and the masks stay dynamic)
     vk.cxt_core.profile.dynamic_rendering = true;
     vk.cxt_core.profile.synchronization2  = true;
+    vk.cxt_core.profile.extended_dynamic_state = true;
     vk.cxt_core.checkProfileSupport();
 
     // Queue family
@@ -193,7 +201,8 @@ int main(int argc, char **argv) {
     // Swapchain
     vk.cxt_swapchain.setSwapchainSurfaceCapabilities();
     vk.cxt_swapchain.swapchain.create_info.checkSetImageCount(FRAMES_IN_FLIGHT);
-    vk.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    // Note: TRANSFER_SRC lets the frame be read back (see 'RenderGraph::readback'); the supported flags are set anyway
+    vk.cxt_swapchain.swapchain.create_info.checkSetImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     vk.cxt_swapchain.swapchain.create_info.edit().imageArrayLayers = 1;
     vk.cxt_swapchain.swapchain.create_info.edit().compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     vk.cxt_swapchain.swapchain.create_info.edit().presentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -208,13 +217,25 @@ int main(int argc, char **argv) {
 
 
 // Render graph:
-    // Note: one pass draws the scene and ImGui into the swapchain image; the graph places the barriers and
-    //       begins/ends rendering (dynamic rendering or a render pass of the pass, by the profile)
+    // Note: the scene pass draws into the swapchain image with a depth/stencil buffer, the UI pass draws ImGui over it
+    //       (without depth). The graph places the barriers and begins/ends rendering (dynamic rendering or a render pass
+    //       of each pass, by the profile); the depth/stencil texture is recreated with the swapchain size by 'compile'
     const VkClearValue clear_color = {{{0.f, 0.f, 0.f, 1.f}}};
+    VkClearValue clear_depth_stencil;
+    clear_depth_stencil.depthStencil = {1.f, 0u};
+
+    // Depth/stencil format: D24_UNORM_S8_UINT if the device has it (otherwise D32_SFLOAT_S8_UINT), readable by transfers
+    const VkFormat depth_stencil_format = Simple::VKFW::Util::pickDepthStencilFormat(vk.cxt_core.phys_device.handle, VK_FORMAT_FEATURE_TRANSFER_SRC_BIT);
+    Simple::VKFW::Graph::TextureDesc depth_stencil_desc(depth_stencil_format);
+    depth_stencil_desc.extra_usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // for 'RenderGraph::readback'
 
     Simple::VKFW::Graph::RenderGraph graph(vk);
-    Simple::VKFW::Graph::ResourceId  backbuffer = graph.importSwapchain();
-    Simple::VKFW::Graph::PassId      scene_pass = graph.addGraphicsPass("scene").color(backbuffer, VK_ATTACHMENT_LOAD_OP_CLEAR, clear_color);
+    Simple::VKFW::Graph::ResourceId  backbuffer    = graph.importSwapchain();
+    Simple::VKFW::Graph::ResourceId  depth_stencil = graph.createTexture("depth_stencil", depth_stencil_desc);
+    // Note: STORE keeps the depth and stencil after the pass, so they can be read back
+    Simple::VKFW::Graph::PassId      scene_pass = graph.addGraphicsPass("scene").color(backbuffer, VK_ATTACHMENT_LOAD_OP_CLEAR, clear_color)
+                                                                                .depth(depth_stencil, VK_ATTACHMENT_LOAD_OP_CLEAR, clear_depth_stencil);
+    Simple::VKFW::Graph::PassId      ui_pass    = graph.addGraphicsPass("ui").color(backbuffer, VK_ATTACHMENT_LOAD_OP_LOAD);
 
     graph.compile(); // after the swapchain creation and after every recreation
 
@@ -340,12 +361,20 @@ int main(int argc, char **argv) {
     vk.cxt_pipeline.shaderStage(ci_sstage_vert).setShaderInfo(vk.get(ci_shader_vert), VK_SHADER_STAGE_VERTEX_BIT,   "main");
     vk.cxt_pipeline.shaderStage(ci_sstage_frag).setShaderInfo(vk.get(ci_shader_frag), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
-    // Dynamic state
-    graphics_pip.graphics_create_info_wrap.dynamic_state_wrap.dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    // Dynamic state: the stencil reference and masks are always set by the commands, the stencil test and its ops too
+    //                with the extended dynamic state (e.g. several stencil passes with different references and ops, one pipeline)
+    const bool dynamic_stencil_ops = vk.cxt_core.profile.extended_dynamic_state;
+    graphics_pip.graphics_create_info_wrap.dynamic_state_wrap.dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                                                                                 VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+                                                                                 VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK, VK_DYNAMIC_STATE_STENCIL_WRITE_MASK };
+    if (dynamic_stencil_ops) {
+        graphics_pip.graphics_create_info_wrap.dynamic_state_wrap.dynamic_states.push_back(VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE);
+        graphics_pip.graphics_create_info_wrap.dynamic_state_wrap.dynamic_states.push_back(VK_DYNAMIC_STATE_STENCIL_OP);
+    }
 
     // Vertex input state
     graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.bindings = {{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }};
-    graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
+    graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex,   pos) },
                                                                                       { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
                                                                                       { 2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,    uv) } };
 
@@ -368,6 +397,11 @@ int main(int argc, char **argv) {
     graphics_pip.graphics_create_info_wrap.multisample_state_wrap.edit().rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     graphics_pip.graphics_create_info_wrap.multisample_state_wrap.edit().minSampleShading = 1.f;
 
+    // Depth/stencil state: nearer fragments pass (depth cleared to 1.0); the stencil writes the reference of each draw
+    // Note: with 'dynamic_stencil_ops' the stencil part is only a default, the commands set it
+    graphics_pip.graphics_create_info_wrap.depth_stencil_state_wrap.setDepth(true, true, VK_COMPARE_OP_LESS);
+    graphics_pip.graphics_create_info_wrap.depth_stencil_state_wrap.setStencil(true, Simple::VKFW::Util::stencilOpState(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE));
+
     // Color blend state
     graphics_pip.graphics_create_info_wrap.color_blend_state_wrap.setLogicOp(VK_LOGIC_OP_COPY);
     graphics_pip.graphics_create_info_wrap.color_blend_state_wrap.attachments_wrap.emplace_back(); // has default configuration: "Porter-Duff blend over"
@@ -375,7 +409,7 @@ int main(int argc, char **argv) {
     // Graphics pipeline
     graphics_pip.graphics_create_info_wrap.setPipelineStates(0xfffu);
     // Note: attachment formats for dynamic rendering (ignored with the render pass)
-    graphics_pip.graphics_create_info_wrap.rendering_wrap.setFormats(vk.cxt_swapchain.format());
+    graphics_pip.graphics_create_info_wrap.rendering_wrap.setFormats(vk.cxt_swapchain.format(), depth_stencil_format, depth_stencil_format);
     vk.cxt_pipeline.createPipeline(ci_graphics_pip, graph.renderPass(scene_pass), 0u, ci_pip_layout);
 
     // Command pool
@@ -446,7 +480,7 @@ int main(int argc, char **argv) {
     }
 
     // ImGUI init
-    main_window_handler.imgui_handler.initializeContext(vk, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT, graph.renderPass(scene_pass));
+    main_window_handler.imgui_handler.initializeContext(vk, ci_qfam_graphics, ci_queue_graphics, FRAMES_IN_FLIGHT, graph.renderPass(ui_pass));
     main_window_handler.imgui_handler.enableForSVKFWWindow(main_window, false);
 
 
@@ -465,12 +499,23 @@ int main(int argc, char **argv) {
         // Bind descriptor set (uniform buffer)
         rec.bindDescriptorSets(ci_pip_layout, ci_descr_sets_ubo[current_frame]);
 
-        // Draw
-        // rec.draw(vertices.size());
-        // Draw (indexed)
-        rec.drawIndexed(indices.size());
+        // Stencil: each quad writes its own value where it is visible (1 for the first one, 2 for the second one)
+        if (dynamic_stencil_ops) {
+            rec.setStencilTestEnable(true);
+            rec.setStencilOp(VK_STENCIL_FACE_FRONT_AND_BACK, VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE);
+        }
+        rec.setStencilCompareMask(VK_STENCIL_FACE_FRONT_AND_BACK, 0xffu);
+        rec.setStencilWriteMask  (VK_STENCIL_FACE_FRONT_AND_BACK, 0xffu);
 
-        // Draw GUI
+        // Draw (indexed)
+        rec.setStencilReference(VK_STENCIL_FACE_FRONT_AND_BACK, 1u);
+        rec.drawIndexed(6u, 1u, 0, 0u);
+        rec.setStencilReference(VK_STENCIL_FACE_FRONT_AND_BACK, 2u);
+        rec.drawIndexed(6u, 1u, 0, 6u);
+    });
+
+    // Commands of the UI pass: ImGui over the scene
+    graph.pass(ui_pass).execute([&](Simple::VKFW::CommandRecorder &rec) {
         main_window_handler.imgui_handler.fillCommandBuffer(rec.handle());
     });
 
@@ -506,6 +551,8 @@ int main(int argc, char **argv) {
         main_window_handler.imgui_handler.newFrame();
         main_window_handler.imgui_handler.render();
         graph.execute(rec, acquired.image_index);
+        // Note: a frame can be read back here, e.g. 'graph.readback(rec, depth_stencil, acquired.image_index, readback)' (or 'backbuffer'
+        //       for the color), and read with 'readback.readDepth(...)' / 'readStencil' / 'readColor' after the fence of this frame
         rec.end();
 
 

@@ -32,6 +32,8 @@ namespace Simple {
         struct DeviceProfile {
             bool dynamic_rendering = true; // false: VkRenderPass + VkFramebuffer ('ContextCore::render_pass', swapchain framebuffers)
             bool synchronization2  = true; // false: vkCmdPipelineBarrier / vkQueueSubmit (64-bit stage/access flags are not available)
+            // Depth/stencil test enables, compare ops and stencil ops as dynamic state (core in Vulkan 1.3; see 'CommandRecorder::setStencilOp')
+            bool extended_dynamic_state = true;
 
             uint32_t minApiVersion() const;
         }; // DeviceProfile END
@@ -45,6 +47,9 @@ namespace Simple {
             bool hasStencil(VkFormat _format);
             // All aspects of the format (COLOR for color formats)
             VkImageAspectFlags formatAspects(VkFormat _format);
+            // Bytes per texel of one aspect when it is copied to a buffer (depth: 2 for D16, 4 for the others; stencil: 1);
+            // for color formats only the common uncompressed ones are known (throws for the others)
+            uint32_t texelSize(VkFormat _format, VkImageAspectFlagBits _aspect = VK_IMAGE_ASPECT_COLOR_BIT);
         }; // Detail END
 
         // Barrier for one image (all mips and layers of '_aspect'); used with 'CommandRecorder::barrier'
@@ -743,6 +748,21 @@ namespace Simple {
             // Sets viewport 0 (depth 0..1) and scissor 0 to cover '_extent'
             void setViewportScissor(VkExtent2D _extent);
 
+            // Stencil (the pipeline must have the matching VK_DYNAMIC_STATE_STENCIL_* state)
+            void setStencilReference  (VkStencilFaceFlags _faces, uint32_t _reference);
+            void setStencilCompareMask(VkStencilFaceFlags _faces, uint32_t _mask);
+            void setStencilWriteMask  (VkStencilFaceFlags _faces, uint32_t _mask);
+            // Note: these need 'profile.extended_dynamic_state' (VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE, VK_DYNAMIC_STATE_STENCIL_OP,
+            //       VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE, VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE, VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
+            void setStencilTestEnable(bool _enable);
+            void setStencilOp(VkStencilFaceFlags _faces, VkCompareOp _compare_op, VkStencilOp _pass_op,
+                              VkStencilOp _fail_op = VK_STENCIL_OP_KEEP, VkStencilOp _depth_fail_op = VK_STENCIL_OP_KEEP);
+            // The whole state of the faces: ops, compare and write masks, reference (each part needs its dynamic state)
+            void setStencil(VkStencilFaceFlags _faces, const VkStencilOpState &_state);
+            void setDepthTestEnable (bool _enable);
+            void setDepthWriteEnable(bool _enable);
+            void setDepthCompareOp  (VkCompareOp _compare_op);
+
         // Draw
 
             void draw(uint32_t _vert_count, uint32_t _inst_count = 1u, uint32_t _first_vert = 0u, uint32_t _first_inst = 0u);
@@ -756,6 +776,9 @@ namespace Simple {
             void copyBuffer(BufferId _src_id, BufferId _dst_id, Span<VkBufferCopy> _regions);
             void copyImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageCopy> _regions);
             void copyBufferToImage(BufferId _src_id, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkBufferImageCopy> _regions);
+            void copyImageToBuffer(ImageId _src_id, VkImageLayout _src_layout, BufferId _dst_id, Span<VkBufferImageCopy> _regions);
+            // Note: for images outside 'cxt_memory' (swapchain images, render graph textures)
+            void copyImageToBuffer(VkImage _src,    VkImageLayout _src_layout, BufferId _dst_id, Span<VkBufferImageCopy> _regions);
             // Note: needs a graphics queue; the formats must support blits (and linear filtering for VK_FILTER_LINEAR)
             void blitImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageBlit> _regions,
                            VkFilter _filter = VK_FILTER_LINEAR);

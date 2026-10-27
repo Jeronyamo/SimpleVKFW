@@ -5,6 +5,7 @@
 #include <string>
 
 #include "vkfw.h"
+#include "main/image.h"
 
 
 namespace Simple {
@@ -169,6 +170,45 @@ namespace Simple {
                           VkImageLayout _final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 
+        // Note: a HOST_VISIBLE buffer that receives a copy of one image (see 'RenderGraph::readback'), e.g. for screenshots.
+        //       The buffer is created and grown by 'RenderGraph::readback'; the data is ready after the fence of the submit with the
+        //       copy is signaled, then 'readColor', 'readDepth', 'readStencil' or 'data' read it (the last recorded copy).
+        //       A readback that is being written by the device must not be recorded again or destroyed (wait for its fence first).
+        //       Layout in the buffer: texels are tightly packed rows, top row first; each aspect is a separate block (see 'offset')
+        struct ImageReadback {
+            VulkanContext     *cxt = nullptr;
+            MemoryId           memory_id;
+            BufferId           buffer_id;
+            VkDeviceSize       capacity = 0u;
+
+            // The last recorded copy
+            VkFormat           format  = VK_FORMAT_UNDEFINED;
+            VkExtent2D         extent  = {0u, 0u};
+            VkImageAspectFlags aspects = 0u;
+            VkDeviceSize       offsets[3] = {0u, 0u, 0u}; // of the color, depth and stencil blocks
+
+            ImageReadback();
+
+            bool isNone() const;
+            bool has(VkImageAspectFlagBits _aspect) const;
+            VkDeviceSize offset(VkImageAspectFlagBits _aspect) const;
+            // The texels of one aspect (the mapped buffer; invalidated first if the memory isn't HOST_COHERENT)
+            const void *data(VkImageAspectFlagBits _aspect = VK_IMAGE_ASPECT_COLOR_BIT) const;
+
+            // Color images with 8-bit RGBA/BGRA formats (UNORM or SRGB; the values are copied as stored, sRGB is not decoded)
+            void readColor(Img::Image4u &_image) const;
+            // Depth in [0, 1] (D16, X8_D24, D24S8, D32, D32S8)
+            void readDepth(Img::Image1f &_image) const;
+            void readStencil(Img::Image1u &_image) const;
+
+            // Note: the device must not use the buffer
+            void destroy();
+
+            // Makes the buffer at least '_size' bytes (a new memory chunk if it is smaller)
+            void reserve_(VulkanContext &_cxt, VkDeviceSize _size);
+        }; // ImageReadback END
+
+
         struct RenderGraph;
 
         // Note: a light handle for declaring the accesses of one pass; accesses must be declared before 'compile'
@@ -260,6 +300,7 @@ namespace Simple {
             std::vector<Pass>      passes;
 
             std::vector<VkImageMemoryBarrier2> barriers;           // barriers of all passes, then the final ones
+            std::vector<State>                 end_states;         // the state of each resource at the end of a frame
             std::vector<uint32_t>              swapchain_barriers; // barriers whose image is set in 'execute'
             uint32_t final_first = 0u, final_count = 0u;
             bool compiled = false;
@@ -302,6 +343,14 @@ namespace Simple {
 
             // Records all live passes; 'rec' must be between 'begin' and 'end'
             void execute(CommandRecorder &_rec, uint32_t _image_index);
+
+            // Records a copy of the resource into '_readback' (mip level 0, layer 0); call after 'execute' with the same recorder and
+            // image index. The image goes from its end-of-frame layout to TRANSFER_SRC and back, so later frames see it unchanged.
+            // '_aspects' == 0: all aspects of the format (depth and stencil of a depth/stencil texture).
+            // Note: the image needs VK_IMAGE_USAGE_TRANSFER_SRC_BIT: for graph textures put it in 'TextureDesc::extra_usage',
+            //       for the swapchain in the swapchain image usage. The contents are those left by the frame: the last pass writing
+            //       an attachment must store it (VK_ATTACHMENT_STORE_OP_STORE). Textures not used by a live pass don't exist
+            void readback(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback, VkImageAspectFlags _aspects = 0u);
 
             // Note: the device must be idle; the declaration is kept, so the graph can be compiled again
             void destroy();

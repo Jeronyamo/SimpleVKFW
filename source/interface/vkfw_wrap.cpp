@@ -328,6 +328,40 @@ namespace Simple {
                 return UINT32_MAX;
             }
 
+            VkFormat pickSupportedFormat(VkPhysicalDevice _phys_device, Span<VkFormat> _candidates, VkFormatFeatureFlags _features,
+                                         VkImageTiling _tiling) {
+                for (uint32_t i = 0u; i < _candidates.size(); ++i) {
+                    VkFormatProperties __props;
+                    vkGetPhysicalDeviceFormatProperties(_phys_device, _candidates[i], &__props);
+                    const VkFormatFeatureFlags __have = _tiling == VK_IMAGE_TILING_LINEAR ? __props.linearTilingFeatures : __props.optimalTilingFeatures;
+                    if ((__have & _features) == _features) return _candidates[i];
+                }
+                return VK_FORMAT_UNDEFINED;
+            }
+
+            VkFormat pickDepthStencilFormat(VkPhysicalDevice _phys_device, VkFormatFeatureFlags _features) {
+                const VkFormat __candidates[] = { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT };
+                const VkFormat __format = pickSupportedFormat(_phys_device, __candidates, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | _features);
+                SVKFW_ASSERT(__format != VK_FORMAT_UNDEFINED, std::runtime_error, "VKFW::Util :: pickDepthStencilFormat",
+                                "the device has no depth/stencil attachment format with the requested features");
+                return __format;
+            }
+
+            // TODO: make pickColorFormat later
+
+            VkStencilOpState stencilOpState(VkCompareOp _compare_op, VkStencilOp _pass_op, VkStencilOp _fail_op, VkStencilOp _depth_fail_op,
+                                            uint32_t _reference, uint32_t _compare_mask, uint32_t _write_mask) {
+                VkStencilOpState __state{};
+                __state.failOp      = _fail_op;
+                __state.passOp      = _pass_op;
+                __state.depthFailOp = _depth_fail_op;
+                __state.compareOp   = _compare_op;
+                __state.compareMask = _compare_mask;
+                __state.writeMask   = _write_mask;
+                __state.reference   = _reference;
+                return __state;
+            }
+
             PhysDeviceFullInfo::PhysDeviceFullInfo(const VkPhysicalDevice &_phys_device,
                                const DeviceFeatures   &_features,
                                const DeviceProperties &_properties)
@@ -1222,9 +1256,9 @@ namespace Simple {
             VkImageUsageFlags StructWrap<VkSwapchainCreateInfoKHR>::checkSetImageUsage(VkImageUsageFlags _usage) {
                 VkImageUsageFlags __res = _usage & capabilities.supportedUsageFlags;
 
-                if (__res == _usage)
-                    wrap.imageUsage = _usage;
-                else
+                // Note: the supported flags are set anyway, the caller checks the result for the optional ones
+                wrap.imageUsage = __res;
+                if (__res != _usage)
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("VKFW::Struct::StructWrap<VkSwapchainCreateInfoKHR> :: checkSetImageUsage",
                                                             "some usage flags are not supported\n"));
                 return __res;
@@ -2062,6 +2096,28 @@ namespace Simple {
             }
 
             void StructWrap<VkPipelineDepthStencilStateCreateInfo>::updateWrap() {}
+
+            void StructWrap<VkPipelineDepthStencilStateCreateInfo>::setDepth(bool _test, bool _write, VkCompareOp _compare_op) {
+                wrap.depthTestEnable  = _test;
+                wrap.depthWriteEnable = _write;
+                wrap.depthCompareOp   = _compare_op;
+            }
+
+            void StructWrap<VkPipelineDepthStencilStateCreateInfo>::setStencil(bool _test, const VkStencilOpState &_front, const VkStencilOpState &_back) {
+                wrap.stencilTestEnable = _test;
+                wrap.front = _front;
+                wrap.back  = _back;
+            }
+
+            void StructWrap<VkPipelineDepthStencilStateCreateInfo>::setStencil(bool _test, const VkStencilOpState &_state) {
+                setStencil(_test, _state, _state);
+            }
+
+            void StructWrap<VkPipelineDepthStencilStateCreateInfo>::setDepthBounds(bool _test, float _min, float _max) {
+                wrap.depthBoundsTestEnable = _test;
+                wrap.minDepthBounds = _min;
+                wrap.maxDepthBounds = _max;
+            }
 
             StructWrap<VkPipelineColorBlendAttachmentState>::StructWrap() { clear(); }
 

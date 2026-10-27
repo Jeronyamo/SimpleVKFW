@@ -115,6 +115,22 @@ namespace Simple {
             uint32_t checkPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device, uint32_t _req_type_properties,
                                                          VkMemoryPropertyFlags _req_memory_properties);
 
+
+//  == === ==== >   Format Selection Utilities
+
+            // The first of '_candidates' whose '_tiling' features contain all of '_features'; VK_FORMAT_UNDEFINED if none does
+            VkFormat pickSupportedFormat(VkPhysicalDevice _phys_device, Span<VkFormat> _candidates, VkFormatFeatureFlags _features,
+                                         VkImageTiling _tiling = VK_IMAGE_TILING_OPTIMAL);
+
+            // A depth/stencil format usable as an optimal attachment with '_features' (e.g. VK_FORMAT_FEATURE_TRANSFER_SRC_BIT to read it back):
+            // D24_UNORM_S8_UINT, then D32_SFLOAT_S8_UINT (some GPUs, e.g. AMD, have no D24S8), then D16_UNORM_S8_UINT; throws if none fits
+            VkFormat pickDepthStencilFormat(VkPhysicalDevice _phys_device, VkFormatFeatureFlags _features = 0u);
+
+            // One face of the stencil test
+            VkStencilOpState stencilOpState(VkCompareOp _compare_op = VK_COMPARE_OP_ALWAYS, VkStencilOp _pass_op = VK_STENCIL_OP_KEEP,
+                                            VkStencilOp _fail_op = VK_STENCIL_OP_KEEP, VkStencilOp _depth_fail_op = VK_STENCIL_OP_KEEP,
+                                            uint32_t _reference = 0u, uint32_t _compare_mask = 0xffu, uint32_t _write_mask = 0xffu);
+
             // This type contains all properties (retreivable via vulkan functions)
             // about one physical device - element of PhysicalDevice::phys_devices vector.
             // It contains references to phys_devices[i], features[i] and properties[i].
@@ -1398,6 +1414,17 @@ namespace Simple {
 
                 void clear();
                 void updateWrap();
+
+            // Scenarios
+            // Note: the values set here are ignored for the states the pipeline makes dynamic (e.g. VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+            //       VK_DYNAMIC_STATE_STENCIL_OP), they are set by 'CommandRecorder' then
+
+                // Note: with VK_COMPARE_OP_LESS the depth is cleared to 1.0 and nearer fragments pass
+                void setDepth(bool _test, bool _write, VkCompareOp _compare_op = VK_COMPARE_OP_LESS);
+                void setStencil(bool _test, const VkStencilOpState &_front, const VkStencilOpState &_back);
+                // The same state for both faces
+                void setStencil(bool _test, const VkStencilOpState &_state = Util::stencilOpState());
+                void setDepthBounds(bool _test, float _min = 0.f, float _max = 1.f);
             }; // StructWrap<VkPipelineDepthStencilStateCreateInfo> END
 
             template <>
