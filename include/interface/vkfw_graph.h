@@ -88,6 +88,87 @@ namespace Simple {
             AccessInfo accessInfo(AccessType _type, VkFormat _format, VkPipelineStageFlags2 _shader_stages, VkAttachmentLoadOp _load_op);
         }; // Detail END
 
+//  == === ==== ================================== ==== === ==  \\
+                    Textures
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: everything needed for the image and its whole view; the defaults make a 2D sampled texture
+        //       that can be uploaded with an 'UploadBatch' and get its mip levels from 'generateMips'
+        struct TextureInfo {
+            VkFormat              format       = VK_FORMAT_R8G8B8A8_SRGB;
+            VkExtent3D            extent       = {1u, 1u, 1u}; // 'depth' > 1 makes a 3D texture
+            uint32_t              mip_levels   = 1u;           // 0: the full chain down to 1x1 (see 'mipLevelCount')
+            uint32_t              array_layers = 1u;
+            VkSampleCountFlagBits samples      = VK_SAMPLE_COUNT_1_BIT;
+            VkImageUsageFlags     usage        = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            VkImageCreateFlags    flags        = 0u;           // e.g. VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT for cube maps (6 layers each)
+            VkImageTiling         tiling       = VK_IMAGE_TILING_OPTIMAL;
+            // Families that use the texture; with several of them and VK_SHARING_MODE_EXCLUSIVE the uploads need
+            // 'UploadBatch::setOwner' (see 'ContextMemory::setWholeImageCreateInfoStruct')
+            std::vector<QueueFamilyId> queue_families;
+            VkSharingMode         sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+
+            // The whole view: VK_IMAGE_VIEW_TYPE_MAX_ENUM and 0 pick the type and aspect from the image
+            VkImageViewType       view_type    = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+            VkImageAspectFlags    aspect       = 0u;
+            VkComponentMapping    components   = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+                                                   VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+
+            TextureInfo();
+            TextureInfo(VkFormat _format, VkExtent2D _extent, uint32_t _mip_levels = 1u, Span<QueueFamilyId> _queue_families = {});
+        }; // TextureInfo END
+
+        // Number of mip levels down to 1x1(x1)
+        uint32_t mipLevelCount(VkExtent3D _extent);
+
+        // Note: an image of ContextMemory with its views; a copyable handle (it doesn't destroy anything by itself).
+        //       views[0] is the whole view described by 'TextureInfo', 'addView' adds views of parts of the image
+        //       (one mip level, one layer, another format of the same class, a swizzle...)
+        struct Texture {
+            VulkanContext           *cxt = nullptr;
+            ImageId                  image_id;
+            std::vector<ImageViewId> views;
+            bool                     own_memory = false; // the texture has its own memory chunk
+
+            Texture();
+
+            bool isNone() const;
+            VkImage     image() const;
+            VkImageView view(uint32_t _index = 0u) const;
+            const VkImageCreateInfo &info() const;
+            VkExtent3D  extent(uint32_t _mip_level = 0u) const;
+
+            // Adds a view and creates it if the memory is bound already (otherwise 'createViews' does it); returns its index in 'views'.
+            // '_type' == VK_IMAGE_VIEW_TYPE_MAX_ENUM: from the image, '_aspect' == 0: from the format, '_format' == UNDEFINED: the image format
+            uint32_t addView(uint32_t _base_mip = 0u, uint32_t _mip_count = VK_REMAINING_MIP_LEVELS,
+                             uint32_t _base_layer = 0u, uint32_t _layer_count = VK_REMAINING_ARRAY_LAYERS,
+                             VkImageViewType _type = VK_IMAGE_VIEW_TYPE_MAX_ENUM, VkImageAspectFlags _aspect = 0u,
+                             VkFormat _format = VK_FORMAT_UNDEFINED, const VkComponentMapping &_components = VkComponentMapping());
+
+            // Creates the views that aren't created yet; for textures in a shared chunk, after 'ContextMemory::allocateChunkMemory'
+            void createViews();
+
+            // Destroys the views and the image (with its own memory chunk if it has one); the device must not use them
+            void destroy();
+        }; // Texture END
+
+        // Creates the image and its whole view.
+        //   '_memory_id' is none: the texture gets its own DEVICE_LOCAL memory chunk and is ready to use;
+        //   otherwise the image is added to that chunk (it must not be allocated yet) and the views are created
+        //   by 'Texture::createViews' after 'ContextMemory::allocateChunkMemory' (many textures, one allocation)
+        Texture createTexture(VulkanContext &_cxt, const TextureInfo &_info, MemoryId _memory_id = MemoryId());
+
+        // Fills mip levels ['_mips_have', '_mips_req') of all layers: each level is a linear blit of the previous one.
+        //   Before: levels [0, '_mips_have') hold the data and are in '_layout'; the contents of the other levels are discarded.
+        //   After:  levels [0, '_mips_req') are in '_final_layout' (levels from '_mips_req' on are not touched).
+        // '_mips_req' == 0: all levels of the image. With '_mips_have' >= '_mips_req' only the layout changes.
+        // Note: needs a graphics queue, TRANSFER_SRC and TRANSFER_DST usage and a format with linear filtered blits (throws otherwise).
+        //       The barriers wait for all earlier commands and make the result visible to all later ones (meant for loading, not per frame)
+        void generateMips(CommandRecorder &_rec, const Texture &_texture, uint32_t _mips_have = 1u, uint32_t _mips_req = 0u,
+                          VkImageLayout _layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                          VkImageLayout _final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+
         struct RenderGraph;
 
         // Note: a light handle for declaring the accesses of one pass; accesses must be declared before 'compile'
@@ -194,6 +275,9 @@ namespace Simple {
             // An image the graph doesn't own; it is in '_initial_layout' at the start of the frame and is left in '_final_layout'
             ResourceId importImage(const std::string &_name, VkImage _image, VkImageView _view, VkFormat _format, VkExtent2D _extent,
                                    VkImageLayout _initial_layout, VkImageLayout _final_layout, bool _output = true);
+            // A texture the graph doesn't own (its whole view); e.g. sampled by passes and left in '_layout'
+            ResourceId importTexture(const std::string &_name, const Texture &_texture,
+                                     VkImageLayout _layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             // Passes writing an output are never culled
             void setOutput(ResourceId _res, bool _output = true);
 

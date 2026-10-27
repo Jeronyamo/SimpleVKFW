@@ -142,7 +142,9 @@ namespace Simple {
         }
 
         void VulkanContext::ContextCore::loadPhysicalDeviceInfo() {
-            phys_device.select_info.loadInfo(instance.handle);
+            // Note: an application info without a version means Vulkan 1.0
+            const uint32_t __api_version = instance.create_info.app_info_wrap.peek().apiVersion;
+            phys_device.select_info.loadInfo(instance.handle, __api_version == 0u ? VK_API_VERSION_1_0 : __api_version);
         }
 
         void VulkanContext::ContextCore::findPhysicalDevice() {
@@ -160,9 +162,7 @@ namespace Simple {
         }
 
         uint32_t VulkanContext::ContextCore::apiVersion() const {
-            StructChain<VkPhysicalDeviceProperties2> __props;
-            queryProperties(__props);
-            return std::min(instance.create_info.app_info_wrap.peek().apiVersion, __props.head().properties.apiVersion);
+            return std::min(instance.create_info.app_info_wrap.peek().apiVersion, phys_device.properties().head().properties.apiVersion);
         }
 
         void VulkanContext::ContextCore::checkProfileSupport() const {
@@ -173,19 +173,26 @@ namespace Simple {
 
         void VulkanContext::ContextCore::createDevice() {
             checkProfileSupport();
-            const uint32_t __api_version = apiVersion();
+            Struct::StructWrap<VkDeviceCreateInfo> &__info = device.create_info;
             // Note: the features of the profile are mandatory in Vulkan 1.3, so they are only enabled
-            if (profile.dynamic_rendering) device_features.get<VkPhysicalDeviceVulkan13Features>().dynamicRendering = VK_TRUE;
-            if (profile.synchronization2 ) device_features.get<VkPhysicalDeviceVulkan13Features>().synchronization2 = VK_TRUE;
+            if (profile.dynamic_rendering) __info.features.get<VkPhysicalDeviceVulkan13Features>().dynamicRendering = VK_TRUE;
+            if (profile.synchronization2 ) __info.features.get<VkPhysicalDeviceVulkan13Features>().synchronization2 = VK_TRUE;
 
-            device_features.link();
-            if (__api_version < VK_API_VERSION_1_2) {
-                device_features.unlink<VkPhysicalDeviceVulkan11Features>();
-                device_features.unlink<VkPhysicalDeviceVulkan12Features>();
-            }
+            // Note: features of versions above the used API version can't be enabled (their structures are not chained)
+            const uint32_t __api_version = apiVersion();
+            DeviceFeatures __supported = phys_device.features();
             if (__api_version < VK_API_VERSION_1_3)
-                device_features.unlink<VkPhysicalDeviceVulkan13Features>();
-            device.create_info.setNext(device_features);
+                __supported.get<VkPhysicalDeviceVulkan13Features>() = VkPhysicalDeviceVulkan13Features();
+            if (__api_version < VK_API_VERSION_1_2) {
+                __supported.get<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features();
+                __supported.get<VkPhysicalDeviceVulkan12Features>() = VkPhysicalDeviceVulkan12Features();
+            }
+            __info.enableOptionalFeatures(__supported);
+            const std::vector<std::string> __missing = __info.unsupportedFeatures(__supported);
+            std::string __list;
+            for (uint32_t i = 0u; i < __missing.size(); ++i) __list += (i ? ", " : "") + __missing[i];
+            SVKFW_ASSERT(__missing.empty(), std::runtime_error, "VKFW::ContextCore :: createDevice", "the device doesn't support the required features: " + __list);
+            __info.api_version = __api_version;
 
             device.createObject(phys_device.handle, alloc_cb.get());
         }
@@ -428,6 +435,8 @@ namespace Simple {
             const VkAllocationCallbacks *__alloc_cb = cxt_core->alloc_cb.get();
             pools  .forEach([&](DescriptorPoolId,      Object::DescriptorPool      &_pool  ) { _pool  .destroyObject(__device, __alloc_cb); });
             layouts.forEach([&](DescriptorSetLayoutId, Object::DescriptorSetLayout &_layout) { _layout.destroyObject(__device, __alloc_cb); });
+            samplers.forEach([&](SamplerId,            Object::Sampler             &_sampler) { _sampler.destroyObject(__device, __alloc_cb); });
+            samplers.clear();
             sets   .clear();
             pools  .clear();
             layouts.clear();
@@ -444,6 +453,8 @@ namespace Simple {
         Object::DescriptorPool      &VulkanContext::ContextDescriptor::pool    (DescriptorPoolId      _id) { return pools  .get(_id); }
 
         Object::DescriptorSet       &VulkanContext::ContextDescriptor::setGroup(DescriptorSetsId      _id) { return sets   .get(_id); }
+
+        Object::Sampler             &VulkanContext::ContextDescriptor::sampler (SamplerId             _id) { return samplers.get(_id); }
 
         Struct::StructWrap<VkDescriptorSetLayoutBinding> &VulkanContext::ContextDescriptor::layoutBinding(DescriptorLayoutBindingId _id) {
             Object::DescriptorSetLayout &__layout = layouts.get(_id.parent);
@@ -468,6 +479,8 @@ namespace Simple {
 
         DescriptorSetsId      VulkanContext::ContextDescriptor::addSet   () { return    sets.add(); }
 
+        SamplerId             VulkanContext::ContextDescriptor::addSampler() { return samplers.add(); }
+
         void VulkanContext::ContextDescriptor::createLayout(DescriptorSetLayoutId _layout_id) {
             layouts.get(_layout_id).createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
         }
@@ -478,6 +491,21 @@ namespace Simple {
 
         void VulkanContext::ContextDescriptor::createSets(DescriptorSetsId _sets_id) {
             sets.get(_sets_id).createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
+        }
+
+        void VulkanContext::ContextDescriptor::createSampler(SamplerId _sampler_id) {
+            Object::Sampler &__sampler = samplers.get(_sampler_id);
+            if (__sampler.create_info.peek().anisotropyEnable) {
+                if (!cxt_core->device.create_info.features.head().features.samplerAnisotropy) {
+                    fprintf(svkfwwarn, "%s\n", SVKFW_WRAPWARN("VKFW::ContextDescriptor :: createSampler", "the 'samplerAnisotropy' feature isn't enabled, anisotropic filtering is turned off"));
+                    __sampler.create_info.setAnisotropy(0.f);
+                }
+                else {
+                    const float __max = cxt_core->phys_device.properties().head().properties.limits.maxSamplerAnisotropy;
+                    if (__sampler.create_info.peek().maxAnisotropy > __max) __sampler.create_info.setAnisotropy(__max);
+                }
+            }
+            __sampler.createObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
         }
 
         void VulkanContext::ContextDescriptor::destroyLayout(DescriptorSetLayoutId _layout_id) {
@@ -492,11 +520,17 @@ namespace Simple {
             sets.get(_sets_id).destroyObject(cxt_core->device.handle);
         }
 
+        void VulkanContext::ContextDescriptor::destroySampler(SamplerId _sampler_id) {
+            samplers.get(_sampler_id).destroyObject(cxt_core->device.handle, cxt_core->alloc_cb.get());
+        }
+
         void VulkanContext::ContextDescriptor::removeLayout(DescriptorSetLayoutId _layout_id) { if (layouts.contains(_layout_id)) { destroyLayout(_layout_id); layouts.remove(_layout_id); } }
 
         void VulkanContext::ContextDescriptor::removePool  (DescriptorPoolId      _pool_id  ) { if (  pools.contains(_pool_id  )) { destroyPool  (_pool_id  );   pools.remove(_pool_id  ); } }
 
         void VulkanContext::ContextDescriptor::removeSets  (DescriptorSetsId      _sets_id  ) { if (   sets.contains(_sets_id  )) { destroySets  (_sets_id  );    sets.remove(_sets_id  ); } }
+
+        void VulkanContext::ContextDescriptor::removeSampler(SamplerId            _sampler_id) { if (samplers.contains(_sampler_id)) { destroySampler(_sampler_id); samplers.remove(_sampler_id); } }
 
         DescriptorLayoutBindingId VulkanContext::ContextDescriptor::addSctLayoutBinding(DescriptorSetLayoutId _layout_id) {
             return DescriptorLayoutBindingId(_layout_id, layouts.get(_layout_id).create_info.addBinding());
@@ -1165,6 +1199,8 @@ namespace Simple {
 
         VkDescriptorSet       VulkanContext::get(DescriptorSetId       _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_descriptor.set(_id); }
 
+        VkSampler             VulkanContext::get(SamplerId             _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_descriptor.samplers.get(_id).handle; }
+
         VkPipeline            VulkanContext::get(PipelineId            _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.pipelines.get(_id).handle; }
 
         VkPipelineLayout      VulkanContext::get(PipelineLayoutId      _id) const { return _id.isNone() ? VK_NULL_HANDLE : cxt_pipeline.layouts  .get(_id).handle; }
@@ -1459,6 +1495,11 @@ namespace Simple {
 
         void CommandRecorder::copyBufferToImage(BufferId _src_id, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkBufferImageCopy> _regions) {
             vkCmdCopyBufferToImage(cmd, cxt.get(_src_id), cxt.get(_dst_id), _dst_layout, _regions.size(), _regions.data());
+        }
+
+        void CommandRecorder::blitImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageBlit> _regions,
+                                        VkFilter _filter) {
+            vkCmdBlitImage(cmd, cxt.get(_src_id), _src_layout, cxt.get(_dst_id), _dst_layout, _regions.size(), _regions.data(), _filter);
         }
 
         void CommandRecorder::barrier(Span<VkImageMemoryBarrier2> _image_barriers, Span<VkBufferMemoryBarrier2> _buffer_barriers,

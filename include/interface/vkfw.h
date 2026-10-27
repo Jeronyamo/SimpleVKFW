@@ -100,11 +100,9 @@ namespace Simple {
                 Pool<QueueFamilyEntry, QueueFamilyTag> queue_families; // TODO: USE ONE QUEUE_FAMILY WRAP! DATA IS DUPLICATED
                 Object::RenderPass render_pass; // Note: used only without 'profile.dynamic_rendering'
 
+                // Note: device features are set in 'device.create_info.features' (required) and 'device.create_info.optional_features'
+                //       (enabled if supported); the features and properties of the selected device: 'phys_device.features()/properties()'
                 DeviceProfile profile;
-                // Note: features enabled in 'createDevice' (Vulkan 1.0 features are set through 'device.create_info.req_features');
-                //       the structures of versions the device doesn't support are not chained
-                StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan11Features,
-                            VkPhysicalDeviceVulkan12Features, VkPhysicalDeviceVulkan13Features> device_features;
 
                 Struct::StructWrap<VkAllocationCallbacks> alloc_cb;
                 ContextDebug cxt_debug;
@@ -125,7 +123,8 @@ namespace Simple {
                       Object::Queue       &queues     (QueueFamilyId _id);
                 VkQueue queue(QueueId _id) const;
 
-            // Physical device queries (pass a StructChain headed by VkPhysicalDeviceFeatures2 / VkPhysicalDeviceProperties2)
+            // Physical device queries for structures that 'phys_device.features()/properties()' don't hold, e.g. of extensions
+            // (pass a StructChain headed by VkPhysicalDeviceFeatures2 / VkPhysicalDeviceProperties2)
 
                 template <typename... Ts>
                 void queryFeatures(StructChain<VkPhysicalDeviceFeatures2, Ts...> &_chain) const {
@@ -149,6 +148,8 @@ namespace Simple {
                 uint32_t apiVersion() const;
                 // Throws if the selected physical device can't be used with 'profile'
                 void checkProfileSupport() const;
+                // Enables the features of 'profile' and the supported optional features, chains only the structures of the device
+                // version; throws with the names of the required features the device doesn't support
                 void createDevice();
                 void acquireQueues();
                 void createRenderPass();
@@ -233,6 +234,8 @@ namespace Simple {
                 Pool<Object::DescriptorPool,      DescriptorPoolTag>        pools;
                 Pool<Object::DescriptorSet,       DescriptorSetsTag>         sets;
                 // Note: '1' Pool AND 'N' Layouts --> 'N' Sets
+                // Note: samplers live here because they are used only through descriptors (or as immutable samplers of a layout)
+                Pool<Object::Sampler,             SamplerTag>            samplers;
 
                 ContextCore *cxt_core = nullptr;
 
@@ -252,6 +255,7 @@ namespace Simple {
                 Object::DescriptorPool      &pool    (DescriptorPoolId      _id);
                 Object::DescriptorSet       &setGroup(DescriptorSetsId      _id);
                 Struct::StructWrap<VkDescriptorSetLayoutBinding> &layoutBinding(DescriptorLayoutBindingId _id);
+                Object::Sampler             &sampler (SamplerId             _id);
 
             // Functions
 
@@ -263,19 +267,24 @@ namespace Simple {
                 DescriptorSetLayoutId addLayout();
                 DescriptorPoolId      addPool  ();
                 DescriptorSetsId      addSet   ();
+                SamplerId             addSampler();
 
                 void createLayout(DescriptorSetLayoutId _layout_id);
                 void createPool(DescriptorPoolId _pool_id);
                 void createSets(DescriptorSetsId _sets_id);
+                // Note: anisotropy is turned off if the 'samplerAnisotropy' feature isn't enabled, and clamped to 'maxSamplerAnisotropy'
+                void createSampler(SamplerId _sampler_id);
 
                 // Note: 'destroy*' keeps the Id (the object can be created again), 'remove*' also frees the Id
                 void destroyLayout(DescriptorSetLayoutId _layout_id);
                 void destroyPool(DescriptorPoolId _pool_id);
                 void destroySets(DescriptorSetsId _sets_id);
+                void destroySampler(SamplerId _sampler_id);
 
                 void removeLayout(DescriptorSetLayoutId _layout_id);
                 void removePool  (DescriptorPoolId      _pool_id  );
                 void removeSets  (DescriptorSetsId      _sets_id  );
+                void removeSampler(SamplerId            _sampler_id);
 
             // Scenarios
 
@@ -614,6 +623,7 @@ namespace Simple {
             VkDescriptorSetLayout get(DescriptorSetLayoutId _id) const;
             VkDescriptorPool      get(DescriptorPoolId      _id) const;
             VkDescriptorSet       get(DescriptorSetId       _id) const;
+            VkSampler             get(SamplerId             _id) const;
 
             VkPipeline            get(PipelineId            _id) const;
             VkPipelineLayout      get(PipelineLayoutId      _id) const;
@@ -746,6 +756,9 @@ namespace Simple {
             void copyBuffer(BufferId _src_id, BufferId _dst_id, Span<VkBufferCopy> _regions);
             void copyImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageCopy> _regions);
             void copyBufferToImage(BufferId _src_id, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkBufferImageCopy> _regions);
+            // Note: needs a graphics queue; the formats must support blits (and linear filtering for VK_FILTER_LINEAR)
+            void blitImage(ImageId _src_id, VkImageLayout _src_layout, ImageId _dst_id, VkImageLayout _dst_layout, Span<VkImageBlit> _regions,
+                           VkFilter _filter = VK_FILTER_LINEAR);
 
         // Synchronization
 

@@ -2,6 +2,71 @@
 
 namespace Simple {
     namespace VKFW {
+        namespace Detail {
+
+            void unlinkNewerVersions(DeviceFeatures &_chain, uint32_t _api_version) {
+                if (_api_version < VK_API_VERSION_1_3) _chain.unlink<VkPhysicalDeviceVulkan13Features>();
+                if (_api_version < VK_API_VERSION_1_2) {
+                    _chain.unlink<VkPhysicalDeviceVulkan11Features>();
+                    _chain.unlink<VkPhysicalDeviceVulkan12Features>();
+                }
+            }
+
+            void unlinkNewerVersions(DeviceProperties &_chain, uint32_t _api_version) {
+                if (_api_version < VK_API_VERSION_1_3) _chain.unlink<VkPhysicalDeviceVulkan13Properties>();
+                if (_api_version < VK_API_VERSION_1_2) {
+                    _chain.unlink<VkPhysicalDeviceVulkan11Properties>();
+                    _chain.unlink<VkPhysicalDeviceVulkan12Properties>();
+                }
+            }
+
+            // Note: feature structures are 'sType', 'pNext' and then only VkBool32 members ('FeatureNames<T>::count' of them);
+            //       VkPhysicalDeviceFeatures has only the VkBool32 members
+            template <typename T>
+            static VkBool32 *featureBools_(T &_s) {
+                static_assert(FeatureNames<T>::count > 0u && sizeof(T) >= sizeof(VkBaseOutStructure) + FeatureNames<T>::count * sizeof(VkBool32) &&
+                              sizeof(T) <  sizeof(VkBaseOutStructure) + FeatureNames<T>::count * sizeof(VkBool32) + 8u,
+                              "VKFW::Detail :: featureBools_ - not a feature structure of VkBool32 members");
+                return reinterpret_cast<VkBool32*>(reinterpret_cast<uint8_t*>(&_s) + sizeof(VkBaseOutStructure));
+            }
+            static VkBool32 *featureBools_(VkPhysicalDeviceFeatures &_s) {
+                static_assert(sizeof(VkPhysicalDeviceFeatures) == FeatureNames<VkPhysicalDeviceFeatures>::count * sizeof(VkBool32),
+                              "VKFW::Detail :: featureBools_ - VkPhysicalDeviceFeatures must hold only VkBool32 members");
+                return &_s.robustBufferAccess;
+            }
+
+            template <typename T>
+            static void unsupported_(const T &_requested, const T &_supported, std::vector<std::string> &_res) {
+                const VkBool32 *__req = featureBools_(const_cast<T&>(_requested)), *__sup = featureBools_(const_cast<T&>(_supported));
+                for (uint32_t i = 0u; i < FeatureNames<T>::count; ++i)
+                    if (__req[i] && !__sup[i]) _res.push_back(std::string(FeatureNames<T>::name()) + "::" + FeatureNames<T>::member(i));
+            }
+
+            template <typename T>
+            static void addSupported_(T &_dst, const T &_requested, const T &_supported) {
+                VkBool32 *__dst = featureBools_(_dst);
+                const VkBool32 *__req = featureBools_(const_cast<T&>(_requested)), *__sup = featureBools_(const_cast<T&>(_supported));
+                for (uint32_t i = 0u; i < FeatureNames<T>::count; ++i)
+                    if (__req[i] && __sup[i]) __dst[i] = VK_TRUE;
+            }
+
+            std::vector<std::string> unsupportedFeatures(const DeviceFeatures &_requested, const DeviceFeatures &_supported) {
+                std::vector<std::string> __res;
+                unsupported_(_requested.head().features, _supported.head().features, __res);
+                unsupported_(_requested.get<VkPhysicalDeviceVulkan11Features>(), _supported.get<VkPhysicalDeviceVulkan11Features>(), __res);
+                unsupported_(_requested.get<VkPhysicalDeviceVulkan12Features>(), _supported.get<VkPhysicalDeviceVulkan12Features>(), __res);
+                unsupported_(_requested.get<VkPhysicalDeviceVulkan13Features>(), _supported.get<VkPhysicalDeviceVulkan13Features>(), __res);
+                return __res;
+            }
+
+            void addSupportedFeatures(DeviceFeatures &_dst, const DeviceFeatures &_requested, const DeviceFeatures &_supported) {
+                addSupported_(_dst.head().features, _requested.head().features, _supported.head().features);
+                addSupported_(_dst.get<VkPhysicalDeviceVulkan11Features>(), _requested.get<VkPhysicalDeviceVulkan11Features>(), _supported.get<VkPhysicalDeviceVulkan11Features>());
+                addSupported_(_dst.get<VkPhysicalDeviceVulkan12Features>(), _requested.get<VkPhysicalDeviceVulkan12Features>(), _supported.get<VkPhysicalDeviceVulkan12Features>());
+                addSupported_(_dst.get<VkPhysicalDeviceVulkan13Features>(), _requested.get<VkPhysicalDeviceVulkan13Features>(), _supported.get<VkPhysicalDeviceVulkan13Features>());
+            }
+        }; // Detail END
+
         namespace Func {
 
             std::vector<VkCommandBuffer> AllocateCommandBuffers(VkDevice _device, VkCommandPool _command_pool,
@@ -264,13 +329,14 @@ namespace Simple {
             }
 
             PhysDeviceFullInfo::PhysDeviceFullInfo(const VkPhysicalDevice &_phys_device,
-                               const VkPhysicalDeviceFeatures &_features,
-                               const VkPhysicalDeviceProperties &_properties)
-                            : phys_device{_phys_device}, features{_features}, properties{_properties} {}
+                               const DeviceFeatures   &_features,
+                               const DeviceProperties &_properties)
+                            : phys_device{_phys_device}, features{_features.head().features}, properties{_properties.head().properties},
+                              features2{_features}, properties2{_properties} {}
 
             PhysDeviceFullInfo::PhysDeviceFullInfo(const PhysDeviceFullInfo &_elem_view)
                             : phys_device{_elem_view.phys_device}, features{_elem_view.features},
-                              properties{_elem_view.properties} {}
+                              properties{_elem_view.properties}, features2{_elem_view.features2}, properties2{_elem_view.properties2} {}
 
             vec4u PhysDeviceFullInfo::apiVersion() const {
                 vec4u __ver;
@@ -339,7 +405,7 @@ namespace Simple {
 
             const PhysDeviceFullInfo PhysDeviceManager::getElemInfo(uint32_t _index) { return { phys_devices[_index], features[_index], properties[_index] }; }
 
-            void PhysDeviceManager::loadInfo(VkInstance _instance) {
+            void PhysDeviceManager::loadInfo(VkInstance _instance, uint32_t _api_version) {
                 if (_instance == VK_NULL_HANDLE)
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Util::PhysDeviceManager :: loadInfo", "instance is not set"));
 
@@ -355,9 +421,19 @@ namespace Simple {
                 vkEnumeratePhysicalDevices(_instance, &__devCount, phys_devices.data());
 
                 for (uint32_t i = 0u; i < __devCount; ++i) {
-                    vkGetPhysicalDeviceProperties(phys_devices[i], &properties[i]);
-                    vkGetPhysicalDeviceFeatures  (phys_devices[i], &  features[i]);
+                    // Note: the structures of newer versions than the device's must not be chained
+                    const uint32_t __api_version = std::min(_api_version, Func::GetPhysicalDeviceProperties(phys_devices[i]).apiVersion);
+                    Detail::unlinkNewerVersions(properties[i], __api_version);
+                    Detail::unlinkNewerVersions(  features[i], __api_version);
+                    vkGetPhysicalDeviceProperties2(phys_devices[i], &properties[i].head());
+                    vkGetPhysicalDeviceFeatures2  (phys_devices[i], &  features[i].head());
                 }
+            }
+
+            uint32_t PhysDeviceManager::indexOf(VkPhysicalDevice _phys_device) const {
+                for (uint32_t i = 0u; i < phys_devices.size(); ++i)
+                    if (phys_devices[i] == _phys_device) return i;
+                throw std::out_of_range(SVKFW_WRAPERR("VKFW::Util::PhysDeviceManager :: indexOf", "the physical device is not loaded"));
             }
 
             VkPhysicalDevice PhysDeviceManager::testPickOne(const PhysDeviceTestFunc _testFunc) {
@@ -1066,7 +1142,9 @@ namespace Simple {
 
             void StructWrap<VkDeviceCreateInfo>::clear() {
                 wrap = VkDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-                req_features = VkPhysicalDeviceFeatures{};
+                features          = DeviceFeatures();
+                optional_features = DeviceFeatures();
+                api_version       = VK_API_VERSION_1_3;
                 queue_info.clear();
                 layers.clear();
                 extensions.clear();
@@ -1079,17 +1157,20 @@ namespace Simple {
                 wrap.ppEnabledExtensionNames = extensions.getEntries();
                 wrap.pQueueCreateInfos    = queue_info.data();
                 wrap.queueCreateInfoCount = queue_info.size();
-                wrap.pEnabledFeatures = &req_features;
 
-                // Note: with VkPhysicalDeviceFeatures2 in the pNext chain 'pEnabledFeatures' must be null,
-                //       so 'req_features' is copied into the chained structure instead
-                for (VkBaseOutStructure *p = (VkBaseOutStructure*)wrap.pNext; p != nullptr; p = p->pNext) {
-                    if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) {
-                        ((VkPhysicalDeviceFeatures2*)p)->features = req_features;
-                        wrap.pEnabledFeatures = nullptr;
-                        break;
-                    }
-                }
+                // Note: with VkPhysicalDeviceFeatures2 in the pNext chain 'pEnabledFeatures' must be null
+                features.link();
+                Detail::unlinkNewerVersions(features, api_version);
+                wrap.pNext            = &features.head();
+                wrap.pEnabledFeatures = nullptr;
+            }
+
+            void StructWrap<VkDeviceCreateInfo>::enableOptionalFeatures(const DeviceFeatures &_supported) {
+                Detail::addSupportedFeatures(features, optional_features, _supported);
+            }
+
+            std::vector<std::string> StructWrap<VkDeviceCreateInfo>::unsupportedFeatures(const DeviceFeatures &_supported) const {
+                return Detail::unsupportedFeatures(features, _supported);
             }
 
             void StructWrap<VkDeviceCreateInfo>::addLayers(const Util::StringVec &_layers) {
@@ -1357,13 +1438,53 @@ namespace Simple {
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Struct::StructWrap<VkMemoryAllocateInfo> :: setForImage", "Could not find suitable memory type"));
             }
 
-            StructWrap<VkSamplerCreateInfo>::StructWrap() {}
+            StructWrap<VkSamplerCreateInfo>::StructWrap() { clear(); }
 
             void StructWrap<VkSamplerCreateInfo>::clear() {
                 wrap = VkSamplerCreateInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+                setWholeStruct();
             }
 
             void StructWrap<VkSamplerCreateInfo>::updateWrap() {}
+
+            void StructWrap<VkSamplerCreateInfo>::setFilter(VkFilter _mag_filter, VkFilter _min_filter, VkSamplerMipmapMode _mipmap_mode) {
+                wrap.magFilter  = _mag_filter;
+                wrap.minFilter  = _min_filter;
+                wrap.mipmapMode = _mipmap_mode;
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::setAddressMode(VkSamplerAddressMode _u, VkSamplerAddressMode _v, VkSamplerAddressMode _w,
+                                                                 VkBorderColor _border_color) {
+                wrap.addressModeU = _u;
+                wrap.addressModeV = _v == VK_SAMPLER_ADDRESS_MODE_MAX_ENUM ? _u : _v;
+                wrap.addressModeW = _w == VK_SAMPLER_ADDRESS_MODE_MAX_ENUM ? _u : _w;
+                wrap.borderColor  = _border_color;
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::setAnisotropy(float _max_anisotropy) {
+                wrap.anisotropyEnable = _max_anisotropy > 1.f ? VK_TRUE : VK_FALSE;
+                wrap.maxAnisotropy    = _max_anisotropy > 1.f ? _max_anisotropy : 1.f;
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::setLod(float _min_lod, float _max_lod, float _mip_lod_bias) {
+                wrap.minLod     = _min_lod;
+                wrap.maxLod     = _max_lod;
+                wrap.mipLodBias = _mip_lod_bias;
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::setCompare(VkCompareOp _compare_op) {
+                wrap.compareEnable = _compare_op == VK_COMPARE_OP_MAX_ENUM ? VK_FALSE : VK_TRUE;
+                wrap.compareOp     = _compare_op == VK_COMPARE_OP_MAX_ENUM ? VK_COMPARE_OP_NEVER : _compare_op;
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::setWholeStruct(VkFilter _filter, VkSamplerAddressMode _address_mode,
+                                                                 float _max_anisotropy, float _max_lod) {
+                setFilter(_filter, _filter, _filter == VK_FILTER_LINEAR ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST);
+                setAddressMode(_address_mode);
+                setAnisotropy(_max_anisotropy);
+                setLod(0.f, _max_lod);
+                setCompare(VK_COMPARE_OP_MAX_ENUM);
+            }
 
             StructWrap<VkShaderModuleCreateInfo>::StructWrap() {}
 
@@ -2351,6 +2472,10 @@ namespace Simple {
                 handle = VK_NULL_HANDLE;
             }
 
+            const DeviceFeatures   &PhysicalDevice::features()   const { return select_info.features  [select_info.indexOf(handle)]; }
+
+            const DeviceProperties &PhysicalDevice::properties() const { return select_info.properties[select_info.indexOf(handle)]; }
+
             void QueueFamily::createObject() {
                 handle = select_info.selectOne();
             }
@@ -2477,6 +2602,15 @@ namespace Simple {
 
             void DescriptorPool::destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb) {
                 if (handle != VK_NULL_HANDLE) vkDestroyDescriptorPool(_device, handle, _destroy_cb);
+                handle = VK_NULL_HANDLE;
+            }
+
+            void Sampler::createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb) {
+                handle = Func::CreateSampler(_device, &create_info.get(), _create_cb);
+            }
+
+            void Sampler::destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb) {
+                if (handle != VK_NULL_HANDLE) vkDestroySampler(_device, handle, _destroy_cb);
                 handle = VK_NULL_HANDLE;
             }
 

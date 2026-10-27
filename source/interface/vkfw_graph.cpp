@@ -641,6 +641,195 @@ namespace Simple {
             PassBuilder& PassBuilder::execute(const std::function<void(CommandRecorder&)> &_callback) {
                 graph->pass_(id).callback = _callback; return *this;
             }
+
+            TextureInfo::TextureInfo() {}
+
+            TextureInfo::TextureInfo(VkFormat _format, VkExtent2D _extent, uint32_t _mip_levels, Span<QueueFamilyId> _queue_families)
+                : format{_format}, extent{_extent.width, _extent.height, 1u}, mip_levels{_mip_levels},
+                  queue_families(_queue_families.data(), _queue_families.data() + _queue_families.size()) {}
+
+            uint32_t mipLevelCount(VkExtent3D _extent) {
+                uint32_t __size = std::max(_extent.width, std::max(_extent.height, _extent.depth)), __levels = 1u;
+                while (__size > 1u) { __size >>= 1u; ++__levels; }
+                return __levels;
+            }
+
+            Texture::Texture() {}
+
+            bool Texture::isNone() const { return cxt == nullptr || image_id.isNone(); }
+
+            VkImage Texture::image() const { return cxt->get(image_id); }
+
+            VkImageView Texture::view(uint32_t _index) const {
+                SVKFW_ASSERT(_index < views.size(), std::out_of_range, "VKFW::Graph::Texture :: view", "view index is out of range");
+                return cxt->get(views[_index]);
+            }
+
+            const VkImageCreateInfo &Texture::info() const { return cxt->cxt_memory.image(image_id).create_info.peek(); }
+
+            VkExtent3D Texture::extent(uint32_t _mip_level) const {
+                const VkExtent3D &__extent = info().extent;
+                return { std::max(__extent.width  >> _mip_level, 1u),
+                         std::max(__extent.height >> _mip_level, 1u),
+                         std::max(__extent.depth  >> _mip_level, 1u) };
+            }
+
+            uint32_t Texture::addView(uint32_t _base_mip, uint32_t _mip_count, uint32_t _base_layer, uint32_t _layer_count,
+                                      VkImageViewType _type, VkImageAspectFlags _aspect, VkFormat _format, const VkComponentMapping &_components) {
+                const VkImageCreateInfo &__image = info();
+                SVKFW_ASSERT(_base_mip < __image.mipLevels && _base_layer < __image.arrayLayers, std::out_of_range,
+                                "VKFW::Graph::Texture :: addView", "the first mip level or layer is out of the image");
+                if (_mip_count   == VK_REMAINING_MIP_LEVELS  ) _mip_count   = __image.mipLevels   - _base_mip;
+                if (_layer_count == VK_REMAINING_ARRAY_LAYERS) _layer_count = __image.arrayLayers - _base_layer;
+
+                VulkanContext::ContextMemory &__memory = cxt->cxt_memory;
+                const ImageViewId __view_id = __memory.addChunkImageView(image_id.parent);
+                // Note: fills the type and the aspect from the image, then the range is narrowed
+                __memory.setWholeImageViewCreateInfoStruct(__view_id, image_id, _aspect, _type);
+                Struct::StructWrap<VkImageViewCreateInfo> &__view = __memory.imageView(__view_id).create_info;
+                if (_type == VK_IMAGE_VIEW_TYPE_MAX_ENUM && _layer_count == 1u) {
+                    // One layer of an array: a non-array view
+                    if (__view.peek().viewType == VK_IMAGE_VIEW_TYPE_2D_ARRAY || __view.peek().viewType == VK_IMAGE_VIEW_TYPE_CUBE ||
+                        __view.peek().viewType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY) __view.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
+                    if (__view.peek().viewType == VK_IMAGE_VIEW_TYPE_1D_ARRAY) __view.edit().viewType = VK_IMAGE_VIEW_TYPE_1D;
+                }
+                if (_format != VK_FORMAT_UNDEFINED) __view.edit().format = _format;
+                __view.setComponents(_components.r, _components.g, _components.b, _components.a);
+                __view.setRange(__view.peek().subresourceRange.aspectMask, _base_mip, _mip_count, _base_layer, _layer_count);
+
+                views.push_back(__view_id);
+                if (__memory.chunk(image_id.parent).memory.handle != VK_NULL_HANDLE)
+                    __memory.createChunkImageView(image_id, __view_id);
+                return views.size() - 1u;
+            }
+
+            void Texture::createViews() {
+                VulkanContext::ContextMemory &__memory = cxt->cxt_memory;
+                SVKFW_ASSERT(__memory.chunk(image_id.parent).memory.handle != VK_NULL_HANDLE, std::logic_error,
+                                "VKFW::Graph::Texture :: createViews", "the memory chunk of the texture is not allocated yet");
+                for (uint32_t i = 0u; i < views.size(); ++i)
+                    if (__memory.imageView(views[i]).handle == VK_NULL_HANDLE)
+                        __memory.createChunkImageView(image_id, views[i]);
+            }
+
+            void Texture::destroy() {
+                if (isNone()) return;
+                VulkanContext::ContextMemory &__memory = cxt->cxt_memory;
+                if (own_memory) __memory.removeMemoryChunk(image_id.parent);
+                else {
+                    // Note: the memory stays with the chunk; the Ids of the views and the image stay in it (destroyed objects)
+                    VulkanContext::ContextMemory::MemoryChunk &__chunk = __memory.chunk(image_id.parent);
+                    for (uint32_t i = 0u; i < views.size(); ++i) __chunk.destroyImageView(views[i].index);
+                    __chunk.destroyImage(image_id.index);
+                }
+                views.clear();
+                image_id = ImageId();
+            }
+
+            Texture createTexture(VulkanContext &_cxt, const TextureInfo &_info, MemoryId _memory_id) {
+                Texture __texture;
+                __texture.cxt        = &_cxt;
+                __texture.own_memory = _memory_id.isNone();
+
+                VulkanContext::ContextMemory &__memory = _cxt.cxt_memory;
+                const MemoryId __memory_id = __texture.own_memory ? __memory.addMemoryChunk(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) : _memory_id;
+                SVKFW_ASSERT(__memory.chunk(__memory_id).memory.handle == VK_NULL_HANDLE, std::logic_error, "VKFW::Graph :: createTexture",
+                                "the memory chunk is already allocated, a new image can't be placed in it");
+
+                const uint32_t __mip_levels = _info.mip_levels == 0u ? mipLevelCount(_info.extent) : _info.mip_levels;
+                __texture.image_id = __memory.addChunkImage(__memory_id);
+                __memory.setWholeImageCreateInfoStruct(__texture.image_id, _info.queue_families, _info.sharing_mode, _info.usage, _info.format,
+                                                       _info.extent, __mip_levels, _info.array_layers, _info.samples, _info.tiling, _info.flags);
+                __memory.createChunkImage(__texture.image_id);
+                if (__texture.own_memory) __memory.allocateChunkMemory(__memory_id);
+
+                __texture.addView(0u, VK_REMAINING_MIP_LEVELS, 0u, VK_REMAINING_ARRAY_LAYERS, _info.view_type, _info.aspect, VK_FORMAT_UNDEFINED, _info.components);
+                return __texture;
+            }
+
+            void generateMips(CommandRecorder &_rec, const Texture &_texture, uint32_t _mips_have, uint32_t _mips_req,
+                              VkImageLayout _layout, VkImageLayout _final_layout) {
+                const VkImageCreateInfo &__image  = _texture.info();
+                const VkImage            __handle = _texture.image();
+                if (_mips_req == 0u) _mips_req = __image.mipLevels;
+                SVKFW_ASSERT(_mips_have > 0u, std::invalid_argument, "VKFW::Graph :: generateMips", "mip level 0 must hold the data ('_mips_have' > 0)");
+                SVKFW_ASSERT(_mips_req <= __image.mipLevels, std::out_of_range, "VKFW::Graph :: generateMips",
+                                "the image has only " + std::to_string(__image.mipLevels) + " mip levels, requested " + std::to_string(_mips_req));
+
+                const VkImageAspectFlags    __aspect     = VKFW::Detail::formatAspects(__image.format);
+                const VkPipelineStageFlags2 __all        = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                const VkAccessFlags2        __any_access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                // Levels ['_first', '_first' + '_count') of all layers
+                struct Range {
+                    static VkImageMemoryBarrier2 barrier(VkImageMemoryBarrier2 _barrier, uint32_t _first, uint32_t _count) {
+                        _barrier.subresourceRange.baseMipLevel = _first;
+                        _barrier.subresourceRange.levelCount   = _count;
+                        return _barrier;
+                    }
+                };
+
+                if (_mips_have >= _mips_req) {
+                    if (_layout != _final_layout)
+                        _rec.barrier(Range::barrier(imageBarrier(__handle, _layout, _final_layout, __all, VK_ACCESS_2_MEMORY_WRITE_BIT, __all, __any_access, __aspect),
+                                                    0u, _mips_req));
+                    return;
+                }
+
+                const VkFormatFeatureFlags __need = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+                const VkFormatProperties   __props = Func::GetPhysicalDeviceFormatProperties(_rec.cxt.cxt_core.phys_device.handle, __image.format);
+                const VkFormatFeatureFlags __have  = __image.tiling == VK_IMAGE_TILING_LINEAR ? __props.linearTilingFeatures : __props.optimalTilingFeatures;
+                SVKFW_ASSERT((__have & __need) == __need, std::runtime_error, "VKFW::Graph :: generateMips",
+                                "the image format doesn't support linear filtered blits, format " + std::to_string(__image.format));
+                SVKFW_ASSERT((__image.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) && (__image.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT), std::invalid_argument,
+                                "VKFW::Graph :: generateMips", "the image needs TRANSFER_SRC and TRANSFER_DST usage");
+
+                // The last filled level becomes the first source, the new levels become destinations (old contents discarded)
+                {
+                    VkImageMemoryBarrier2 __barriers[2] = {
+                        Range::barrier(imageBarrier(__handle, _layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, __all, VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, __aspect), _mips_have - 1u, 1u),
+                        Range::barrier(imageBarrier(__handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, __all, VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, __aspect), _mips_have, _mips_req - _mips_have)
+                    };
+                    _rec.barrier(__barriers);
+                }
+
+                // Each level from the previous one; a written level becomes the source of the next blit
+                for (uint32_t __level = _mips_have; __level < _mips_req; ++__level) {
+                    const VkExtent3D __src = _texture.extent(__level - 1u), __dst = _texture.extent(__level);
+                    VkImageBlit __blit{};
+                    __blit.srcSubresource = { __aspect, __level - 1u, 0u, __image.arrayLayers };
+                    __blit.dstSubresource = { __aspect, __level,      0u, __image.arrayLayers };
+                    __blit.srcOffsets[1]  = { (int32_t)__src.width, (int32_t)__src.height, (int32_t)__src.depth };
+                    __blit.dstOffsets[1]  = { (int32_t)__dst.width, (int32_t)__dst.height, (int32_t)__dst.depth };
+                    _rec.blitImage(_texture.image_id, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _texture.image_id, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   __blit, VK_FILTER_LINEAR);
+
+                    if (__level + 1u < _mips_req)
+                        _rec.barrier(Range::barrier(imageBarrier(__handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                                                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, __aspect), __level, 1u));
+                }
+
+                // Final layout: the untouched levels, the sources and the last level
+                std::vector<VkImageMemoryBarrier2> __final;
+                if (_mips_have > 1u && _layout != _final_layout)
+                    __final.push_back(Range::barrier(imageBarrier(__handle, _layout, _final_layout, __all, VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                                                  __all, __any_access, __aspect), 0u, _mips_have - 1u));
+                __final.push_back(Range::barrier(imageBarrier(__handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _final_layout,
+                                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+                                                              __all, __any_access, __aspect), _mips_have - 1u, _mips_req - _mips_have));
+                __final.push_back(Range::barrier(imageBarrier(__handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, _final_layout,
+                                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                                              __all, __any_access, __aspect), _mips_req - 1u, 1u));
+                _rec.barrier(__final);
+            }
+
+            ResourceId RenderGraph::importTexture(const std::string &_name, const Texture &_texture, VkImageLayout _layout) {
+                const VkExtent3D __extent = _texture.extent();
+                return importImage(_name, _texture.image(), _texture.view(), _texture.info().format, VkExtent2D{__extent.width, __extent.height},
+                                   _layout, _layout, false);
+            }
         }; // Graph END
     }; // VKFW END
 }; // Simple END

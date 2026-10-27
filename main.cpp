@@ -32,6 +32,7 @@ int main(int argc, char **argv) {
     using Simple::VKFW::CommandPoolId;
     using Simple::VKFW::CommandBuffersId;
     using Simple::VKFW::CommandBufferId;
+    using Simple::VKFW::SamplerId;
 
 // Config
     const uint32_t FRAMES_IN_FLIGHT = 4u;
@@ -43,12 +44,18 @@ int main(int argc, char **argv) {
     struct Vertex {
         Simple::vec2 pos;
         Simple::vec3 color;
+        Simple::vec2 uv;
     };
-    const std::vector<Vertex> vertices = { {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                                           {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-                                           {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
-                                           {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}}
+    // Note: the texture repeats twice along each side of the quad
+    const std::vector<Vertex> vertices = { {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+                                           {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {2.0f, 0.0f}},
+                                           {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {2.0f, 2.0f}},
+                                           {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 2.0f}}
     };
+
+    // Texture (RGBA8, loaded with stb_image)
+    Simple::Img::Image4u texture_image("resources/textures/checker.png");
+    static_assert(sizeof(Simple::Img::Image4u::ColorType) == 4u, "texels must be tightly packed RGBA8");
     const std::vector<uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
 
     // Camera
@@ -153,11 +160,13 @@ int main(int argc, char **argv) {
     vk.cxt_core.setQueueFamilyQueueCount(ci_qfam_transfer, QUEUES_COUNT_TRANSFER);
     vk.cxt_core.setDeviceQueueInfo();
 
-    // Device features: Vulkan 1.0 features are set through 'req_features', newer ones through 'device_features'
-    // Note: the features of the profile are enabled by 'createDevice'; structures of versions the device doesn't support are ignored
-    vk.cxt_core.device_features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore = VK_TRUE;
-
-    vk.cxt_core.device.create_info.req_features.logicOp = VK_TRUE;
+    // Device features: 'features' are required ('createDevice' throws with the names of the unsupported ones),
+    //                  'optional_features' are enabled if the device supports them
+    // Note: Vulkan 1.0 features are in 'head().features'; the features of the profile are enabled by 'createDevice'
+    vk.cxt_core.device.create_info.features.get<VkPhysicalDeviceVulkan12Features>().timelineSemaphore = VK_TRUE;
+    vk.cxt_core.device.create_info.features.head().features.logicOp = VK_TRUE;
+    // Note: without it 'createSampler' turns anisotropic filtering off
+    vk.cxt_core.device.create_info.optional_features.head().features.samplerAnisotropy = VK_TRUE;
     vk.cxt_core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
     // Note: lets 'cxt_memory' see the real free space of the memory heaps (see 'ContextMemory::heapBudget')
     if (Simple::VKFW::Util::allDeviceExtAvailable(vk.cxt_core.phys_device.handle, {{ VK_EXT_MEMORY_BUDGET_EXTENSION_NAME }}))
@@ -247,13 +256,26 @@ int main(int argc, char **argv) {
 
     vk.cxt_memory.allocateChunkMemory(ci_memory_device_optim);
 
+    // Texture: image + whole view in its own device-local memory, with the full mip chain
+    // Note: EXCLUSIVE to the graphics family, the upload on the transfer queue hands it over (see 'UploadBatch::setOwner')
+    Simple::VKFW::Graph::Texture texture = Simple::VKFW::Graph::createTexture(vk,
+        Simple::VKFW::Graph::TextureInfo(VK_FORMAT_R8G8B8A8_SRGB, VkExtent2D{(uint32_t)texture_image.width, (uint32_t)texture_image.height},
+                                         0u, { ci_qfam_graphics }));
+
+    // Sampler: linear filtering between texels and mip levels, repeated, anisotropic if the device supports it
+    SamplerId ci_sampler = vk.cxt_descriptor.addSampler();
+    vk.cxt_descriptor.sampler(ci_sampler).create_info.setWholeStruct(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, 16.f);
+    vk.cxt_descriptor.createSampler(ci_sampler);
+
 
 // Descriptors:
     // Descriptor Layout
     DescriptorSetLayoutId     ci_descr_layout = vk.cxt_descriptor.addLayout();
     DescriptorLayoutBindingId ci_descr_layout_binding = vk.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
+    DescriptorLayoutBindingId ci_descr_layout_texture = vk.cxt_descriptor.addSctLayoutBinding(ci_descr_layout);
 
     vk.cxt_descriptor.layoutBinding(ci_descr_layout_binding).setWholeStruct(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
+    vk.cxt_descriptor.layoutBinding(ci_descr_layout_texture).setWholeStruct(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
 
     vk.cxt_descriptor.createLayout(ci_descr_layout);
 
@@ -263,6 +285,7 @@ int main(int argc, char **argv) {
 
     descr_pool_ubo.create_info.edit().maxSets = FRAMES_IN_FLIGHT;
     descr_pool_ubo.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FRAMES_IN_FLIGHT);
+    descr_pool_ubo.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, FRAMES_IN_FLIGHT);
 
     vk.cxt_descriptor.createPool(ci_descr_pool_ubo);
 
@@ -280,12 +303,15 @@ int main(int argc, char **argv) {
 
     // Descriptor Sets Update
 
-    std::vector<Simple::VKFW::Struct::StructWrap<VkWriteDescriptorSet>> ubo_writes(FRAMES_IN_FLIGHT);
+    // Note: two writes per set: the uniform buffer (binding 0) and the texture with its sampler (binding 1)
+    std::vector<Simple::VKFW::Struct::StructWrap<VkWriteDescriptorSet>> descr_writes(2u * FRAMES_IN_FLIGHT);
     for (uint32_t i = 0u; i < FRAMES_IN_FLIGHT; ++i) {
-        ubo_writes[i].addBufferInfo(vk.get(ci_buffer_uniform[i]), 0u, vk.cxt_memory.bufferMapping(ci_buffer_uniform[i]).range);
-        ubo_writes[i].setScalars(vk.get(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
+        descr_writes[2*i].addBufferInfo(vk.get(ci_buffer_uniform[i]), 0u, vk.cxt_memory.bufferMapping(ci_buffer_uniform[i]).range);
+        descr_writes[2*i].setScalars(vk.get(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
+        descr_writes[2*i + 1].addImageInfo(vk.get(ci_sampler), texture.view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        descr_writes[2*i + 1].setScalars(vk.get(ci_descr_sets_ubo[i]), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u);
     }
-    vk.cxt_descriptor.updateSets(ubo_writes);
+    vk.cxt_descriptor.updateSets(descr_writes);
 
 
 // Graphics pipeline:
@@ -320,7 +346,8 @@ int main(int argc, char **argv) {
     // Vertex input state
     graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.bindings = {{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }};
     graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,   pos) },
-                                                                                      { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) } };
+                                                                                      { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
+                                                                                      { 2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,    uv) } };
 
     // Input assembly state
     graphics_pip.graphics_create_info_wrap.input_assembly_state_wrap.setWholeStruct(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
@@ -390,15 +417,32 @@ int main(int argc, char **argv) {
 
 
 // Other preparations:
-    // Copy static vertex/index data (both copies go in one submit)
-    // Note: the buffers are EXCLUSIVE to the graphics family, so the batch hands them over from the transfer queue
+    // Copy static vertex/index data and mip level 0 of the texture (all copies go in one submit)
+    // Note: the buffers and the texture are EXCLUSIVE to the graphics family, so the batch hands them over from the transfer queue
     {
         Simple::VKFW::UploadBatch upload(vk, ci_queue_transfer, ci_cmdbuf_staging, ci_buffer_staging);
         upload.setOwner(ci_queue_graphics, ci_pool_drawing);
         upload.copyToBuffer(ci_buffer_vertex, vertices.data(), vertices.size() * sizeof(Vertex  ));
         upload.copyToBuffer(ci_buffer_index ,  indices.data(),  indices.size() * sizeof(uint32_t));
+        upload.copyToImage(texture.image_id, texture_image.img.data(), texture_image.img.size() * sizeof(Simple::Img::Image4u::ColorType));
         upload.submit();
         upload.wait();
+    }
+
+    // Texture mip levels: blits need a graphics queue, so they go in a separate submit after the upload
+    {
+        FenceId ci_fen_mips = vk.cxt_barrier.addFence(false);
+        Simple::VKFW::CommandRecorder rec(vk, ci_cmdbuf_drawing[0]);
+        rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        Simple::VKFW::Graph::generateMips(rec, texture); // level 0 is uploaded, the others are made from it
+        rec.end();
+
+        Simple::VKFW::SubmitDesc submit;
+        submit.commands(ci_cmdbuf_drawing[0]);
+        vk.submit(ci_queue_graphics, submit, ci_fen_mips);
+        vk.cxt_barrier.wait(ci_fen_mips);
+        vk.cxt_barrier.destroyFence(ci_fen_mips);
+        rec.reset();
     }
 
     // ImGUI init
@@ -492,6 +536,7 @@ int main(int argc, char **argv) {
     main_window_handler.imgui_handler.destroyContext();
 
     // Destruction
+    texture.destroy();
     graph.destroy();
     vk.destroyContext();
     main_window.destroy();

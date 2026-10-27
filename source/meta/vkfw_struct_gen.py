@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 # Generates 'vkfw_struct_traits.h' from the Vulkan registry (vk.xml):
 #   StructType<T>::value          - sType of a Vulkan structure
 #   StructExtends<T, Base>::value - true if T may be chained into Base's pNext ('structextends' in vk.xml)
+#   FeatureNames<T>               - member names of feature structures (VkPhysicalDeviceFeatures and the structures
+#                                   extending VkPhysicalDeviceFeatures2 that hold only VkBool32 members after sType/pNext)
 # Each specialization is guarded by the macros of the core versions/extensions that declare the types,
 # so the header compiles with older SDK headers and without platform-specific headers.
 #
@@ -29,6 +31,10 @@ namespace Simple {{
 
         template <typename T, typename Base>
         struct StructExtends {{ static const bool value = false; }};
+
+        // Note: 'count' VkBool32 members follow 'sType' and 'pNext' (VkPhysicalDeviceFeatures has only the VkBool32 members)
+        template <typename T>
+        struct FeatureNames {{ static const uint32_t count = 0u; static const char *name() {{ return ""; }} static const char *member(uint32_t) {{ return ""; }} }};
 """
 
 vkfw_traits_end: str =\
@@ -54,6 +60,8 @@ def loadRegistry(vk_xml_path: str):
     # Structures with sType (aliases are typedefs of the same type, so they get no own specialization)
     stypes: dict[str, str] = {}
     extends: dict[str, list[str]] = {}
+    # Members of structures whose members (after sType/pNext) are all VkBool32
+    bool_members: dict[str, list[str]] = {}
     for t in root.find("types"):
         if t.get("category") != "struct" or t.get("alias") is not None or not isVulkanApi(t.get("api")):
             continue
@@ -65,6 +73,12 @@ def loadRegistry(vk_xml_path: str):
                 break
         if name in stypes and t.get("structextends"):
             extends[name] = t.get("structextends").split(",")
+        members = [m for m in t.findall("member") if isVulkanApi(m.get("api"))]
+        names = [m.find("name").text for m in members]
+        types = [m.find("type").text for m in members]
+        body  = [(n, ty) for n, ty in zip(names, types) if n not in ("sType", "pNext")]
+        if body and all(ty == "VkBool32" for _, ty in body):
+            bool_members[name] = [n for n, _ in body]
 
     # Which core versions/extensions declare each type
     providers: dict[str, set[str]] = {}
@@ -86,7 +100,7 @@ def loadRegistry(vk_xml_path: str):
         if "vulkan" in (ext.get("supported") or "").split(","):
             addRequires(ext, ext.get("name"))
 
-    return header_version, stypes, extends, providers, stype_protect
+    return header_version, stypes, extends, providers, stype_protect, bool_members
 
 
 def guardOf(type_name: str, providers: dict[str, set[str]]) -> str:
@@ -103,7 +117,7 @@ def joinGuards(guards: list[str]) -> str:
 
 
 def generate(vk_xml_path: str, out_path: str) -> None:
-    header_version, stypes, extends, providers, stype_protect = loadRegistry(vk_xml_path)
+    header_version, stypes, extends, providers, stype_protect, bool_members = loadRegistry(vk_xml_path)
     # Note: types required only by Vulkan SC (or by nothing) are not declared in the Vulkan headers
     stypes  = { n: v for n, v in stypes.items() if n in providers }
     extends = { n: v for n, v in extends.items() if n in stypes }
@@ -125,8 +139,22 @@ def generate(vk_xml_path: str, out_path: str) -> None:
             ext_groups.setdefault(guard, []).append(
                 f"        template <> struct StructExtends<{name}, {base}> {{ static const bool value = true; }};")
 
+    feat_groups: dict[str, list[str]] = {}
+    feature_structs = ["VkPhysicalDeviceFeatures"] + sorted(n for n in extends if "VkPhysicalDeviceFeatures2" in extends[n])
+    for name in feature_structs:
+        if name not in bool_members or name not in providers: continue
+        guard = guardOf(name, providers)
+        if name in stypes and stypes[name] in stype_protect:
+            guard = joinGuards([guard, f"defined({stype_protect[stypes[name]]})"])
+        members = bool_members[name]
+        names = ", ".join(f'"{m}"' for m in members)
+        feat_groups.setdefault(guard, []).append(
+            f"        template <> struct FeatureNames<{name}> {{ static const uint32_t count = {len(members)}u; "
+            f"static const char *name() {{ return \"{name}\"; }} "
+            f"static const char *member(uint32_t _i) {{ static const char *const n[] = {{ {names} }}; return n[_i]; }} }};")
+
     lines: list[str] = [vkfw_traits_beg.format(header_version=header_version)]
-    for title, grouped in (("StructType", groups), ("StructExtends", ext_groups)):
+    for title, grouped in (("StructType", groups), ("StructExtends", ext_groups), ("FeatureNames", feat_groups)):
         lines.append(f"\n    // {title}\n")
         for guard in sorted(grouped, key=lambda g: (g != "", g)):
             if guard: lines.append(f"#if {guard}")

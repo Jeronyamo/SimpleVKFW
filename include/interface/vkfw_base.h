@@ -173,11 +173,13 @@ namespace Simple {
         struct DescriptorPoolTag       {};
         struct DescriptorSetsTag       {};
         struct DescriptorSetTag        {};
+        struct SamplerTag              {};
         typedef Id   <DescriptorSetLayoutTag>                             DescriptorSetLayoutId;
         typedef SubId<DescriptorSetLayoutTag, DescriptorLayoutBindingTag> DescriptorLayoutBindingId; // binding inside the layout create info
         typedef Id   <DescriptorPoolTag>                                  DescriptorPoolId;
         typedef Id   <DescriptorSetsTag>                                  DescriptorSetsId;          // group of sets allocated together
         typedef SubId<DescriptorSetsTag, DescriptorSetTag>                DescriptorSetId;
+        typedef Id   <SamplerTag>                                         SamplerId;
 
     // Pipeline
         struct PipelineTag       {};

@@ -1,6 +1,7 @@
 #ifndef SVKFW_VKFW_WRAP_H
 #define SVKFW_VKFW_WRAP_H
 
+#include <algorithm>
 #include <fstream>
 
 #include "vkfw_base.h"
@@ -29,6 +30,24 @@ namespace Simple {
             VKFW_PIPELINE_TYPE_COMPUTE     = 2u,
             VKFW_PIPELINE_TYPE_RAY_TRACING = 3u,
         } PipelineType; // PipelineType END
+
+        // Note: features/properties of all core versions. Structures of versions the device doesn't support are unlinked
+        //       (Vulkan doesn't see them) and stay zero, so their features read as not supported
+        typedef StructChain<VkPhysicalDeviceFeatures2, VkPhysicalDeviceVulkan11Features,
+                            VkPhysicalDeviceVulkan12Features, VkPhysicalDeviceVulkan13Features>     DeviceFeatures;
+        typedef StructChain<VkPhysicalDeviceProperties2, VkPhysicalDeviceVulkan11Properties,
+                            VkPhysicalDeviceVulkan12Properties, VkPhysicalDeviceVulkan13Properties> DeviceProperties;
+
+        namespace Detail {
+            // Unlinks the structures of the versions above '_api_version' (VkPhysicalDeviceVulkan11* come with Vulkan 1.2)
+            void unlinkNewerVersions(DeviceFeatures   &_chain, uint32_t _api_version);
+            void unlinkNewerVersions(DeviceProperties &_chain, uint32_t _api_version);
+
+            // "Struct::member" of every feature set in '_requested' and not in '_supported'
+            std::vector<std::string> unsupportedFeatures(const DeviceFeatures &_requested, const DeviceFeatures &_supported);
+            // Sets in '_dst' the features set in '_requested' that are also set in '_supported'
+            void addSupportedFeatures(DeviceFeatures &_dst, const DeviceFeatures &_requested, const DeviceFeatures &_supported);
+        }; // Detail END
 
 
 
@@ -96,18 +115,21 @@ namespace Simple {
             uint32_t checkPhysicalDeviceMemoryProperties(VkPhysicalDevice _phys_device, uint32_t _req_type_properties,
                                                          VkMemoryPropertyFlags _req_memory_properties);
 
-            // TODO: ADD STRUCT CHAIN HERE, LET TEST/RANK FUNCTIONS ACCESS STRUCTS BY POINTERS RETURNED BY THIS CLASS' METHODS.
             // This type contains all properties (retreivable via vulkan functions)
             // about one physical device - element of PhysicalDevice::phys_devices vector.
             // It contains references to phys_devices[i], features[i] and properties[i].
+            // Note: 'features'/'properties' are the Vulkan 1.0 parts, 'features2'/'properties2' the chains of all versions
+            //       ('features2.get<VkPhysicalDeviceVulkan12Features>()...')
             struct PhysDeviceFullInfo {
                 const VkPhysicalDevice &phys_device;
                 const VkPhysicalDeviceFeatures &features;
                 const VkPhysicalDeviceProperties &properties;
+                const DeviceFeatures   &features2;
+                const DeviceProperties &properties2;
 
                 PhysDeviceFullInfo(const VkPhysicalDevice &_phys_device,
-                                   const VkPhysicalDeviceFeatures &_features,
-                                   const VkPhysicalDeviceProperties &_properties);
+                                   const DeviceFeatures   &_features,
+                                   const DeviceProperties &_properties);
                 PhysDeviceFullInfo(const PhysDeviceFullInfo &_elem_view);
 
                 vec4u apiVersion() const;
@@ -131,8 +153,9 @@ namespace Simple {
 
             struct PhysDeviceManager {
                 std::vector<VkPhysicalDevice> phys_devices;
-                std::vector<VkPhysicalDeviceFeatures> features;
-                std::vector<VkPhysicalDeviceProperties> properties;
+                // Note: loaded with vkGetPhysicalDeviceFeatures2/Properties2, the structures of newer versions than the device's are unlinked
+                std::vector<DeviceFeatures>   features;
+                std::vector<DeviceProperties> properties;
                 PhysDeviceTestFunc test_func = SelectPhysDevice::DefaultGraphicsTest;
                 PhysDeviceRankFunc rank_func = nullptr;
                 VkBool32 selection_by_rank = false;
@@ -145,7 +168,10 @@ namespace Simple {
                 void selectWithTest(PhysDeviceTestFunc _test_func = SelectPhysDevice::DefaultGraphicsTest);
                 void selectWithRank(PhysDeviceRankFunc _rank_func = nullptr);
                 const PhysDeviceFullInfo getElemInfo(uint32_t _index);
-                void loadInfo(VkInstance _instance);
+                // '_api_version': the instance API version; structures of versions above it or above the device version are not queried
+                void loadInfo(VkInstance _instance, uint32_t _api_version = VK_API_VERSION_1_3);
+                // Index of '_phys_device' in 'phys_devices' (throws if it isn't there)
+                uint32_t indexOf(VkPhysicalDevice _phys_device) const;
 
 
                 // Returns the first physical device for which _testFunc({device, features, properties}) == true
@@ -753,9 +779,16 @@ namespace Simple {
             private:
                 VkDeviceCreateInfo wrap{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDeviceCreateInfo)
-                VkPhysicalDeviceFeatures req_features{};
                 std::vector<VkDeviceQueueCreateInfo> queue_info;
                 Util::StringVec layers, extensions;
+
+                // Features the device is created with; the chain is put into 'pNext' by 'updateWrap'
+                // (Vulkan 1.0 features: 'features.head().features', newer ones: 'features.get<VkPhysicalDeviceVulkan12Features>()')
+                DeviceFeatures features;
+                // Features enabled only if the device supports them (added to 'features' by 'enableOptionalFeatures')
+                DeviceFeatures optional_features;
+                // Structures of versions above it are not chained ('ContextCore::createDevice' sets it to the device API version)
+                uint32_t api_version = VK_API_VERSION_1_3;
 
                 StructWrap();
 
@@ -763,6 +796,11 @@ namespace Simple {
                 void updateWrap();
 
             // Scenarios
+
+                // Adds the supported 'optional_features' to 'features'
+                void enableOptionalFeatures(const DeviceFeatures &_supported);
+                // "Struct::member" of the requested features the device doesn't support (empty if all are supported)
+                std::vector<std::string> unsupportedFeatures(const DeviceFeatures &_supported) const;
 
                 void addLayers(const Util::StringVec &_layers);
                 void addExtensions(const Util::StringVec &_extensions);
@@ -905,11 +943,27 @@ namespace Simple {
 
                 StructWrap();
 
+                // Note: the default sampler is linear (also between mip levels), repeats the texture and reads all mip levels
+                //       ('maxLod' = VK_LOD_CLAMP_NONE; with the zero-initialized 'maxLod' only mip level 0 would be read)
                 void clear();
                 void updateWrap();
 
             // Scenarios
 
+                void setFilter(VkFilter _mag_filter, VkFilter _min_filter, VkSamplerMipmapMode _mipmap_mode);
+                // '_v'/'_w' == VK_SAMPLER_ADDRESS_MODE_MAX_ENUM: the same as '_u'
+                void setAddressMode(VkSamplerAddressMode _u, VkSamplerAddressMode _v = VK_SAMPLER_ADDRESS_MODE_MAX_ENUM,
+                                    VkSamplerAddressMode _w = VK_SAMPLER_ADDRESS_MODE_MAX_ENUM,
+                                    VkBorderColor _border_color = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK);
+                // '_max_anisotropy' <= 1 disables anisotropic filtering
+                // Note: needs the 'samplerAnisotropy' device feature; 'ContextDescriptor::createSampler' clamps the value to the device limit
+                void setAnisotropy(float _max_anisotropy);
+                void setLod(float _min_lod = 0.f, float _max_lod = VK_LOD_CLAMP_NONE, float _mip_lod_bias = 0.f);
+                // For depth textures ('sampler2DShadow'); VK_COMPARE_OP_MAX_ENUM disables the comparison
+                void setCompare(VkCompareOp _compare_op);
+                // Filter for magnification, minification and between mip levels, one address mode for all coordinates
+                void setWholeStruct(VkFilter _filter = VK_FILTER_LINEAR, VkSamplerAddressMode _address_mode = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    float _max_anisotropy = 0.f, float _max_lod = VK_LOD_CLAMP_NONE);
             }; // StructWrap<VkSamplerCreateInfo> END
 
             template <>
@@ -1680,6 +1734,10 @@ namespace Simple {
 
                 void createObject();
                 void destroyObject();
+
+                // Note: of the selected device (after 'createObject')
+                const DeviceFeatures   &features()   const;
+                const DeviceProperties &properties() const;
             }; // PhysicalDevice END
 
 
@@ -1845,6 +1903,17 @@ namespace Simple {
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
                 void destroyObject(VkDevice _device);
             }; // DescriptorSet END
+
+
+//  == === ==== >   Vulkan Sampler
+
+            struct Sampler {
+                VkSampler handle = VK_NULL_HANDLE;
+                Struct::StructWrap<VkSamplerCreateInfo> create_info;
+
+                void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
+                void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
+            }; // Sampler END
 
 
 //  == === ==== >   Vulkan Pipeline Layout
