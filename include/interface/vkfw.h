@@ -80,9 +80,7 @@ namespace Simple {
         struct VulkanContext {
             struct ContextDebug {
                 VulkanContext *cxt_ptr = nullptr;
-
                 Object::DebugUtilsMessengerEXT debug_messenger;
-
 
                 ContextDebug(VulkanContext* _cxt_ptr);
                ~ContextDebug();
@@ -155,7 +153,6 @@ namespace Simple {
                 void acquireQueues();
                 void createRenderPass();
 
-
                 void destroyInstance();
                 void destroyDebugUtilsMessenger();
                 void destroyPhysicalDevice();
@@ -169,11 +166,8 @@ namespace Simple {
                 ContextIndex addSctRenderPassSubpassDependency ();
 
                 void setDefaultApplicationInfo();
-
                 void activateDebug();
-
                 void setQueueFamilyQueueCount(QueueFamilyId _queue_family_id, uint32_t _queue_count, const std::vector<float> &_priorities = {1.0f});
-
                 void setDeviceQueueInfo();
             } cxt_core; // ContextCore END
 
@@ -198,11 +192,9 @@ namespace Simple {
             // Manage Objects
 
                 void createSurface();
-
                 void createSwapchain();
                 void createImageViews();
                 void createFramebuffers();
-
 
                 void destroySurface();
                 void destroySwapchain();
@@ -212,13 +204,9 @@ namespace Simple {
             // Scenarios
 
                 void setWindow(const Window &_window);
-
                 void  createSwapchainWithDependencies();
-
                 void destroySwapchainWithDependencies();
-
                 uint32_t getSwapchainImageCount() const;
-
                 // Note: swapchain images are indexed by the image index from 'acquire'
                 VkFramebuffer framebuffer(uint32_t _image_index) const;
                 VkImage image(uint32_t _image_index) const;
@@ -229,17 +217,12 @@ namespace Simple {
             // Functions
 
                 AcquireResult acquire(VkSemaphore _semaphore, VkFence _fence = VK_NULL_HANDLE, uint64_t _timeout = UINT64_MAX);
-
                 SwapchainStatus present(VkQueue _queue, Span<VkSemaphore> _wait_semaphores, uint32_t _image_index);
 
                 void pickSwapchainImageFormat(const Util::SurfaceFormatTestFunc _test_func = Util::SelectSurfaceFormat::DefaultFormatTest);
-
                 void setSwapchainExtentFromWindow();
-
                 void setSwapchainSurfaceCapabilities();
-
                 void setRenderPassAttachmentImageFormat(ContextIndex _attachment_ci);
-
                 // Note: the caller must make sure the swapchain images are not in use (see 'VulkanContext::recreateSwapchain')
                 //       Blocks while the window is minimized (zero extent)
                 void recreate();
@@ -258,7 +241,6 @@ namespace Simple {
 
                 // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
                 void  createContext();
-
                 void destroyContext();
 
             // Access by Id (throws if the Id is none, stale or out of its group)
@@ -298,11 +280,8 @@ namespace Simple {
             // Scenarios
 
                 DescriptorLayoutBindingId addSctLayoutBinding(DescriptorSetLayoutId _layout_id);
-
                 void setAllForSet(DescriptorSetsId _sets_id, DescriptorPoolId _pool_id, Span<DescriptorSetLayoutId> _layouts_id);
-
                 void setPoolForSet(DescriptorSetsId _sets_id, DescriptorPoolId _pool_id);
-
                 void setLayoutsForSet(DescriptorSetsId _sets_id, Span<DescriptorSetLayoutId> _layouts_id);
             } cxt_descriptor; // ContextDescriptors END
 
@@ -319,7 +298,6 @@ namespace Simple {
 
                 // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
                 void  createContext();
-
                 void destroyContext();
 
             // Access by Id (throws if the Id is none or stale)
@@ -361,9 +339,7 @@ namespace Simple {
             // Scenarios
 
                 void setLayoutDescriptorSetLayouts(PipelineLayoutId _layout_id, Span<DescriptorSetLayoutId> _descr_set_layouts_id);
-
                 void addLayoutPushConstant(PipelineLayoutId _layout_id, VkShaderStageFlags _stage_flags, uint32_t _offset, uint32_t _size);
-
                 ShaderStageId addShaderStage(PipelineId _pipeline_id);
             } cxt_pipeline; // ContextPipeline END
 
@@ -378,7 +354,6 @@ namespace Simple {
 
                 // Note: Only Core and Swapchain contexts' logic allows creation of all objects at once
                 void  createContext();
-
                 void destroyContext();
 
             // Access by Id (throws if the Id is none, stale or out of its group)
@@ -403,7 +378,6 @@ namespace Simple {
             // Scenarios
 
                 void createCmdPool(CommandPoolId _cmd_pool_id, QueueFamilyId _queue_family_id, VkCommandPoolCreateFlags _flags = 0u);
-
                 void createCmdBuffersPrimary(CommandBuffersId _cmd_buffers_id, CommandPoolId _cmd_pool_id, uint32_t _cmd_buffers_count);
                 void createCmdBuffersSecondary(CommandBuffersId _cmd_buffers_id, CommandPoolId _cmd_pool_id, uint32_t _cmd_buffers_count);
             } cxt_command; // ContextCommand END
@@ -493,7 +467,6 @@ namespace Simple {
 
                 // Note: after 'ContextCore::createDevice'
                 void initContext();
-
                 void destroyContext();
 
                 HeapBudget heapBudget(uint32_t _heap_index) const;
@@ -520,10 +493,8 @@ namespace Simple {
             // Manage objects
 
                 MemoryId addMemoryChunk(VkMemoryPropertyFlags _required_flags);
-
                 // Destroys the chunk with all its buffers, images and views; their Ids become invalid
                 void removeMemoryChunk(MemoryId _memory_id);
-
                 // Allocates one memory object for all buffers and images of the chunk (they must be created) and binds them
                 // Note: memory types are tried in the device order (it lists the preferred types first): first the types whose heap
                 //       fits the budget, then the others; a type is skipped if its allocation fails with an out-of-memory error
@@ -544,7 +515,6 @@ namespace Simple {
                 void* getMappedChunk (MemoryId _memory_id) const;
                 void* getMappedBuffer(BufferId _buffer_id) const;
                 void* getMappedImage (ImageId  _image_id ) const;
-
                 bool isChunkCoherent(MemoryId _memory_id) const;
 
             // Functions (persistently mapped memory)
@@ -552,7 +522,6 @@ namespace Simple {
 
                 void flushBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) const;
                 void invalidateBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkDeviceSize _size = VK_WHOLE_SIZE) const;
-
                 // Copies CPU data into a HOST_VISIBLE buffer and flushes it if needed (the GPU must not be using this range)
                 void writeBuffer(BufferId _buffer_id, const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0u) const;
                 // Invalidates the range if needed and copies it from a HOST_VISIBLE buffer into CPU memory
@@ -580,9 +549,7 @@ namespace Simple {
 
             private:
                 void releaseChunk_(MemoryChunk &_chunk);
-
                 void* checkMappedRange_(BufferId _buffer_id, VkDeviceSize _offset, VkDeviceSize _size, const char *_where) const;
-
                 // Note: VkMappedMemoryRange offset and size must be multiples of 'nonCoherentAtomSize' (or the size must reach the allocation end)
                 VkMappedMemoryRange mappedRange_(BufferId _buffer_id, VkDeviceSize _offset, VkDeviceSize _size) const;
 
@@ -613,7 +580,6 @@ namespace Simple {
                ~ContextBarrier();
 
                 void createContext();
-
                 void destroyContext();
 
             // Manage Objects
@@ -627,7 +593,6 @@ namespace Simple {
                 // Returns VK_SUCCESS or VK_TIMEOUT, throws on errors
                 VkResult wait(Span<FenceId> _fences_id, bool _wait_all = true, uint64_t _timeout = UINT64_MAX) const;
                 void reset(Span<FenceId> _fences_id) const;
-
                 // Note: destroying a none or already destroyed Id does nothing
                 void destroySemaphore(SemaphoreId _semaphore_id);
                 void destroyFence(FenceId _fence_id);
@@ -678,23 +643,18 @@ namespace Simple {
 
             // Note: uses vkQueueSubmit2 with 'profile.synchronization2', vkQueueSubmit otherwise
             void submit(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id = FenceId()) const;
-
             AcquireResult acquireNextImage(SemaphoreId _semaphore_id, FenceId _fence_id = FenceId(), uint64_t _timeout = UINT64_MAX);
-
             SwapchainStatus present(QueueId _queue_id, Span<SemaphoreId> _wait_semaphores_id, uint32_t _image_index);
-
             // Note: waits until the device is idle, so it is meant for rare events (resize, OUT_OF_DATE), not for every frame
             void recreateSwapchain();
 
         // Scenarios
 
             void initNoncoreContexts();
-
             void handleResult(VkResult _result);
 
         private:
             void submit2_(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id) const;
-
             void submit1_(QueueId _queue_id, Span<SubmitDesc> _submits, FenceId _fence_id) const;
 
             // Note: contexts keep pointers to each other, so a copy would point into the original
@@ -758,15 +718,11 @@ namespace Simple {
         // Bind
 
             void bindPipeline(PipelineId _pipeline_id);
-
             void bindDescriptorSets(PipelineLayoutId _layout_id, Span<DescriptorSetId> _sets_id, Span<uint32_t> _dynamic_offsets = {},
                                     VkPipelineBindPoint _bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS, uint32_t _first_set = 0u);
-
             // Note: missing offsets are set to 0
             void bindVertexBuffers(Span<BufferId> _buffers_id, Span<VkDeviceSize> _offsets = {}, uint32_t _first_binding = 0u);
-
             void bindIndexBuffer(BufferId _buffer_id, VkDeviceSize _offset = 0u, VkIndexType _index_type = VK_INDEX_TYPE_UINT32);
-
             void pushConstants(PipelineLayoutId _layout_id, VkShaderStageFlags _stages, uint32_t _offset, uint32_t _size, const void *_data);
 
         // Dynamic state
@@ -774,7 +730,6 @@ namespace Simple {
             void setViewports(Span<VkViewport> _viewports, uint32_t _first = 0u);
             void setScissors (Span<VkRect2D>   _scissors,  uint32_t _first = 0u);
             void setLineWidth(float _line_width);
-
             // Sets viewport 0 (depth 0..1) and scissor 0 to cover '_extent'
             void setViewportScissor(VkExtent2D _extent);
 
@@ -784,7 +739,6 @@ namespace Simple {
             // Note: each index is 'index + vert_offset'
             void drawIndexed(uint32_t _ind_count, uint32_t _inst_count = 1u, int32_t _vert_offset = 0, uint32_t _first_ind = 0u, uint32_t _first_inst = 0u);
             void dispatch(uint32_t _x, uint32_t _y = 1u, uint32_t _z = 1u);
-
             void clearAttachments(Span<VkClearAttachment> _attachments, Span<VkClearRect> _rects);
 
         // Transfer
@@ -799,7 +753,6 @@ namespace Simple {
             //       (one call per barrier, so the stages of each barrier are kept; 64-bit flags throw)
             void barrier(Span<VkImageMemoryBarrier2> _image_barriers, Span<VkBufferMemoryBarrier2> _buffer_barriers = {},
                          Span<VkMemoryBarrier2> _memory_barriers = {}, VkDependencyFlags _flags = 0u);
-
             void pipelineBarrier(VkPipelineStageFlags _src_stages, VkPipelineStageFlags _dst_stages,
                                  Span<VkMemoryBarrier> _memory_barriers, Span<VkBufferMemoryBarrier> _buffer_barriers = {},
                                  Span<VkImageMemoryBarrier> _image_barriers = {}, VkDependencyFlags _flags = 0u);
@@ -850,10 +803,8 @@ namespace Simple {
 
             // Records and submits all collected copies; returns the fence signaled when they are done (none if there was nothing to submit)
             FenceId submit();
-
             // Waits for the submitted copies; after it the staging buffer is free again
             void wait();
-
             bool isSubmitted() const;
 
         private:

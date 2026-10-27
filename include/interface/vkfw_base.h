@@ -287,11 +287,8 @@ namespace Simple {
         // Static
 
             static std::vector<VkBaseOutStructure*> ExpandPtrChain(VkBaseOutStructure *_chain_begin);
-
             static std::vector<VkStructureType> GetAllTypes(VkBaseOutStructure *_chain_begin);
-
             static VkBaseOutStructure* GetChainElem(VkBaseOutStructure *_chain_begin, uint32_t _id);
-
             static VkBaseOutStructure* GetChainLastElem(VkBaseOutStructure *_chain_begin);
 
             // Note: 'offset' means "insert before this index". If offset is equal to/greater than length of the chain, inserts as last element.

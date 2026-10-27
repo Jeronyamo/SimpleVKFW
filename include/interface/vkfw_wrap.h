@@ -46,14 +46,11 @@ namespace Simple {
             // Creates 'semaphore_count' semaphores using the same 'create_info' config.
             // Note: Windows headers define 'CreateSemaphore' as a macro, so the preset has a plural name
             std::vector<VkSemaphore> CreateSemaphores(VkDevice _device, const VkSemaphoreCreateInfo *_create_info, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_allocator = nullptr);
-
             // Creates 'fence_count' fences using the same 'create_info' config. Requires separate calls for signaled/not signaled fences.
             std::vector<VkFence> CreateFences(VkDevice _device, const VkFenceCreateInfo *_create_info, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_allocator = nullptr);
-
             // Creates 'event_count' events using the same 'create_info' config. Requires separate calls for device-only events.
             // Note: Windows headers define 'CreateEvent' as a macro, so the preset has a plural name
             std::vector<VkEvent> CreateEvents(VkDevice _device, const VkEventCreateInfo *_create_info, uint32_t _event_count = 1u, const VkAllocationCallbacks *_allocator = nullptr);
-
             // Queries the capture replay handle size and returns the handles of 'group_count' shader groups
             std::vector<uint8_t> GetRayTracingCaptureReplayShaderGroupHandlesKHR(VkPhysicalDevice _phys_device, VkDevice _device, VkPipeline _pipeline,
                                                                                  uint32_t _first_group, uint32_t _group_count);
@@ -79,29 +76,18 @@ namespace Simple {
 //  == === ==== >   Extension/Layer checks for Instance/Device
 
             bool allLayersAvailable(const StringVec &_layers, const std::vector<VkLayerProperties> _layer_list);
-
             bool allExtAvailable(const StringVec &_extensions, const std::vector<VkExtensionProperties> &_ext_list);
-
             void checkLayers(const StringVec &_layers, bool *_flags, const std::vector<VkLayerProperties> &_layer_list);
-
             void checkExtensions(const StringVec &_extensions, bool *_flags, const std::vector<VkExtensionProperties> &_ext_list);
 
-
             bool allInstanceLayersAvailable(const StringVec &_layers);
-
             bool allInstanceExtAvailable(const StringVec &_extensions, const char *_layer = nullptr);
-
             bool allDeviceLayersAvailable(VkPhysicalDevice _phys_device, const StringVec &_layers);
-
             bool allDeviceExtAvailable(VkPhysicalDevice _phys_device, const StringVec &_extensions, const char *_layer = nullptr);
 
-
             void checkInstanceLayers(const StringVec &_layers, bool *_flags);
-
             void checkInstanceExtensions(const StringVec &_extensions, bool *_flags, const char *_layer = nullptr);
-
             void checkDeviceLayers(VkPhysicalDevice _phys_device, const StringVec &_layers, bool *_flags);
-
             void checkDeviceExtensions(VkPhysicalDevice _phys_device, const StringVec &_extensions, bool *_flags, const char *_layer = nullptr);
 
 
@@ -124,17 +110,13 @@ namespace Simple {
                                    const VkPhysicalDeviceProperties &_properties);
                 PhysDeviceFullInfo(const PhysDeviceFullInfo &_elem_view);
 
-
                 vec4u apiVersion() const;
-
                 std::string infoString() const;
 
             // Scenarios
 
                 std::vector<VkExtensionProperties> getAllDeviceExtensions(const char *_layer = nullptr) const;
-
                 bool allExtAvailable(const StringVec &_extensions) const;
-
                 void checkExtensions(const StringVec &_extensions, bool *_flags) const;
             }; // PhysDeviceFullInfo END
 
@@ -160,22 +142,16 @@ namespace Simple {
                 void clear();
 
                 VkPhysicalDevice selectOne();
-
                 void selectWithTest(PhysDeviceTestFunc _test_func = SelectPhysDevice::DefaultGraphicsTest);
-
                 void selectWithRank(PhysDeviceRankFunc _rank_func = nullptr);
-
                 const PhysDeviceFullInfo getElemInfo(uint32_t _index);
-
                 void loadInfo(VkInstance _instance);
 
 
                 // Returns the first physical device for which _testFunc({device, features, properties}) == true
                 VkPhysicalDevice testPickOne(const PhysDeviceTestFunc _testFunc);
-
                 // Returns all physical devices for which _testFunc({device, features, properties}) == true
                 std::vector<VkPhysicalDevice> testPickAll(const PhysDeviceTestFunc _testFunc);
-
                 // Ranks all physical devices and returns one with max _rankFunc({device, features, properties})
                 VkPhysicalDevice rankPickOne(const PhysDeviceRankFunc _rankFunc);
 
@@ -390,11 +366,8 @@ namespace Simple {
                 QueueFamilyRankFunc rank_func = nullptr;
                 VkBool32 selection_by_rank = false;
 
-
                 uint32_t selectOne();
-
                 void selectWithTest(QueueFamilyTestFunc _test_func);
-
                 void selectWithRank(QueueFamilyRankFunc _rank_func);
 
                 QueueFamilyManager(VkInstance _instance = VK_NULL_HANDLE, VkPhysicalDevice _phys_device = VK_NULL_HANDLE);
@@ -402,15 +375,11 @@ namespace Simple {
                 void clear();
 
                 const QueueFamilyFullInfo getElemInfo(uint32_t _index) const;
-
-
                 void loadInfo(VkInstance _instance, VkPhysicalDevice _phys_device);
 
 
                 uint32_t testPickOne(QueueFamilyTestFunc _test_func);
-
                 std::vector<uint32_t> testPickAll(QueueFamilyTestFunc _test_func);
-
                 uint32_t rankPickOne(QueueFamilyRankFunc _rank_func);
 
                 template <CompareOp COMP_OP = CompareOp::GE>
@@ -520,7 +489,6 @@ namespace Simple {
                 StructWrap(const StructWrap &_viewport);
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -550,7 +518,6 @@ namespace Simple {
                 StructWrap(const vec2u &_extent, const vec2i &_offset = 0);
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -578,7 +545,6 @@ namespace Simple {
                 StructWrap(float _depth, uint32_t _stencil);
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -607,7 +573,6 @@ namespace Simple {
                 StructWrap(const VkAttachmentDescription &_description);
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -623,7 +588,6 @@ namespace Simple {
             private:
                 VkSubpassDescription wrap{};
                 VKFW_STRUCT_WRAP_ACCESS(VkSubpassDescription)
-
                 VkAttachmentReference      depth_stencil_attachment;
                 std::vector<VkAttachmentReference> color_attachments,
                                                    input_attachments,
@@ -633,18 +597,14 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 // Note: pointers to members are set here (and not in 'clear()'), because the structure can be copied/moved (e.g. by std::vector)
                 void updateWrap();
 
             // Scenarios
 
                 void setDepthStencilAttachment(uint32_t _attachment_id, VkImageLayout _layout);
-
                 ContextIndex addColorAttachment(uint32_t _attachment_id, VkImageLayout _layout);
-
                 ContextIndex addInputAttachment(uint32_t _attachment_id, VkImageLayout _layout);
-
                 ContextIndex addResolveAttachment(uint32_t _attachment_id, VkImageLayout _layout);
             }; // StructWrap<VkSubpassDescription> END
 
@@ -659,15 +619,12 @@ namespace Simple {
                 StructWrap(const VkSubpassDependency &_subpass_dependency);
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setSubpasses(uint32_t _src_subpass, uint32_t _dst_subpass);
-
                 void setSrcMasks(VkPipelineStageFlags _src_stage_mask, VkAccessFlags _src_acc_mask);
-
                 void setDstMasks(VkPipelineStageFlags _dst_stage_mask, VkAccessFlags _dst_acc_mask);
             }; // StructWrap<VkSubpassDependency> END
 
@@ -676,14 +633,12 @@ namespace Simple {
             private:
                 VkSpecializationInfo wrap{};
                 VKFW_STRUCT_WRAP_ACCESS(VkSpecializationInfo)
-
                 std::vector<VkSpecializationMapEntry> map_entries;
                 std::vector<unsigned char> data;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -696,14 +651,11 @@ namespace Simple {
             private:
                 VkDescriptorSetLayoutBinding wrap{};
                 VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetLayoutBinding)
-
                 std::vector<VkSampler> immutable_samplers;
 
                 StructWrap();
-                // StructWrap(const Builder &_builder) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -720,7 +672,6 @@ namespace Simple {
             private:
                 VkApplicationInfo wrap{VK_STRUCTURE_TYPE_APPLICATION_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkApplicationInfo)
-
                 std::string app_name, engine_name;
                 vec3u app_version, engine_version;
                 vec4u api_version;
@@ -728,13 +679,11 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
                 // Scenarios
 
                 void setAvailableVersionAPI();
-
                 void setWholeStruct(const std::string &   _app_name = "SimpleVKFW_MainApp", const vec3u &   _app_version = {0u, 0u, 1u},
                                     const std::string &_engine_name = "SimpleVKFW",         const vec3u &_engine_version = {0u, 1u, 0u}, const vec4u &_api_version = {0u});
             }; // StructWrap<VkApplicationInfo> END
@@ -744,27 +693,20 @@ namespace Simple {
             private:
                 VkInstanceCreateInfo wrap{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkInstanceCreateInfo)
-
                 Util::StringVec layers, extensions;
-
                 StructWrap<VkApplicationInfo> app_info_wrap;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void addLayers(const Util::StringVec &_layers);
-
                 void addExtensions(const Util::StringVec &_extensions);
-
                 void addValidationLayer();
-
                 void addExtGLFW();
-
                 void addExtDebugUtils();
             }; // StructWrap<VkInstanceCreateInfo> END
 
@@ -777,7 +719,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -794,14 +735,12 @@ namespace Simple {
             private:
                 VkDeviceQueueCreateInfo wrap{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDeviceQueueCreateInfo)
-
                 VkfwQueueFamily queue_family = UINT32_MAX;
                 std::vector<float> priorities;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -814,7 +753,6 @@ namespace Simple {
             private:
                 VkDeviceCreateInfo wrap{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDeviceCreateInfo)
-
                 VkPhysicalDeviceFeatures req_features{};
                 std::vector<VkDeviceQueueCreateInfo> queue_info;
                 Util::StringVec layers, extensions;
@@ -822,15 +760,12 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void addLayers(const Util::StringVec &_layers);
-
                 void addExtensions(const Util::StringVec &_extensions);
-
                 void addValidationLayer(VkPhysicalDevice _phys_device = VK_NULL_HANDLE);
             }; // StructWrap<VkDeviceCreateInfo> END
 
@@ -839,7 +774,6 @@ namespace Simple {
             private:
                 VkSwapchainCreateInfoKHR wrap{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
                 VKFW_STRUCT_WRAP_ACCESS(VkSwapchainCreateInfoKHR)
-
                 VkSurfaceCapabilitiesKHR capabilities;
                 std::vector<uint32_t>  queue_families;
 
@@ -847,14 +781,12 @@ namespace Simple {
                 // StructWrap(const StructWrap &_builder) = default;
 
                 void clear();
-
                 // Note: concurrent sharing mode requires at least 2 unique queue families
                 void updateWrap();
 
             // Scenarios
 
                 void setSurfaceCapabilities(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface);
-
                 void setCurrentExtent();
 
                 // Returns input bits after applying capabilities.supportedUsageFlags as a mask.
@@ -863,16 +795,11 @@ namespace Simple {
                 VkImageUsageFlags checkSetImageUsage(VkImageUsageFlags _usage);
 
                 void checkSetImageCount(uint32_t _count);
-
                 bool checkSetExtent(vec2u _extent);
-
                 void chooseCurrentExtent(const Window &_window);
 
-
                 void pickFormat(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface, const Util::SurfaceFormatTestFunc _test_func);
-
                 void pickFormat(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface, const Util::SurfaceFormatRankFunc _rank_func);
-
                 bool checkSetPresentationMode(VkPhysicalDevice _phys_device, VkSurfaceKHR _surface, VkPresentModeKHR _pres_mode);
             }; // StructWrap<VkSwapchainCreateInfoKHR> END
 
@@ -881,14 +808,11 @@ namespace Simple {
             private:
                 VkImageCreateInfo wrap{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkImageCreateInfo)
-
                 std::vector<uint32_t> queue_families;
 
                 StructWrap();
-                // StructWrap(const StructWrap &_builder) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -909,14 +833,12 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setRange(VkImageAspectFlags _aspect_mask, uint32_t _base_mip_level,
                               uint32_t _level_count, uint32_t _base_array_layer, uint32_t _array_level_count);
-
                 void setComponents(VkComponentSwizzle _r = VK_COMPONENT_SWIZZLE_IDENTITY, VkComponentSwizzle _g = VK_COMPONENT_SWIZZLE_IDENTITY,
                                    VkComponentSwizzle _b = VK_COMPONENT_SWIZZLE_IDENTITY, VkComponentSwizzle _a = VK_COMPONENT_SWIZZLE_IDENTITY);
             }; // StructWrap<VkImageViewCreateInfo> END
@@ -930,10 +852,8 @@ namespace Simple {
                 std::vector<VkfwQueueFamily> queue_families;
 
                 StructWrap();
-                // StructWrap(const StructWrap &_builder) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -951,7 +871,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -968,17 +887,30 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setForBuffer(VkPhysicalDevice _phys_device, VkDevice _device, VkBuffer _buffer,
                                   VkMemoryPropertyFlags _req_memory_properties);
-
                 void setForImage(VkPhysicalDevice _phys_device, VkDevice _device, VkImage _image,
                                   VkMemoryPropertyFlags _req_memory_properties);
             }; // StructWrap<VkMemoryAllocateInfo> END
+
+            template <>
+            struct StructWrap<VkSamplerCreateInfo> {
+            private:
+                VkSamplerCreateInfo wrap{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+                VKFW_STRUCT_WRAP_ACCESS(VkSamplerCreateInfo)
+
+                StructWrap();
+
+                void clear();
+                void updateWrap();
+
+            // Scenarios
+
+            }; // StructWrap<VkSamplerCreateInfo> END
 
             template <>
             struct StructWrap<VkShaderModuleCreateInfo> {
@@ -990,15 +922,12 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void fromFile(const char *_fpath);
-
                 void fromString(const char *_sh_str, size_t _length = 0u);
-
                 void fromString(const std::string &_str_buffer);
             }; // StructWrap<VkShaderModuleCreateInfo> END
 
@@ -1007,20 +936,16 @@ namespace Simple {
             private:
                 VkRenderPassCreateInfo wrap{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkRenderPassCreateInfo)
-
                 std::vector<StructWrap<VkAttachmentDescription>> attachments_wrap;
                 std::vector<StructWrap<VkSubpassDescription>>      subpasses_wrap;
                 std::vector<StructWrap<VkSubpassDependency>>    dependencies_wrap;
-
                 std::vector<VkAttachmentDescription> attachments;
                 std::vector<VkSubpassDescription>      subpasses;
                 std::vector<VkSubpassDependency>    dependencies;
 
                 StructWrap();
-                // StructWrap(const StructWrap &_create_info) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1028,7 +953,6 @@ namespace Simple {
                 ContextIndex addAttachment();
                 ContextIndex addSubpassDescription();
                 ContextIndex addSubpassDependency();
-
                 ContextEntity<StructWrap<VkAttachmentDescription>> shortcutAttachment        (ContextIndex _sct_ci);
                 ContextEntity<StructWrap<   VkSubpassDescription>> shortcutSubpassDescription(ContextIndex _sct_ci);
                 ContextEntity<StructWrap<    VkSubpassDependency>> shortcutSubpassDependency (ContextIndex _sct_ci);
@@ -1039,25 +963,21 @@ namespace Simple {
             private:
                 VkFramebufferCreateInfo wrap{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkFramebufferCreateInfo)
-
                 std::vector<VkImageView> attachments;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setBufferSize(VkExtent2D _buffer_size);
-
                 void setBufferSize(vec2u _buffer_size);
 
             // Scenarios
 
                 void setBufferSizeAndLayers(VkExtent2D _buffer_size, uint32_t _layers);
-
                 void setBufferSizeAndLayers(vec3u _buf_size_layers);
             }; // StructWrap<VkFramebufferCreateInfo> END
 
@@ -1070,7 +990,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkSemaphoreCreateInfo>
 
@@ -1083,7 +1002,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1100,7 +1018,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1116,18 +1033,15 @@ namespace Simple {
             private:
                 VkWriteDescriptorSet wrap{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
                 VKFW_STRUCT_WRAP_ACCESS(VkWriteDescriptorSet)
-
                 std::vector<VkDescriptorBufferInfo> buffer_infos;
                 std::vector<VkDescriptorImageInfo >  image_infos;
                 std::vector<VkBufferView>        texel_buf_views;
-
                 // If 0, 'descriptorCount' is the size of the info array that 'descriptorType' uses
                 uint32_t descriptor_count = 0u;
 
                 StructWrap();
 
                 void clear();
-
                 // Note: Vulkan reads only one info array, chosen by 'descriptorType', and ignores the other two.
                 //       Types that take their data through 'pNext' (e.g. inline uniform blocks, acceleration structures)
                 //       use no info array, so 'descriptor_count' must be set for them.
@@ -1138,11 +1052,8 @@ namespace Simple {
                 // If 'descriptor_count' is 0, 'descriptorCount' is the size of the info array that 'descriptorType' uses
                 void setScalars(VkDescriptorSet _dst_descr_set, VkDescriptorType _descr_type, uint32_t _dst_binding,
                                 uint32_t _descriptor_count = 0u, uint32_t _dst_arr_elem = 0u);
-
                 void addBufferInfo(VkBuffer _buffer, VkDeviceSize _offset = 0ul, VkDeviceSize _range = VK_WHOLE_SIZE);
-
                 void addImageInfo(VkSampler _sampler, VkImageView _image_view, VkImageLayout _image_layout);
-
                 void addTexelBufferView(VkBufferView _buffer_view);
             }; // StructWrap<VkWriteDescriptorSet> END
 
@@ -1155,13 +1066,11 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setSrc(VkDescriptorSet _src_set, uint32_t _src_binding, uint32_t _src_arr_elem);
-
                 void setDst(VkDescriptorSet _dst_set, uint32_t _dst_binding, uint32_t _dst_arr_elem);
             }; // StructWrap<VkCopyDescriptorSet> END
 
@@ -1170,20 +1079,16 @@ namespace Simple {
             private:
                 VkDescriptorSetLayoutCreateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetLayoutCreateInfo)
-
                 std::vector<Struct::StructWrap<VkDescriptorSetLayoutBinding>> bindings_wrap;
-
                 std::vector<VkDescriptorSetLayoutBinding> bindings;
 
                 StructWrap();
-                // StructWrap(const Builder &_builder) = default;
 
                 void clear();
+                void updateWrap();
 
                 ContextIndex addBinding();
                 ContextEntity<Struct::StructWrap<VkDescriptorSetLayoutBinding>> shortcutBinding(ContextIndex _sct_ci);
-
-                void updateWrap();
             }; // StructWrap<VkDescriptorSetLayoutCreateInfo> END
 
             template <>
@@ -1191,19 +1096,16 @@ namespace Simple {
             private:
                 VkDescriptorPoolCreateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDescriptorPoolCreateInfo)
-
                 std::vector<VkDescriptorPoolSize> pool_sizes;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void addPoolSize(VkDescriptorType _descr_type, uint32_t _descr_count);
-
                 void setWholeStruct(uint32_t _max_sets, const std::vector<VkDescriptorPoolSize> &_pool_sizes = {});
             }; // StructWrap<VkDescriptorPoolCreateInfo> END
 
@@ -1212,13 +1114,11 @@ namespace Simple {
             private:
                 VkDescriptorSetAllocateInfo wrap{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkDescriptorSetAllocateInfo)
-
                 std::vector<VkDescriptorSetLayout> set_layouts;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1234,14 +1134,12 @@ namespace Simple {
             private:
                 VkPipelineLayoutCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineLayoutCreateInfo)
-
                 std::vector<VkPushConstantRange> constants;
                 std::vector<VkDescriptorSetLayout> layouts;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkPipelineLayoutCreateInfo> END
 
@@ -1250,14 +1148,11 @@ namespace Simple {
             private:
                 VkPipelineCacheCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineCacheCreateInfo)
-
                 std::vector<unsigned char> cache_data;
 
                 StructWrap();
 
                 void clear();
-
-
                 void updateWrap();
 
             // Scenarios
@@ -1271,13 +1166,11 @@ namespace Simple {
             private:
                 VkPipelineLibraryCreateInfoKHR wrap{VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineLibraryCreateInfoKHR)
-
                 std::vector<VkPipeline> libraries;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkPipelineLibraryCreateInfoKHR> END
 
@@ -1286,14 +1179,12 @@ namespace Simple {
             private:
                 VkRayTracingShaderGroupCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
                 VKFW_STRUCT_WRAP_ACCESS(VkRayTracingShaderGroupCreateInfoKHR)
-
                 // Note: data is owned by vector, so the structure can be safely copied (previously raw 'new[]' pointer was double-deleted on copies)
                 std::vector<unsigned char> capture_replay_handle;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1310,7 +1201,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkRayTracingPipelineInterfaceCreateInfoKHR> END
 
@@ -1322,21 +1212,17 @@ namespace Simple {
             private:
                 VkPipelineShaderStageCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineShaderStageCreateInfo)
-
                 StructWrap<VkSpecializationInfo> spec_info_wrap;
-
                 std::string name;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setShaderInfo(VkShaderModule _shader_module, VkShaderStageFlagBits _stage, const std::string &_name);
-
                 void setShaderSpecInfo(const void* _data, size_t _data_size, const std::vector<VkSpecializationMapEntry> &_map_entries);
             }; // StructWrap<VkPipelineShaderStageCreateInfo> END
 
@@ -1345,21 +1231,17 @@ namespace Simple {
             private:
                 VkPipelineDynamicStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineDynamicStateCreateInfo)
-
                 std::vector<VkDynamicState> dynamic_states;
 
                 StructWrap();
-                // StructWrap(const StructBuilder &_builder) : dynamic_states{_builder.dynamic_states} {}
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 // returns false if state is already included in "dynamic_states", true if successfully added
                 bool addDynamicState(VkDynamicState _state);
-
                 // returns false if state is not in "dynamic_states", true if successfully removed entries
                 bool delDynamicState(VkDynamicState _state);
             }; // StructBuilder<VkPipelineDynamicStateCreateInfo> END
@@ -1369,14 +1251,12 @@ namespace Simple {
             private:
                 VkPipelineVertexInputStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineVertexInputStateCreateInfo)
-
                 std::vector<VkVertexInputBindingDescription> bindings;
                 std::vector<VkVertexInputAttributeDescription> attributes;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkPipelineVertexInputStateCreateInfo> END
 
@@ -1389,7 +1269,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1402,28 +1281,22 @@ namespace Simple {
             private:
                 VkPipelineViewportStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineViewportStateCreateInfo)
-
                 std::vector<StructWrap<VkViewport>> viewports_wrap;
                 std::vector<StructWrap<VkRect2D>>    scissors_wrap;
-
                 std::vector<VkViewport> viewports;
                 std::vector<VkRect2D>    scissors;
                 uint32_t viewports_dynamic_count = 0u, scissors_dynamic_count = 0u;
                 // counts can be set with nullptr pointers - dynamic mode
 
                 StructWrap();
-                // StructWrap(const StructBuilder &_builder) : viewports{_builder.viewports}, scissors{_builder.scissors} {}
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setViewportsDynamic(uint32_t _viewports_count);
-
                 void setScissorsDynamic(uint32_t _scissors_count);
-
                 void setFromSwapchainExtent(VkExtent2D _extent);
             }; // StructWrap<VkPipelineViewportStateCreateInfo> END
 
@@ -1434,10 +1307,8 @@ namespace Simple {
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineRasterizationStateCreateInfo)
 
                 StructWrap();
-                // StructWrap(const StructWrap &_sct) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1450,13 +1321,11 @@ namespace Simple {
             private:
                 VkPipelineMultisampleStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineMultisampleStateCreateInfo)
-
                 VkSampleMask sample_mask[2] = {VkSampleMask(-1), VkSampleMask(-1)};
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1474,7 +1343,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkPipelineDepthStencilStateCreateInfo> END
 
@@ -1487,13 +1355,11 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setColorBlend(VkBlendOp _op, VkBlendFactor _src_factor, VkBlendFactor _dst_factor);
-
                 void setAlphaBlend(VkBlendOp _op, VkBlendFactor _src_factor, VkBlendFactor _dst_factor);
             }; // StructWrap<VkPipelineColorBlendAttachmentState> END
 
@@ -1502,22 +1368,17 @@ namespace Simple {
             private:
                 VkPipelineColorBlendStateCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineColorBlendStateCreateInfo)
-
                 std::vector<StructWrap<VkPipelineColorBlendAttachmentState>> attachments_wrap;
-
                 std::vector<VkPipelineColorBlendAttachmentState> attachments;
 
                 StructWrap();
-                // StructWrap(const StructBuilder &_builder) = default;
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setLogicOp(VkLogicOp _op = VK_LOGIC_OP_MAX_ENUM);
-
                 void setBlendConstants(const vec4 &_blend_constants);
             }; // StructStructWrap<VkPipelineColorBlendStateCreateInfo> END
 
@@ -1528,11 +1389,9 @@ namespace Simple {
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineTessellationStateCreateInfo)
 
                 StructWrap();
-                // StructWrap(const StructBuilder &_sct) = default;
                 StructWrap(uint32_t _points_num);
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkPipelineTessellationStateCreateInfo> END
 
@@ -1542,13 +1401,11 @@ namespace Simple {
             private:
                 VkPipelineRenderingCreateInfo wrap{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkPipelineRenderingCreateInfo)
-
                 std::vector<VkFormat> color_formats;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1564,7 +1421,6 @@ namespace Simple {
             private:
                 VkGraphicsPipelineCreateInfo wrap{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkGraphicsPipelineCreateInfo)
-
                 StructWrap<VkPipelineVertexInputStateCreateInfo>     vertex_input_state_wrap;
                 StructWrap<VkPipelineInputAssemblyStateCreateInfo> input_assembly_state_wrap;
                 StructWrap<VkPipelineTessellationStateCreateInfo>    tessellation_state_wrap;
@@ -1580,19 +1436,16 @@ namespace Simple {
                 // Note: used instead of 'renderPass'/'subpass' if 'use_dynamic_rendering' is set (see 'Object::Pipeline::createObject')
                 StructWrap<VkPipelineRenderingCreateInfo> rendering_wrap;
                 bool use_dynamic_rendering = false;
-
                 std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setPipelineStates(PipelineStateFlags _state_bitmask);
-
                 void setBasePipeline(int32_t _base_pipeline_index = 0, VkPipeline _base_pipeline_handle = VK_NULL_HANDLE);
             }; // StructWrap<VkGraphicsPipelineCreateInfo> END
 
@@ -1601,13 +1454,11 @@ namespace Simple {
             private:
                 VkComputePipelineCreateInfo wrap{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkComputePipelineCreateInfo)
-
                 StructWrap<VkPipelineShaderStageCreateInfo>  shader_stage_wrap;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1620,27 +1471,23 @@ namespace Simple {
             private:
                 VkRayTracingPipelineCreateInfoKHR wrap{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
                 VKFW_STRUCT_WRAP_ACCESS(VkRayTracingPipelineCreateInfoKHR)
-
                 StructWrap<VkPipelineDynamicStateCreateInfo>                  dynamic_state_wrap;
                 std::vector<StructWrap<VkPipelineShaderStageCreateInfo>>      shader_stages_wrap;
                 std::vector<StructWrap<VkRayTracingShaderGroupCreateInfoKHR>> shader_groups_wrap;
                 StructWrap<VkPipelineLibraryCreateInfoKHR>                         lib_info_wrap;
                 StructWrap<VkRayTracingPipelineInterfaceCreateInfoKHR>        lib_interface_wrap;
                 PipelineStateFlags active_state_flags = PipelineStateBits(0u);
-
                 std::vector<VkPipelineShaderStageCreateInfo>      shader_stages;
                 std::vector<VkRayTracingShaderGroupCreateInfoKHR> shader_groups;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void setPipelineStates(PipelineStateFlags _state_bitmask);
-
                 void setBasePipeline(int32_t _base_pipeline_index = 0, VkPipeline _base_pipeline_handle = VK_NULL_HANDLE);
             }; // StructWrap<VkRayTracingPipelineCreateInfoKHR>
 
@@ -1656,7 +1503,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkCommandPoolCreateInfo> END
 
@@ -1668,9 +1514,7 @@ namespace Simple {
 
                 StructWrap();
 
-
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkCommandBufferAllocateInfo> END
 
@@ -1687,7 +1531,6 @@ namespace Simple {
                ~StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkAllocationCallbacks> END
 
@@ -1700,13 +1543,11 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void loadForPhysicalDevice(VkPhysicalDevice _phys_device);
-
                 void printInfo() const;
             }; // StructWrap<VkPhysicalDeviceMemoryProperties2> END
 
@@ -1719,7 +1560,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkCommandBufferInheritanceInfo> END
 
@@ -1728,7 +1568,6 @@ namespace Simple {
             private:
                 VkSubmitInfo wrap{VK_STRUCTURE_TYPE_SUBMIT_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkSubmitInfo)
-
                 std::vector<VkSemaphore>      wait_semaphores;
                 std::vector<VkPipelineStageFlags> wait_stages;
                 std::vector<VkCommandBuffer>  command_buffers;
@@ -1738,7 +1577,6 @@ namespace Simple {
                 StructWrap(const StructWrap<VkSubmitInfo> &_wrap);
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkSubmitInfo> END
 
@@ -1747,7 +1585,6 @@ namespace Simple {
             private:
                 VkPresentInfoKHR wrap{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
                 VKFW_STRUCT_WRAP_ACCESS(VkPresentInfoKHR)
-
                 std::vector<VkSemaphore> wait_semaphores;
                 std::vector<VkSwapchainKHR> swapchains;
                 std::vector<uint32_t> image_indices;
@@ -1757,7 +1594,6 @@ namespace Simple {
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
@@ -1773,26 +1609,20 @@ namespace Simple {
             private:
                 VkRenderPassBeginInfo wrap{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkRenderPassBeginInfo)
-
                 std::vector<StructWrap<VkClearValue>> clear_values_wrap;
                 StructWrap<VkRect2D> render_area_wrap;
-
                 std::vector<VkClearValue> clear_values;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
 
             // Scenarios
 
                 void addClearValue4f(const vec4f &_color);
-
                 void addClearValue4i(const vec4i &_color);
-
                 void addClearValue4u(const vec4u &_color);
-
                 void addClearValueDepthStencil(float _depth, uint32_t _stencil);
             }; // StructWrap<VkRenderPassBeginInfo> END
 
@@ -1801,14 +1631,12 @@ namespace Simple {
             private:
                 VkCommandBufferBeginInfo wrap{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
                 VKFW_STRUCT_WRAP_ACCESS(VkCommandBufferBeginInfo)
-
                 StructWrap<VkCommandBufferInheritanceInfo> inheritance_info_wrap;
                 VkBool32 use_inheritance_info = false;
 
                 StructWrap();
 
                 void clear();
-
                 void updateWrap();
             }; // StructWrap<VkCommandBufferBeginInfo> END
         #undef VKFW_STRUCT_WRAP_ACCESS
@@ -1829,7 +1657,6 @@ namespace Simple {
                 Struct::StructWrap<VkInstanceCreateInfo> create_info;
 
                 void createObject(const VkAllocationCallbacks *_create_cb = nullptr, bool _volk_instance_only = false);
-
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // Instance END
 
@@ -1841,7 +1668,6 @@ namespace Simple {
                 Struct::StructWrap<VkDebugUtilsMessengerCreateInfoEXT> create_info;
 
                 void createObject(VkInstance _instance, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // DebugMessengerEXT END
 
@@ -1853,7 +1679,6 @@ namespace Simple {
                 Util::PhysDeviceManager select_info;
 
                 void createObject();
-
                 void destroyObject();
             }; // PhysicalDevice END
 
@@ -1865,7 +1690,6 @@ namespace Simple {
                 Util::QueueFamilyManager select_info;
 
                 void createObject();
-
                 void destroyObject();
             }; // QueueFamily END
 
@@ -1877,7 +1701,6 @@ namespace Simple {
                 Struct::StructWrap<VkDeviceQueueCreateInfo> create_info;
 
                 void createObject(VkDevice _device);
-
                 void destroyObject();
             }; // Queue END
 
@@ -1889,7 +1712,6 @@ namespace Simple {
                 Struct::StructWrap<VkDeviceCreateInfo> create_info;
 
                 void createObject(VkPhysicalDevice _phys_device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // Device END
 
@@ -1900,7 +1722,6 @@ namespace Simple {
                 VkSurfaceKHR handle = VK_NULL_HANDLE;
 
                 void createObject(VkInstance _instance, GLFWwindow *_glfw_window, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkInstance _instance, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // SurfaceKHR END
 
@@ -1912,7 +1733,6 @@ namespace Simple {
                 Struct::StructWrap<VkSwapchainCreateInfoKHR> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // SwapchainKHR END
 
@@ -1924,7 +1744,6 @@ namespace Simple {
                 Struct::StructWrap<VkShaderModuleCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // ShaderModule END
 
@@ -1936,7 +1755,6 @@ namespace Simple {
                 Struct::StructWrap<VkBufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // Buffer END
 
@@ -1948,7 +1766,6 @@ namespace Simple {
                 Struct::StructWrap<VkBufferViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // BufferView END
 
@@ -1960,7 +1777,6 @@ namespace Simple {
                 Struct::StructWrap<VkImageCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             };  // Image END
 
@@ -1972,7 +1788,6 @@ namespace Simple {
                 Struct::StructWrap<VkImageViewCreateInfo> create_info;
 
                 void createObject(VkDevice _device, VkImage _image, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // ImageView END
 
@@ -1984,7 +1799,6 @@ namespace Simple {
                 Struct::StructWrap<VkMemoryAllocateInfo> allocate_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_allocate_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // DeviceMemory END
 
@@ -1996,7 +1810,6 @@ namespace Simple {
                 Struct::StructWrap<VkRenderPassCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // RenderPass END
 
@@ -2008,7 +1821,6 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // DescriptorSetLayout END
 
@@ -2020,7 +1832,6 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // DescriptorPool END
 
@@ -2032,7 +1843,6 @@ namespace Simple {
                 Struct::StructWrap<VkDescriptorSetAllocateInfo> alloc_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device);
             }; // DescriptorSet END
 
@@ -2044,7 +1854,6 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineLayoutCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // PipelineLayout END
 
@@ -2056,7 +1865,6 @@ namespace Simple {
                 Struct::StructWrap<VkPipelineCacheCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // PipelineCache END
 
@@ -2065,7 +1873,6 @@ namespace Simple {
 
             struct Pipeline {
                 VkPipeline handle = VK_NULL_HANDLE;
-
                 PipelineType pipeline_type = VKFW_PIPELINE_TYPE_UNDEFINED;
                 union {
                     Struct::StructWrap<  VkGraphicsPipelineCreateInfo   >   graphics_create_info_wrap;
@@ -2087,21 +1894,15 @@ namespace Simple {
                 VkResult createObject(VkDevice _device, VkRenderPass _render_pass, uint32_t _subpass,
                                       VkDeferredOperationKHR _deferred_op, VkPipelineCache _pipeline_cache = VK_NULL_HANDLE,
                                       const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
 
             // Scenarios
 
                 void setPipelineFromCopy(const Pipeline &_obj_pip);
-
                 void setPipelineType(PipelineType _pipeline_type);
-
                 void deletePipelineWrap();
-
                 void activatePipelineWrap();
-
                 ContextIndex addShaderStage();
-
                 Struct::StructWrap<VkPipelineShaderStageCreateInfo>* shortcutShaderStage(ContextIndex _ci_shader_stage);
             }; // Pipeline END
 
@@ -2113,7 +1914,6 @@ namespace Simple {
                 Struct::StructWrap<VkFramebufferCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // Framebuffer END
 
@@ -2126,9 +1926,7 @@ namespace Simple {
                 Struct::StructWrap<VkCommandPoolCreateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void createObject(VkDevice _device, VkfwQueueFamily _queue_family, VkCommandPoolCreateFlags _flags = 0u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // CommandPool END
 
@@ -2140,13 +1938,11 @@ namespace Simple {
                 Struct::StructWrap<VkCommandBufferAllocateInfo> create_info;
 
                 void createObject(VkDevice _device, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device);
 
             // Scenarios
 
                 void createPrimary  (VkDevice _device, VkCommandPool _command_pool, uint32_t _buffer_count, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void createSecondary(VkDevice _device, VkCommandPool _command_pool, uint32_t _buffer_count, const VkAllocationCallbacks *_create_cb = nullptr);
             }; // CommandBuffer END
 
@@ -2158,7 +1954,6 @@ namespace Simple {
                 Struct::StructWrap<VkSemaphoreCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _semaphore_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
             }; // Semaphore END
 
@@ -2170,13 +1965,11 @@ namespace Simple {
                 Struct::StructWrap<VkFenceCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
 
             // Scenarios
 
                 void createSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void createNotSignaled(VkDevice _device, uint32_t _fence_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
             }; // Fence END
 
@@ -2188,13 +1981,11 @@ namespace Simple {
                 Struct::StructWrap<VkEventCreateInfo> create_info;
 
                 void createObject(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void destroyObject(VkDevice _device, const VkAllocationCallbacks *_destroy_cb = nullptr);
 
             // Scenarios
 
                 void createSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
-
                 void createNotSignaled(VkDevice _device, uint32_t _event_count = 1u, const VkAllocationCallbacks *_create_cb = nullptr);
             }; // Event END
 

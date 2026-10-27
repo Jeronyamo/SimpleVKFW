@@ -1357,6 +1357,14 @@ namespace Simple {
                     throw std::runtime_error(SVKFW_WRAPERR("VKFW::Struct::StructWrap<VkMemoryAllocateInfo> :: setForImage", "Could not find suitable memory type"));
             }
 
+            StructWrap<VkSamplerCreateInfo>::StructWrap() {}
+
+            void StructWrap<VkSamplerCreateInfo>::clear() {
+                wrap = VkSamplerCreateInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+            }
+
+            void StructWrap<VkSamplerCreateInfo>::updateWrap() {}
+
             StructWrap<VkShaderModuleCreateInfo>::StructWrap() {}
 
             void StructWrap<VkShaderModuleCreateInfo>::clear() {

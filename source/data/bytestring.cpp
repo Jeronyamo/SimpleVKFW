@@ -161,14 +161,11 @@ namespace Simple {
         }
 
         bool Unicode::decode(EncType _curr_encoding) {
-            if (_curr_encoding == ENC_UNKNOWN)
-                _curr_encoding = curr_encoding;
             if (_curr_encoding == ENC_UNKNOWN) {
-                determineEncoding();
+                if (curr_encoding == ENC_UNKNOWN)
+                    determineEncoding();
                 _curr_encoding = curr_encoding;
             }
-            if (_curr_encoding == ENC_UNKNOWN)
-                return false;
 
             switch (_curr_encoding) {
                 case ENC_RAW:
@@ -181,7 +178,9 @@ namespace Simple {
                 case ENC_UTF16: {
                     return decodeUTF16();
                 }
+                default:;
             }
+            return false;
         }
 
         bool Unicode::decodeBytesASCII(bool _check_ascii) {
