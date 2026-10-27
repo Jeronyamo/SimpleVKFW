@@ -74,6 +74,7 @@ endfunction()
 
 
 ## Directory Variables
+set(SVKFW_INCLUDE_DIR    ${PROJECT_SOURCE_DIR}/include)
 set(SVKFW_SOURCE_DIR     ${PROJECT_SOURCE_DIR}/source)
 set(SVKFW_EXTERN_LIB_DIR ${PROJECT_SOURCE_DIR}/ext_libs)
 set(SVKFW_EXTERN_SRC_DIR ${PROJECT_SOURCE_DIR}/ext_sources)
@@ -115,7 +116,7 @@ set(SVKFW_ALL_INCULDES
     ${EXTERN_SRC_IMGUI_DIR}/backends
 
     ## SVKFW
-    ${SVKFW_SOURCE_DIR}
+    ${SVKFW_INCLUDE_DIR}
 )
 
 

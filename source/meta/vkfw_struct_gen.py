@@ -157,5 +157,5 @@ if __name__ == "__main__":
         exit(-1)
     print(f"Found Vulkan registry at: '{vk_xml}'")
 
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "interface", "vkfw_struct_traits.h")
+    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "include", "interface", "vkfw_struct_traits.h")
     generate(vk_xml, os.path.normpath(out))

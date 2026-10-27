@@ -135,4 +135,4 @@ if __name__ == "__main__":
         vk_core_path = os.path.join(vk_sdk_path, "include", "vulkan", "vulkan_core.h")
     vk_sdk_path = vk_core_path
     print(f"Found Vulkan core at: '{vk_sdk_path}'")
-    invertVulkanCoreEnums(vk_sdk_path, "source/interface/vkfw_enum.h")
+    invertVulkanCoreEnums(vk_sdk_path, "include/interface/vkfw_enum.h")

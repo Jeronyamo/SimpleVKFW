@@ -7,6 +7,6 @@ tests/out/
 imgui.ini
 
 # Generated files
-source/interface/vkfw_enum.h
-source/interface/vkfw_struct_traits.h
-source/interface/vkfw_func.h
+include/interface/vkfw_enum.h
+include/interface/vkfw_struct_traits.h
+include/interface/vkfw_func.h

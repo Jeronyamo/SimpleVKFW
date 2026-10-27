@@ -367,7 +367,7 @@ if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     vk_xml = sys.argv[1] if len(sys.argv) > 1 else findSdkFile("share", "vulkan", "registry", "vk.xml")
     volk_h = sys.argv[2] if len(sys.argv) > 2 else os.path.normpath(os.path.join(here, "..", "..", "ext_sources", "volk", "volk.h"))
-    out    = sys.argv[3] if len(sys.argv) > 3 else os.path.normpath(os.path.join(here, "..", "interface", "vkfw_func.h"))
+    out    = sys.argv[3] if len(sys.argv) > 3 else os.path.normpath(os.path.join(here, "..", "..", "include", "interface", "vkfw_func.h"))
     if vk_xml is None or not os.path.isfile(vk_xml):
         print("Error: couldn't find vk.xml, pass its path as the first argument")
         exit(-1)
