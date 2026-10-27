@@ -3,7 +3,7 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/source/**",
+                "${workspaceFolder}/include/**",
                 "${workspaceFolder}/ext_includes",
                 "${workspaceFolder}/ext_includes/STBI",
                 "${workspaceFolder}/ext_sources/glfw/include",

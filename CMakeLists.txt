@@ -30,22 +30,17 @@ if(SVKFW_OVERRIDE_RES_LOCATION)
 endif()
 
 
-## SVKFW Executables
-
-add_executable(svkfw ${PROJECT_SOURCE_DIR}/main.cpp)
-add_executable(svkfw_test ${PROJECT_SOURCE_DIR}/tests/tests.cpp)
-
-
 ## SVKFW Target CMake Definitions
 
-function(svkfw_set_definitions SVKFW_TARGET)
+# Note: SVKFW_SCOPE is PUBLIC for the library - the headers depend on these definitions too
+function(svkfw_set_definitions SVKFW_TARGET SVKFW_SCOPE)
     if (CMAKE_BUILD_TYPE STREQUAL Debug)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_DEBUG)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} SVKFW_DEBUG)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_WIN)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE NOMINMAX)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} SVKFW_CM_WIN)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} NOMINMAX)
 
         ## Get Windows build
         string(FIND ${CMAKE_SYSTEM_VERSION} "." WIN_VERSION_LEN REVERSE)
@@ -55,17 +50,20 @@ function(svkfw_set_definitions SVKFW_TARGET)
 
         ## Anniversary update, ANSI supported since 10586 (November update), but this one expands functionality
         if(${WIN_BUILD_VER} GREATER_EQUAL 14393)
-            target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_ANSI_ESC)
+            target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} SVKFW_CM_ANSI_ESC)
         endif()
         # add_definitions(-DSVKFW_CM_WIN_BUILD=${WIN_BUILD_VER})
     elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_LINUX PRIVATE SVKFW_CM_ANSI_ESC)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} SVKFW_CM_LINUX ${SVKFW_SCOPE} SVKFW_CM_ANSI_ESC)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE SVKFW_CM_MAC PRIVATE SVKFW_CM_ANSI_ESC)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} SVKFW_CM_MAC ${SVKFW_SCOPE} SVKFW_CM_ANSI_ESC)
     endif()
     if (RTAUDIO_API_ASIO)
-        target_compile_definitions(${SVKFW_TARGET} PRIVATE RTA_ASIO)
+        target_compile_definitions(${SVKFW_TARGET} ${SVKFW_SCOPE} RTA_ASIO)
     endif()
+endfunction()
+
+function(svkfw_set_link_options SVKFW_TARGET)
     if(MINGW)
         message(${SVKFW_MSG_PREFIX} "Linking MinGW static libraries (" ${SVKFW_TARGET} ")")
         target_link_options(${SVKFW_TARGET} PRIVATE -static-libgcc -static-libstdc++ -static)
@@ -74,6 +72,7 @@ endfunction()
 
 
 ## Directory Variables
+set(SVKFW_INCLUDE_DIR    ${PROJECT_SOURCE_DIR}/include)
 set(SVKFW_SOURCE_DIR     ${PROJECT_SOURCE_DIR}/source)
 set(SVKFW_EXTERN_LIB_DIR ${PROJECT_SOURCE_DIR}/ext_libs)
 set(SVKFW_EXTERN_SRC_DIR ${PROJECT_SOURCE_DIR}/ext_sources)
@@ -115,7 +114,7 @@ set(SVKFW_ALL_INCULDES
     ${EXTERN_SRC_IMGUI_DIR}/backends
 
     ## SVKFW
-    ${SVKFW_SOURCE_DIR}
+    ${SVKFW_INCLUDE_DIR}
 )
 
 
@@ -229,10 +228,10 @@ add_subdirectory(${EXTERN_SRC_OPUS_DIR})
 set(Python3_FIND_REGISTRY LAST) 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(${SVKFW_MSG_PREFIX} "Looking for Python at: '${Python3_EXECUTABLE}'")
-# Note: the generated headers are not stored in git ('.gitignore'), they are made from the installed Vulkan SDK on configure
-#   vkfw_enum.h          - enum names       (vulkan_core.h)
-#   vkfw_struct_traits.h - pNext chain rules (vk.xml)
-#   vkfw_func.h          - Func wrappers    (vk.xml, ext_sources/volk/volk.h)
+# Note: the generated files are not stored in git ('.gitignore'), they are made from the installed Vulkan SDK on configure
+#   include/interface/vkfw_enum.h          + source/interface/vkfw_enum.cpp - enum names        (vulkan_core.h)
+#   include/interface/vkfw_struct_traits.h                                  - pNext chain rules (vk.xml)
+#   include/interface/vkfw_func.h          + source/interface/vkfw_func.cpp - Func wrappers     (vk.xml, ext_sources/volk/volk.h)
 # Note: the scripts get the SDK path from the environment. IDEs started from a desktop menu (VS Code) don't read
 #       ~/.bashrc, so if VULKAN_SDK isn't set, it is taken from the Vulkan headers CMake found (/usr for distro packages).
 if(DEFINED ENV{VULKAN_SDK})
@@ -270,10 +269,23 @@ endforeach()
     # target_link_options   (svkfw_test PRIVATE "-fno-omit-frame-pointer" "-O0" "-g")
 # endif()
 
-svkfw_set_definitions(svkfw_test)
-target_include_directories(svkfw_test PUBLIC ${SVKFW_ALL_INCULDES})
-target_link_libraries(svkfw_test volk_headers glfw imgui rtaudio opus)
+## SVKFW Library
+# Note: all sources except 'source/meta' (generator scripts), including the generated ones - so the glob is after the scripts
+file(GLOB_RECURSE SVKFW_LIB_SOURCES CONFIGURE_DEPENDS ${SVKFW_SOURCE_DIR}/*.cpp)
+list(FILTER SVKFW_LIB_SOURCES EXCLUDE REGEX "^${SVKFW_SOURCE_DIR}/meta/")
 
-svkfw_set_definitions(svkfw)
-target_include_directories(svkfw PRIVATE ${SVKFW_ALL_INCULDES})
-target_link_libraries(svkfw volk_headers glfw imgui rtaudio opus)
+add_library(svkfw_lib STATIC ${SVKFW_LIB_SOURCES})
+svkfw_set_definitions(svkfw_lib PUBLIC)
+target_include_directories(svkfw_lib PUBLIC ${SVKFW_ALL_INCULDES})
+target_link_libraries(svkfw_lib PUBLIC volk_headers glfw imgui rtaudio opus)
+
+
+## SVKFW Executables
+
+add_executable(svkfw      ${PROJECT_SOURCE_DIR}/main.cpp)
+add_executable(svkfw_test ${PROJECT_SOURCE_DIR}/tests/tests.cpp)
+
+target_link_libraries(svkfw      PRIVATE svkfw_lib)
+target_link_libraries(svkfw_test PRIVATE svkfw_lib)
+svkfw_set_link_options(svkfw)
+svkfw_set_link_options(svkfw_test)
