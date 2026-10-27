@@ -110,6 +110,10 @@ namespace Simple {
     struct Vec2Base {
         C x, y;
 
+        // TODO: these checks for vectors and matrices
+        // static_assert(sizeof(Vec2Base<C>) == sizeof(C) * 2, SVKFW_WRAPERR("Vec2Base", "vec2 is misaligned"));
+        // static_assert(std::is_standard_layout<Vec2Base<C>>::value, SVKFW_WRAPERR("Vec2Base", "vec2 doesn't have standard layout for safe pointer casting"));
+
         Vec2Base() : x{0}, y{0} {}
         Vec2Base(C _val) : x{_val}, y{_val} {}
         Vec2Base(C _x, C _y) : x(_x), y(_y) {}
