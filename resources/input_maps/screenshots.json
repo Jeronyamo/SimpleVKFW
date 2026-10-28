@@ -1,0 +1,8 @@
+{
+    "inputs": [
+        { "key": "Ctrl+1", "action": "screenshot_scene" },
+        { "key": "Ctrl+2", "action": "screenshot_frame" },
+        { "key": "Ctrl+3", "action": "screenshot_depth" },
+        { "key": "Ctrl+4", "action": "screenshot_stencil" }
+    ]
+}

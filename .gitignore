@@ -4,6 +4,9 @@ build_*/
 tests/out/
 !tests/out/.gitkeep
 
+screenshots/*
+!screenshots/.gitkeep
+
 imgui.ini
 
 # Generated files

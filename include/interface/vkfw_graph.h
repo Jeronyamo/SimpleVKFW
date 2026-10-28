@@ -301,9 +301,19 @@ namespace Simple {
 
             std::vector<VkImageMemoryBarrier2> barriers;           // barriers of all passes, then the final ones
             std::vector<State>                 end_states;         // the state of each resource at the end of a frame
+            std::vector<State>                 pass_states;        // the state of each resource after each pass (pass-major)
             std::vector<uint32_t>              swapchain_barriers; // barriers whose image is set in 'execute'
             uint32_t final_first = 0u, final_count = 0u;
             bool compiled = false;
+
+            // Note: copies requested by 'readbackAfter', recorded by the next 'execute'
+            struct ReadbackRequest {
+                PassId              pass;
+                ResourceId          res;
+                ImageReadback      *readback;
+                VkImageAspectFlags  aspects;
+            };
+            std::vector<ReadbackRequest> readback_requests;
 
             explicit RenderGraph(VulkanContext &_cxt);
            ~RenderGraph();
@@ -352,6 +362,11 @@ namespace Simple {
             //       an attachment must store it (VK_ATTACHMENT_STORE_OP_STORE). Textures not used by a live pass don't exist
             void readback(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback, VkImageAspectFlags _aspects = 0u);
 
+            // Like 'readback', but the copy is recorded by the next 'execute' right after the pass '_pass', so it holds the resource
+            // as that pass left it (e.g. the swapchain image before the UI pass draws over it). Call before 'execute' (after 'compile');
+            // '_readback' must stay alive until then. 'compile' drops the requests that are not recorded yet
+            void readbackAfter(PassId _pass, ResourceId _res, ImageReadback &_readback, VkImageAspectFlags _aspects = 0u);
+
             // Note: the device must be idle; the declaration is kept, so the graph can be compiled again
             void destroy();
 
@@ -382,6 +397,10 @@ namespace Simple {
 
             void track_(std::vector<State> &_states, bool _emit);
 
+            // The copy of 'readback' and 'readbackAfter'; '_state' is the state of the resource at the point of the copy
+            void recordReadback_(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback,
+                                 VkImageAspectFlags _aspects, const State &_state);
+
             void setupRendering_();
 
             // Note: one subpass; initial and final layouts are the attachment layouts, transitions are done by the barriers outside
@@ -394,6 +413,36 @@ namespace Simple {
             RenderGraph(const RenderGraph &);
             RenderGraph& operator=(const RenderGraph &);
         }; // RenderGraph END
+
+
+        // Note: screenshots. 'request' asks for one, 'record' (before 'RenderGraph::execute') requests its copy with 'readbackAfter',
+        //       'save' (after the fence of that submit is waited) writes a PNG. One capture at a time: requests made while one is
+        //       pending are ignored. Depth is saved normalized (the nearest visible depth is white, the farthest is dark gray, the
+        //       cleared depth is black); stencil values are scaled so the largest one is white. Color alpha is saved as opaque
+        struct FrameCapture {
+            enum Kind { VKFW_CAPTURE_COLOR = 0, VKFW_CAPTURE_DEPTH, VKFW_CAPTURE_STENCIL };
+
+            ImageReadback readback;
+            bool          requested = false;
+            Kind          kind = VKFW_CAPTURE_COLOR;
+            PassId        pass;
+            ResourceId    res;
+            std::string   file_name;
+            uint32_t      recorded_frame = UINT32_MAX; // the frame of the recorded copy, UINT32_MAX if there is none
+
+            // The copy holds '_res' as the pass '_after' left it; '_file_name' is written as is (e.g. "screenshots/scene.png").
+            // Returns false if a capture is already requested or recorded
+            bool request(Kind _kind, PassId _after, ResourceId _res, const std::string &_file_name);
+            bool pending() const;
+
+            // Call before 'RenderGraph::execute' of the frame; '_frame' identifies its fence (e.g. the frame in flight index)
+            void record(RenderGraph &_graph, uint32_t _frame);
+            // Call after the fence of '_frame' is waited; does nothing for other frames. Returns true if the file is written
+            bool save(uint32_t _frame);
+
+            // Note: the device must not use the buffer
+            void destroy();
+        }; // FrameCapture END
 
 
         }; // Graph END

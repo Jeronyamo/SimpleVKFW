@@ -150,6 +150,7 @@ namespace Simple {
                 SVKFW_ASSERT(__device != VK_NULL_HANDLE, std::logic_error, "VKFW::Graph::RenderGraph :: compile", "the device is not created");
 
                 cull_();
+                readback_requests.clear();
                 vkDeviceWaitIdle(__device);
                 destroyFramebuffers_();
                 createTextures_();
@@ -221,7 +222,15 @@ namespace Simple {
                         if (__dynamic_rendering) _rec.endRendering();
                         else                     _rec.endRenderPass();
                     }
+
+                    for (uint32_t i = 0u; i < readback_requests.size(); ++i) {
+                        const ReadbackRequest &__req = readback_requests[i];
+                        if (__req.pass.index == p)
+                            recordReadback_(_rec, __req.res, _image_index, *__req.readback, __req.aspects,
+                                            pass_states[(size_t)p * resources.size() + __req.res.index]);
+                    }
                 }
+                readback_requests.clear();
 
                 if (final_count)
                     _rec.barrier(Span<VkImageMemoryBarrier2>(&barriers[final_first], final_count));
@@ -229,6 +238,33 @@ namespace Simple {
 
             void RenderGraph::readback(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback, VkImageAspectFlags _aspects) {
                 SVKFW_ASSERT(compiled, std::logic_error, "VKFW::Graph::RenderGraph :: readback", "the graph is not compiled");
+                resource_(_res);
+                recordReadback_(_rec, _res, _image_index, _readback, _aspects, end_states[_res.index]);
+            }
+
+            void RenderGraph::readbackAfter(PassId _pass, ResourceId _res, ImageReadback &_readback, VkImageAspectFlags _aspects) {
+                SVKFW_ASSERT(compiled, std::logic_error, "VKFW::Graph::RenderGraph :: readbackAfter", "the graph is not compiled");
+                const Pass &__pass = pass_(_pass);
+                SVKFW_ASSERT(__pass.live, std::logic_error, "VKFW::Graph::RenderGraph :: readbackAfter", "the pass '" + __pass.name + "' is culled");
+                const Resource &__res = resource_(_res);
+                const State &__state = pass_states[(size_t)_pass.index * resources.size() + _res.index];
+                SVKFW_ASSERT(__state.layout != VK_IMAGE_LAYOUT_UNDEFINED, std::logic_error, "VKFW::Graph::RenderGraph :: readbackAfter",
+                                "the resource '" + __res.name + "' has no contents after the pass '" + __pass.name + "'");
+                // Note: checked here too, so a request that can't be recorded fails before 'execute'
+                const VkImageUsageFlags __usage = __res.kind == VKFW_RESOURCE_SWAPCHAIN ? cxt.cxt_swapchain.swapchain.create_info.peek().imageUsage :
+                                                  __res.kind == VKFW_RESOURCE_IMPORTED  ? VkImageUsageFlags(VK_IMAGE_USAGE_TRANSFER_SRC_BIT) : __res.usage;
+                SVKFW_ASSERT(__usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT, std::invalid_argument, "VKFW::Graph::RenderGraph :: readbackAfter",
+                                "the resource '" + __res.name + "' needs VK_IMAGE_USAGE_TRANSFER_SRC_BIT");
+                ReadbackRequest __req;
+                __req.pass     = _pass;
+                __req.res      = _res;
+                __req.readback = &_readback;
+                __req.aspects  = _aspects;
+                readback_requests.push_back(__req);
+            }
+
+            void RenderGraph::recordReadback_(CommandRecorder &_rec, ResourceId _res, uint32_t _image_index, ImageReadback &_readback,
+                                              VkImageAspectFlags _aspects, const State &_state) {
                 const Resource  &__res    = resource_(_res);
                 const VkFormat   __format = format_(__res);
                 const VkExtent2D __extent = extent_(__res);
@@ -272,9 +308,9 @@ namespace Simple {
                 _readback.aspects = _aspects;
                 for (uint32_t a = 0u; a < 3u; ++a) _readback.offsets[a] = __offsets[a];
 
-                // Note: the image is in its end-of-frame state; it goes back to the same layout, and the barrier to all later
-                //       commands keeps the first barriers of the next frame valid (they wait for the stages of this state)
-                const State &__end = end_states[_res.index];
+                // Note: the image is in '_state' (the end of the frame or the end of a pass); it goes back to the same layout, and the
+                //       barrier to all later commands keeps the next barriers of the graph valid (they wait for the stages of this state)
+                const State &__end = _state;
                 const VkPipelineStageFlags2 __end_stages = (__end.write_stages | __end.read_stages) ? (__end.write_stages | __end.read_stages)
                                                                                                     : VkPipelineStageFlags2(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
                 _rec.barrier(imageBarrier(__image, __end.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, __end_stages, __end.write_access,
@@ -521,6 +557,7 @@ namespace Simple {
                 if (_emit) {
                     barriers.clear();
                     swapchain_barriers.clear();
+                    pass_states.assign((size_t)passes.size() * resources.size(), State());
                 }
                 for (uint32_t p = 0u; p < passes.size(); ++p) {
                     Pass &__pass = passes[p];
@@ -532,7 +569,10 @@ namespace Simple {
                         Detail::AccessInfo __info = Detail::accessInfo(__access.type, format_(resources[r]), __access.stages, __access.load_op);
                         access_(r, _states[r], __info.stages, __info.access, __info.layout, __info.write, _emit);
                     }
-                    if (_emit) __pass.barrier_count = barriers.size() - __pass.barrier_first;
+                    if (_emit) {
+                        __pass.barrier_count = barriers.size() - __pass.barrier_first;
+                        std::copy(_states.begin(), _states.end(), pass_states.begin() + (size_t)p * resources.size());
+                    }
                 }
 
                 // Final transitions: the swapchain image to PRESENT_SRC, imported images to their final layout
@@ -768,6 +808,89 @@ namespace Simple {
                 const uint8_t *__src = (const uint8_t*)data(VK_IMAGE_ASPECT_STENCIL_BIT);
                 _image.imgResize((int)extent.width, (int)extent.height);
                 memcpy(_image.img.data(), __src, _image.img.size());
+            }
+
+            bool FrameCapture::request(Kind _kind, PassId _after, ResourceId _res, const std::string &_file_name) {
+                if (pending()) return false;
+                requested = true;
+                kind      = _kind;
+                pass      = _after;
+                res       = _res;
+                file_name = _file_name;
+                return true;
+            }
+
+            bool FrameCapture::pending() const { return requested || recorded_frame != UINT32_MAX; }
+
+            void FrameCapture::record(RenderGraph &_graph, uint32_t _frame) {
+                if (!requested) return;
+                const VkImageAspectFlags __aspects = kind == VKFW_CAPTURE_DEPTH   ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT)   :
+                                                     kind == VKFW_CAPTURE_STENCIL ? VkImageAspectFlags(VK_IMAGE_ASPECT_STENCIL_BIT) :
+                                                                                    VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT);
+                requested = false;
+                try {
+                    _graph.readbackAfter(pass, res, readback, __aspects);
+                }
+                catch (const std::exception &_e) {
+                    fprintf(stderr, SVKFW_WRAPERR("VKFW::Graph::FrameCapture :: record", "the capture is dropped: %s\n"), _e.what());
+                    return;
+                }
+                recorded_frame = _frame;
+            }
+
+            bool FrameCapture::save(uint32_t _frame) {
+                if (recorded_frame == UINT32_MAX || recorded_frame != _frame) return false;
+                recorded_frame = UINT32_MAX;
+
+                if (kind == VKFW_CAPTURE_COLOR) {
+                    Img::Image4u __image;
+                    readback.readColor(__image);
+                    for (size_t i = 0u; i < __image.img.size(); ++i) __image.img[i].w = 255u;
+                    __image.imgSave<Img::PNG>(file_name);
+                }
+                else if (kind == VKFW_CAPTURE_DEPTH) {
+                    Img::Image1f __depth;
+                    readback.readDepth(__depth);
+                    float __min = 1.f, __max = 0.f;
+                    for (size_t i = 0u; i < __depth.img.size(); ++i) {
+                        const float __d = __depth.img[i];
+                        if (__d >= 1.f) continue; // cleared
+                        if (__d < __min) __min = __d;
+                        if (__d > __max) __max = __d;
+                    }
+                    const float __range = __max > __min ? __max - __min : 1.f;
+                    Img::Image1u __image(__depth.width, __depth.height);
+                    for (size_t i = 0u; i < __depth.img.size(); ++i) {
+                        const float __d = __depth.img[i];
+                        __image.img[i] = Img::Image1u::ColorType{ uint8_t(__d >= 1.f ? 0u : 255u - unsigned(191.f * (__d - __min) / __range)) };
+                    }
+                    __image.imgSave<Img::PNG>(file_name);
+                }
+                else {
+                    Img::Image1u __image;
+                    readback.readStencil(__image);
+                    uint8_t __max = 0u;
+                    for (size_t i = 0u; i < __image.img.size(); ++i)
+                        if (uint8_t(__image.img[i]) > __max) __max = uint8_t(__image.img[i]);
+                    if (__max)
+                        for (size_t i = 0u; i < __image.img.size(); ++i)
+                            __image.img[i] = Img::Image1u::ColorType{ uint8_t(unsigned(uint8_t(__image.img[i])) * 255u / __max) };
+                    __image.imgSave<Img::PNG>(file_name);
+                }
+
+                FILE *__file = fopen(file_name.c_str(), "rb");
+                if (__file == nullptr) {
+                    fprintf(stderr, SVKFW_WRAPERR("VKFW::Graph::FrameCapture :: save", "could not write '%s'\n"), file_name.c_str());
+                    return false;
+                }
+                fclose(__file);
+                return true;
+            }
+
+            void FrameCapture::destroy() {
+                readback.destroy();
+                requested      = false;
+                recorded_frame = UINT32_MAX;
             }
 
             void ImageReadback::destroy() {

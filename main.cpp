@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
     using Simple::VKFW::CommandBuffersId;
     using Simple::VKFW::CommandBufferId;
     using Simple::VKFW::SamplerId;
+    using Simple::VKFW::Graph::FrameCapture;
 
 // Config
     const uint32_t FRAMES_IN_FLIGHT = 4u;
@@ -86,19 +87,24 @@ int main(int argc, char **argv) {
 
 // Input handlers
 
+    // Note: layers from the top: ImGui (built in), screenshots (targets are set with the render graph), window controls, camera.
+    //       The keys of each layer come from its input map in 'resources/input_maps'
     Simple::WindowInput::FrameInputHandlerGLFW main_window_handler;
-
-    main_window_handler.setAllKeysHandler(&main_view_centered_proj);
-    main_window_handler.setScrollHandler(&main_view_centered_proj);
-    main_window_handler.setCursorHandler(&main_view_centered_proj);
-    main_window_handler.setAllMButtonsHandler(&main_view_centered_proj);
-    main_window_handler.setFBufferSizeHandler(&main_view_centered_proj);
+    main_view_centered_proj.loadInputMap("resources/input_maps/camera.json");
 
     // Window
+    Simple::GLFWInitClass glfw_init;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // for vk only, use context for OpenGL
     Simple::Window main_window{fb_size.x, fb_size.y, "Test"};
+    main_window.setIcon(texture_image);
 
-    Simple::WindowInput::DefaultHandler main_window_exit{main_window.window};
+    Simple::WindowInput::DefaultHandler main_window_controls{main_window.window};
+    main_window_controls.loadInputMap("resources/input_maps/window.json");
+    Simple::WindowInput::ScreenshotHandler screenshots;
+    screenshots.loadInputMap("resources/input_maps/screenshots.json");
+    main_window_handler.pushLayer(&screenshots);
+    main_window_handler.pushLayer(&main_window_controls);
+    main_window_handler.pushLayer(&main_view_centered_proj);
 
     // ImGUI widgets
     main_window_handler.imgui_handler.setFont("resources/fonts/RobotoMono-VariableFont_wght.ttf", 24.f);
@@ -106,7 +112,6 @@ int main(int argc, char **argv) {
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiTestWindow{});
 
     // Callbacks
-    main_window_handler.setKeysHandler(&main_window_exit);
     main_window_handler.setGLFWCallbacks(main_window.window);
 
 
@@ -238,6 +243,13 @@ int main(int argc, char **argv) {
     Simple::VKFW::Graph::PassId      ui_pass    = graph.addGraphicsPass("ui").color(backbuffer, VK_ATTACHMENT_LOAD_OP_LOAD);
 
     graph.compile(); // after the swapchain creation and after every recreation
+
+    // Screenshots (PNG in 'screenshots/'): the scene without ImGui, the whole frame, depth, stencil
+    // Note: the copy is made in the next frame and the file is written when its fence is waited (see the main loop)
+    screenshots.setTarget(Simple::WindowInput::Actions::SCREENSHOT_SCENE,   FrameCapture::VKFW_CAPTURE_COLOR,   scene_pass, backbuffer);
+    screenshots.setTarget(Simple::WindowInput::Actions::SCREENSHOT_FRAME,   FrameCapture::VKFW_CAPTURE_COLOR,   ui_pass,    backbuffer);
+    screenshots.setTarget(Simple::WindowInput::Actions::SCREENSHOT_DEPTH,   FrameCapture::VKFW_CAPTURE_DEPTH,   scene_pass, depth_stencil);
+    screenshots.setTarget(Simple::WindowInput::Actions::SCREENSHOT_STENCIL, FrameCapture::VKFW_CAPTURE_STENCIL, scene_pass, depth_stencil);
 
 
 // Memory-related objects (buffers and images):
@@ -375,8 +387,8 @@ int main(int argc, char **argv) {
     // Vertex input state
     graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.bindings = {{ 0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX }};
     graphics_pip.graphics_create_info_wrap.vertex_input_state_wrap.attributes = { { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex,   pos) },
-                                                                                      { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
-                                                                                      { 2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,    uv) } };
+                                                                                  { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
+                                                                                  { 2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(Vertex,    uv) } };
 
     // Input assembly state
     graphics_pip.graphics_create_info_wrap.input_assembly_state_wrap.setWholeStruct(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
@@ -526,6 +538,7 @@ int main(int argc, char **argv) {
         main_view_centered_proj.manualFrameUpdate(main_window_handler.frame_time);
 
         vk.cxt_barrier.wait(ci_fen_in_flight[current_frame]);
+        screenshots.save(current_frame); // the copy of this frame in flight (if any) is ready after the fence
 
         Simple::VKFW::AcquireResult acquired = vk.acquireNextImage(ci_sem_image_available[current_frame]);
         // Note: the fence is reset only after successful acquisition, otherwise it would never be signaled again
@@ -550,9 +563,10 @@ int main(int argc, char **argv) {
 
         main_window_handler.imgui_handler.newFrame();
         main_window_handler.imgui_handler.render();
+        screenshots.record(graph, current_frame); // a requested screenshot is copied by 'execute'
         graph.execute(rec, acquired.image_index);
-        // Note: a frame can be read back here, e.g. 'graph.readback(rec, depth_stencil, acquired.image_index, readback)' (or 'backbuffer'
-        //       for the color), and read with 'readback.readDepth(...)' / 'readStencil' / 'readColor' after the fence of this frame
+        // Note: a frame can also be read back here, at its end, e.g. 'graph.readback(rec, depth_stencil, acquired.image_index, readback)'
+        //       (or 'backbuffer' for the color), and read with 'readback.readDepth(...)' / 'readStencil' / 'readColor' after the fence
         rec.end();
 
 
@@ -574,6 +588,7 @@ int main(int argc, char **argv) {
     } // main loop END
 
     vkDeviceWaitIdle(vk.cxt_core.device.handle);
+    screenshots.destroy(); // writes the last one, the device is idle
     for (uint32_t curr_frame = 0u; curr_frame < FRAMES_IN_FLIGHT; ++curr_frame)
         Simple::VKFW::CommandRecorder(vk, ci_cmdbuf_drawing[curr_frame]).reset();
 
@@ -587,7 +602,7 @@ int main(int argc, char **argv) {
     graph.destroy();
     vk.destroyContext();
     main_window.destroy();
-    Simple::glfw_init.terminate();
+   glfw_init.terminate();
 
     printf(SVKFW_WRAPINFO("main", "Success\n"));
     return 0;

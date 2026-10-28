@@ -9,8 +9,10 @@
 #include "common/basic_math.h"
 #include "main/event_handler.h"
 #include "math/vectors.h"
+#include "main/image.h"
 
 #include <unordered_set>
+#include <vector>
 
 
 namespace Simple {
@@ -22,21 +24,22 @@ namespace Simple {
 
         Monitor(GLFWmonitor* _m);
 
-        operator GLFWmonitor*();
+        operator GLFWmonitor*() const;
 
 
-        const char* getName();
-        vec2i getPos();
-        vec4i getWorkarea();
-        vec2i getPhysicalSize();
-        vec2f getContentScale();
-        void  setUserPointer(void *_ptr);
-        void* getUserPointer();
-        const GLFWvidmode* getVideoMode();
-        const GLFWvidmode* getVideoModes(int &count);
-        void setGamma(float _gamma);
-        const GLFWgammaramp* getGammaRamp();
-        void setGammaRamp(const GLFWgammaramp* _ramp);
+        const char* getName() const;
+        vec2i getPos() const;
+        vec4i getWorkarea() const;
+        vec2i getPhysicalSize() const;
+        vec2f getContentScale() const;
+        // Note: setters are const too: they change the GLFW monitor, not this handle
+        void  setUserPointer(void *_ptr) const;
+        void* getUserPointer() const;
+        const GLFWvidmode* getVideoMode() const;
+        const GLFWvidmode* getVideoModes(int &count) const;
+        void setGamma(float _gamma) const;
+        const GLFWgammaramp* getGammaRamp() const;
+        void setGammaRamp(const GLFWgammaramp* _ramp) const;
     }; // Monitor END
 
 
@@ -55,11 +58,52 @@ namespace Simple {
     }; // AvailableMonitors END
 
 
+//  ============  GLFW image (icons, cursors)  ============  \\
+
+    // GLFW images are always 8-bit RGBA (not premultiplied), rows from the top. An Img::Image4u is used without a copy (the image
+    // must outlive the view and not be resized); other images are converted into 'storage': 1 channel -> gray, 2 -> gray + alpha,
+    // 3 -> RGB + opaque alpha; float channels are clamped to [0, 1] and scaled to [0, 255].
+    // Note: GLFW copies the pixels in the calls that take images, so a temporary view is enough there
+    struct GLFWImageView {
+        GLFWimage image;
+        std::vector<unsigned char> storage; // converted images only
+
+        GLFWImageView();
+        GLFWImageView(const Img::Image4u &_img);
+        template <typename T, int Ch>
+        GLFWImageView(const Img::Image<T, Ch> &_img) {
+            typedef typename Img::Image<T, Ch>::ColorType   ColorType;
+            typedef typename Img::Image<T, Ch>::ChannelType ChannelType;
+            static_assert(sizeof(ColorType) == Ch * sizeof(ChannelType), "Img::Image texels must be tightly packed");
+            image.width  = _img.width;
+            image.height = _img.height;
+            storage.resize((size_t)_img.width * _img.height * 4u);
+            for (size_t i = 0u; i < _img.img.size(); ++i) {
+                const ChannelType *__src = reinterpret_cast<const ChannelType*>(&_img.img[i]);
+                unsigned char     *__dst = &storage[4u * i];
+                if (Ch <= 2) __dst[0] = __dst[1] = __dst[2] = toByte(__src[0]);
+                else       { __dst[0] = toByte(__src[0]); __dst[1] = toByte(__src[1]); __dst[2] = toByte(__src[2]); }
+                __dst[3] = Ch == 2 ? toByte(__src[1]) : (Ch == 4 ? toByte(__src[Ch - 1]) : (unsigned char)255u);
+            }
+            image.pixels = storage.data();
+        }
+        GLFWImageView(const GLFWImageView &_view);
+        GLFWImageView& operator=(const GLFWImageView &_view);
+
+        operator const GLFWimage&() const;
+
+        static unsigned char toByte(unsigned char _value);
+        static unsigned char toByte(float _value);
+    }; // GLFWImageView END
+
+
 //  ============  GLFW Window wrapper  ============  \\
 
     // TODO: all sorts of setters/getters, framebuffer, other necessary stuff
     struct Window {
         GLFWwindow *window;
+        // The position and size before the last switch to full screen (see 'toWindowed'); x == INT32_MIN if unknown
+        vec4i windowed_pos_reso{INT32_MIN, 0, 0, 0};
 
         Window(GLFWwindow *_window = nullptr);
         Window(uint32_t _w, uint32_t _h, const char *_name, GLFWmonitor *_m = nullptr,
@@ -87,18 +131,31 @@ namespace Simple {
         void fixateCurrentAspectRatio();
         void setAspectRatio(const vec2i &_asp_ratio = GLFW_DONT_CARE);
 
-        // TODO:
-        void setIcon();
+        // Several sizes let the system pick the best one (e.g. 16x16, 32x32, 48x48)
+        // Note: no effect on macOS (no window icons); on Wayland GLFW reports GLFW_FEATURE_UNAVAILABLE
+        void setIcon(const std::vector<GLFWImageView> &_images);
+        void setIcon(const GLFWImageView &_image);
+        // The default icon of the system
+        void resetIcon();
 
 
 // FullScreen|Windowed mode
 
-        // Returns window resolution before changing to full screen
-        vec4i toFullScreen(Monitor _m = nullptr);
+        // The window has a monitor (full screen or windowed full screen)
+        bool isFullScreen() const;
+        GLFWmonitor *getMonitor() const;
 
-        // Returns window resolution before changing to full screen
+        // Exclusive full screen with a video mode of the monitor ('_m' == nullptr: primary). Returns the window position and size
+        // before the switch (also kept in 'windowed_pos_reso' if the window was windowed).
+        // '_reso' == 0: the current video mode of the monitor (otherwise GLFW picks the closest video mode)
+        vec4i toFullScreen(Monitor _m = nullptr, const vec2i &_reso = 0, int _refresh_rate = GLFW_DONT_CARE);
+
+        // Windowed full screen ("borderless"): the current video mode of the monitor, so the mode doesn't change.
+        // Returns the window position and size before the switch (also kept in 'windowed_pos_reso')
         vec4i toWindowedFullScreen(Monitor _m = nullptr);
 
+        // Back to the position and size before the last switch to full screen (if unknown: 3/4 of the monitor work area, centered).
+        // Note: the position and size are kept in this object, so switch through the same 'Window'
         void toWindowed();
 
         void toWindowedWithParams(const vec2i &_pos, const vec2i &_reso, int _refresh_rate = GLFW_DONT_CARE);
@@ -114,29 +171,25 @@ namespace Simple {
 
         static Window Windowed(const char *_name, uint32_t _w, uint32_t _h,
                                GLFWwindow *_shared_win = nullptr);
-        // TODO:
-        static Window FullScreen(const char *_name, uint32_t _w, uint32_t _h, Monitor _m = nullptr,
+        // Exclusive full screen with the closest video mode to '_w' x '_h' (0: the current mode); '_m' == nullptr: primary monitor
+        static Window FullScreen(const char *_name, uint32_t _w = 0u, uint32_t _h = 0u, Monitor _m = nullptr,
                                  GLFWwindow *_shared_win = nullptr);
-        // TODO:
-        static Window WindowedFullScreen(const char *_name, uint32_t _w, uint32_t _h, Monitor _m = nullptr,
-                                         GLFWwindow *_shared_win = nullptr);
+        // Windowed full screen: the current video mode of the monitor (sets the color bits and refresh rate hints)
+        static Window WindowedFullScreen(const char *_name, Monitor _m = nullptr, GLFWwindow *_shared_win = nullptr);
     }; // Window END
 
 
 //  ============  GLFW Init/Terminate wrapper  ============  \\
 
-    // a global variable of this class "automatically" turns GLFW on/off (heresy)
     struct GLFWInitClass {
         bool is_initialized = false;
 
          GLFWInitClass();
         ~GLFWInitClass();
 
-        // Can be called manually to terminate GLFW before the program exit
+        // Can be called manually to terminate GLFW before the program exits
         void terminate();
     }; // GLFWInitClass END
-    extern GLFWInitClass glfw_init;
-
 }; // Simple END
 
 

@@ -1596,6 +1596,12 @@ namespace Simple {
             bool __finish = _json_str == nullptr || _json_str[0] != '[';
             uint32_t __tmp_offset = 0u, __sum_offset = __finish ? UINT32_MAX : 1u;
             switchValueArr();
+            // Empty: '[' and ']' with only whitespace between
+            if (!__finish) {
+                __tmp_offset = Util::skipWhitespace(_json_str+__sum_offset);
+                if (_json_str[__sum_offset+__tmp_offset] == ']')
+                    return __sum_offset + __tmp_offset + 1u;
+            }
             while (!__finish) {
                 value_arr_obj.emplace_back();
                 __tmp_offset = value_arr_obj.back().readValue(_json_str+__sum_offset);
@@ -1639,6 +1645,12 @@ namespace Simple {
             bool __finish = _json_str == nullptr || _json_str[0] != '{';
             uint32_t __tmp_offset = 0u, __sum_offset = __finish ? UINT32_MAX : 1u;
             switchValueObj();
+            // Empty: '{' and '}' with only whitespace between
+            if (!__finish) {
+                __tmp_offset = Util::skipWhitespace(_json_str+__sum_offset);
+                if (_json_str[__sum_offset+__tmp_offset] == '}')
+                    return __sum_offset + __tmp_offset + 1u;
+            }
             while (!__finish) {
                 // Reading string
                 value_arr_obj.emplace_back();

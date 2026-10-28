@@ -1,0 +1,9 @@
+{
+    "inputs": [
+        { "key": "W",         "action": "move_forward" },
+        { "key": "S",         "action": "move_back" },
+        { "key": "A",         "action": "move_left" },
+        { "key": "D",         "action": "move_right" },
+        { "key": "MouseLeft", "action": "rotate" }
+    ]
+}
