@@ -186,9 +186,6 @@ namespace Simple {
             // Renders a single note: '_hold' seconds pressed, then until the release ends (or '_max_len' seconds)
             std::vector<float> renderNote(const InstrumentParams &_params, float _freq, float _hold, uint32_t _sample_rate,
                                           float _max_len = 10.f);
-
-            // Writes 16-bit PCM WAV, '_frames' are interleaved stereo in [-1, 1]
-            bool writeWAV(const std::string &_fpath, const std::vector<vec2f> &_frames, uint32_t _sample_rate);
         }; // Synth END
     }; // Audio END
 }; // Simple END

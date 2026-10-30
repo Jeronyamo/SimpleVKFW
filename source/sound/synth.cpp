@@ -1,6 +1,5 @@
 #include "sound/synth.h"
 
-#include <fstream>
 
 
 namespace Simple {
@@ -335,38 +334,6 @@ namespace Simple {
                     __res.push_back(__voice.render());
                 }
                 return __res;
-            }
-
-            static void writeLE(std::ofstream &_file, uint32_t _value, uint32_t _bytes) {
-                for (uint32_t i = 0u; i < _bytes; ++i)
-                    _file.put(char((_value >> (8u * i)) & 0xFFu));
-            }
-
-            bool writeWAV(const std::string &_fpath, const std::vector<vec2f> &_frames, uint32_t _sample_rate) {
-                std::ofstream __file(_fpath.c_str(), std::ios::binary);
-                if (!__file) {
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Synth :: writeWAV", "could not open '%s'\n"), _fpath.c_str());
-                    return false;
-                }
-                const uint32_t __data_bytes = uint32_t(_frames.size()) * 4u;
-                __file.write("RIFF", 4);
-                writeLE(__file, 36u + __data_bytes, 4u);
-                __file.write("WAVEfmt ", 8);
-                writeLE(__file, 16u, 4u);                // fmt chunk size
-                writeLE(__file, 1u, 2u);                 // PCM
-                writeLE(__file, 2u, 2u);                 // Channels
-                writeLE(__file, _sample_rate, 4u);
-                writeLE(__file, _sample_rate * 4u, 4u);  // Bytes per second
-                writeLE(__file, 4u, 2u);                 // Block align
-                writeLE(__file, 16u, 2u);                // Bits per sample
-                __file.write("data", 4);
-                writeLE(__file, __data_bytes, 4u);
-                for (const vec2f &__frame : _frames) {
-                    const vec2f __clamped = Math::clampCL(__frame, vec2f{-1.f}, vec2f{1.f}) * float(INT16_MAX);
-                    writeLE(__file, uint32_t(int32_t(__clamped.x)) & 0xFFFFu, 2u);
-                    writeLE(__file, uint32_t(int32_t(__clamped.y)) & 0xFFFFu, 2u);
-                }
-                return bool(__file);
             }
         }; // Synth END
     }; // Audio END

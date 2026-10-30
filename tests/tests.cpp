@@ -429,6 +429,94 @@ namespace Simple {
     }
 
 
+    SVKFW_ADD_TEST(AudioWAVRoundTrip, "Audio - WAV write/read in every PCM format") {
+        const uint16_t __bits[] = { 8u, 16u, 24u, 32u };
+        for (uint16_t __channels = 1u; __channels <= 3u; ++__channels)
+            for (uint16_t __bits_per_sample : __bits) {
+                const uint32_t __num_frames = 1000u;
+                std::vector<float> __samples(__num_frames * __channels);
+                for (size_t i = 0u; i < __samples.size(); ++i)
+                    __samples[i] = 0.9f * std::sin(0.01f * float(i)) + (i == 7u ? 2.f : 0.f); // One clipped sample
+
+                File::ReaderWriterWAV __wav;
+                __wav.file_content.channels        = __channels;
+                __wav.file_content.bits_per_sample = __bits_per_sample;
+                __wav.file_content.sample_rate     = 44100u;
+                Test::testAssert(__wav.file_content.setSamples(__samples.data(), __num_frames), "Could not encode WAV samples");
+                Test::testAssert(__wav.write("tests/resources/roundtrip.wav"), "Could not write the WAV file");
+
+                File::ReaderWriterWAV __reloaded{"tests/resources/roundtrip.wav"};
+                const File::ContentWAV &__content = __reloaded.file_content;
+                Test::testAssert(__content.format_tag == File::WAV_FORMAT_PCM && __content.channels == __channels &&
+                                 __content.bits_per_sample == __bits_per_sample && __content.sample_rate == 44100u &&
+                                 __content.numFrames() == __num_frames, "WAV format changed after write/read");
+
+                std::vector<float> __decoded;
+                Test::testAssert(__content.getSamples(__decoded) && __decoded.size() == __samples.size(), "Could not decode WAV samples");
+                const float __tolerance = 2.f / float(1u << (__bits_per_sample - 1u)) + 1e-6f;
+                for (size_t i = 0u; i < __samples.size(); ++i)
+                    Test::testAssert(std::fabs(__decoded[i] - std::min(__samples[i], 1.f)) <= __tolerance, "WAV sample changed after write/read");
+            }
+        std::remove("tests/resources/roundtrip.wav");
+    }
+
+
+    SVKFW_ADD_TEST(AudioOpusRoundTrip, "Audio - Ogg Opus encode/write/read/decode") {
+        const uint32_t __num_frames = 48000u + 123u; // Not a multiple of the 20 ms frame
+        std::vector<float> __samples(__num_frames * 2u);
+        for (uint32_t i = 0u; i < __num_frames; ++i) {
+            __samples[2u * i     ] = 0.5f * std::sin(2.f * 3.14159265f * 440.f * float(i) / 48000.f);
+            __samples[2u * i + 1u] = 0.5f * std::sin(2.f * 3.14159265f * 660.f * float(i) / 48000.f);
+        }
+
+        Codec::EncoderOpus __encoder;
+        __encoder.tags["TITLE"] = "Round trip";
+        File::ReaderWriterOGG __ogg;
+        Test::testAssert(__encoder.createEncoder(2), "Could not create the Opus encoder");
+        Test::testAssert(__encoder.encodeOGG(__samples.data(), __num_frames, __ogg.file_content), "Could not encode Opus");
+        Test::testAssert(__ogg.write("tests/resources/roundtrip.ogg"), "Could not write the Ogg file");
+
+        File::ReaderWriterOGG __reloaded{"tests/resources/roundtrip.ogg"};
+        const std::vector<File::ContentOGG::PageOGG> &__pages = __reloaded.file_content.pages;
+        Test::testAssert(__pages.size() == __ogg.file_content.pages.size() && __pages.size() > 3u, "Ogg page count changed after write/read");
+        Test::testAssert((__pages.front().header_flags & 0x02u) && (__pages.back().header_flags & 0x04u), "Ogg stream has no begin/end flags");
+        Test::testAssert(__pages.back().granule_position == uint64_t(__encoder.preskip) + __num_frames, "Wrong last granule position");
+        for (const File::ContentOGG::PageOGG &__page : __pages)
+            Test::testAssert(__page.checksum == File::ContentOGG::Checksum(__page), "Wrong Ogg page checksum");
+
+        // Same packet assembly as Sample::SmpAudioFile
+        Codec::DecoderOpus __decoder;
+        std::vector<int16_t> __decoded;
+        std::vector<unsigned char> __packet;
+        for (const File::ContentOGG::PageOGG &__page : __pages) {
+            uint32_t __offset = 0u;
+            for (uint32_t i = 0u; i < __page.total_segments; ++i) {
+                __packet.insert(__packet.end(), __page.segment_data.begin() + __offset, __page.segment_data.begin() + __offset + __page.segment_table[i]);
+                __offset += __page.segment_table[i];
+                if (__page.segment_table[i] == 255u) continue;
+                if (__decoder.decodePacket(__packet) && __decoder.curr_frame_size)
+                    __decoded.insert(__decoded.end(), __decoder.pcm_out.begin(), __decoder.pcm_out.begin() + __decoder.curr_frame_size);
+                __packet.clear();
+            }
+        }
+        Test::testAssert(__decoder.opus_head.channels == 2u && __decoder.opus_head.preskip == __encoder.preskip, "Wrong OpusHead after write/read");
+        Test::testAssert(__decoder.opus_tags.tags["TITLE"] == "Round trip", "Wrong OpusTags after write/read");
+        Test::testAssert(__decoded.size() >= (size_t(__encoder.preskip) + __num_frames) * 2u, "Decoded Opus stream is too short");
+
+        // Lossy: compare the signal energy after the pre-skip
+        double __energy_in = 0., __energy_out = 0., __error = 0.;
+        for (uint32_t i = 0u; i < __num_frames * 2u; ++i) {
+            const double __decoded_sample = __decoded[size_t(__encoder.preskip) * 2u + i] / 32768.;
+            __energy_in  += double(__samples[i]) * __samples[i];
+            __energy_out += __decoded_sample * __decoded_sample;
+            __error      += (__decoded_sample - __samples[i]) * (__decoded_sample - __samples[i]);
+        }
+        Test::testAssert(std::fabs(__energy_out / __energy_in - 1.) < 0.1, "Decoded Opus signal energy differs too much");
+        Test::testAssert(__error / __energy_in < 0.05, "Decoded Opus signal differs too much");
+        std::remove("tests/resources/roundtrip.ogg");
+    }
+
+
 
 #undef  SVKFW_TEST_GROUP
 #define SVKFW_TEST_GROUP "Parser"

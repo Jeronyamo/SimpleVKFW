@@ -1,4 +1,5 @@
 #include "data/filetypes.h"
+#include <algorithm>
 
 namespace Simple {
     namespace File {
@@ -1371,6 +1372,7 @@ namespace Simple {
             // Open file (existing file is truncated)
             FileWriter __ftype_file{_fpath, true};
             if (!__ftype_file.isOpen()) return false;
+            file_content.flushPage();
 
             for (const auto& page : file_content.pages) {
                 __ftype_file.writeBinaryArray(page.signature, 4);
@@ -1396,6 +1398,280 @@ namespace Simple {
             std::string __res_str = std::string(__ch_buffer, __ch_buffer + header_len);
             return _ftype_file.isValid() && __res_str == "OggS";
         }
+
+        uint32_t ContentOGG::Checksum(const PageOGG &_page) {
+            static uint32_t __table[256]{};
+            static bool __table_ready = false;
+            if (!__table_ready) {
+                for (uint32_t i = 0u; i < 256u; ++i) {
+                    uint32_t __crc = i << 24u;
+                    for (uint32_t b = 0u; b < 8u; ++b)
+                        __crc = (__crc & 0x80000000u) ? (__crc << 1u) ^ 0x04C11DB7u : (__crc << 1u);
+                    __table[i] = __crc;
+                }
+                __table_ready = true;
+            }
+
+            uint8_t __header[27]{};
+            std::memcpy(__header, _page.signature, 4);
+            __header[4] = _page.version;
+            __header[5] = _page.header_flags;
+            for (uint32_t i = 0u; i < 8u; ++i) __header[ 6u + i] = uint8_t(_page.granule_position >> (8u * i));
+            for (uint32_t i = 0u; i < 4u; ++i) __header[14u + i] = uint8_t(_page.serial_number    >> (8u * i));
+            for (uint32_t i = 0u; i < 4u; ++i) __header[18u + i] = uint8_t(_page.sequence_number  >> (8u * i));
+            // Bytes 22-25 (checksum) stay zero
+            __header[26] = _page.total_segments;
+
+            uint32_t __crc = 0u;
+            auto __update = [&__crc](const uint8_t *_bytes, size_t _len) {
+                for (size_t i = 0u; i < _len; ++i)
+                    __crc = (__crc << 8u) ^ __table[((__crc >> 24u) ^ _bytes[i]) & 0xFFu];
+            };
+            __update(__header, 27u);
+            __update(_page.segment_table, _page.total_segments);
+            __update(_page.segment_data.data(), _page.segment_data.size());
+            return __crc;
+        }
+
+        void ContentOGG::addPacket(uint32_t _serial, const std::vector<unsigned char> &_packet,
+                                   uint64_t _granule_position, bool _flush, bool _end_of_stream) {
+            // Max page data in bytes before the page is closed (libogg uses about 4 KB too)
+            const size_t __page_fill = 4096u;
+
+            // Lacing values: 255 for every full segment, the last one is < 255 (0 if the size is a multiple of 255)
+            const size_t __num_lacing = _packet.size() / 255u + 1u;
+            size_t __offset = 0u;
+            for (size_t i = 0u; i < __num_lacing; ++i) {
+                if (!page_open || pages.back().serial_number != _serial || pages.back().total_segments == 255u) {
+                    if (page_open) flushPage();
+
+                    // New page, its sequence number continues the last page of this stream
+                    uint32_t __sequence = 0u;
+                    bool __first_page = true;
+                    for (size_t p = pages.size(); p-- > 0u;)
+                        if (pages[p].serial_number == _serial) { __sequence = pages[p].sequence_number + 1u; __first_page = false; break; }
+
+                    PageOGG __page{};
+                    std::memcpy(__page.signature, "OggS", 4);
+                    __page.header_flags     = uint8_t((i > 0u ? 0x01u : 0u) | (__first_page ? 0x02u : 0u));
+                    __page.granule_position = UINT64_MAX; // No packet ends on this page yet
+                    __page.serial_number    = _serial;
+                    __page.sequence_number  = __sequence;
+                    pages.emplace_back(std::move(__page));
+                    page_open = true;
+                }
+                PageOGG &__page = pages.back();
+                const size_t __segment = std::min<size_t>(255u, _packet.size() - __offset);
+                __page.segment_table[__page.total_segments++] = uint8_t(__segment);
+                __page.segment_data.insert(__page.segment_data.end(), _packet.begin() + __offset, _packet.begin() + __offset + __segment);
+                __offset += __segment;
+            }
+
+            PageOGG &__page = pages.back();
+            __page.granule_position = _granule_position;
+            if (_end_of_stream) __page.header_flags |= 0x04u;
+            if (_flush || _end_of_stream || __page.total_segments == 255u || __page.segment_data.size() >= __page_fill)
+                flushPage();
+        }
+
+        void ContentOGG::flushPage() {
+            if (!page_open || pages.empty()) return;
+            pages.back().checksum = Checksum(pages.back());
+            page_open = false;
+        }
+
+        // WAV
+
+        WAVCodecItf::~WAVCodecItf() {}
+
+        uint16_t WAVCodecPCM::formatTag() const { return WAV_FORMAT_PCM; }
+
+        bool WAVCodecPCM::supportsBits(uint16_t _bits_per_sample) const {
+            return _bits_per_sample == 8u || _bits_per_sample == 16u || _bits_per_sample == 24u || _bits_per_sample == 32u;
+        }
+
+        uint16_t WAVCodecPCM::blockAlign(uint16_t _channels, uint16_t _bits_per_sample) const {
+            return uint16_t(_channels * (_bits_per_sample / 8u));
+        }
+
+        bool WAVCodecPCM::encode(const float *_samples, size_t _num_samples, uint16_t _bits_per_sample, std::vector<uint8_t> &_out_data) const {
+            if (!supportsBits(_bits_per_sample)) return false;
+            const uint32_t __bytes = _bits_per_sample / 8u;
+            const double   __scale = double((uint64_t(1u) << (_bits_per_sample - 1u)) - 1u);
+
+            _out_data.resize(_num_samples * __bytes);
+            uint8_t *__dst = _out_data.data();
+            for (size_t i = 0u; i < _num_samples; ++i, __dst += __bytes) {
+                const double __sample = std::min(std::max(double(_samples[i]), -1.), 1.) * __scale;
+                if (__bytes == 1u) { *__dst = uint8_t(128 + int32_t(__sample)); continue; } // 8 bit is unsigned
+                const uint32_t __word = uint32_t(int32_t(__sample));
+                for (uint32_t b = 0u; b < __bytes; ++b)
+                    __dst[b] = uint8_t(__word >> (8u * b));
+            }
+            return true;
+        }
+
+        bool WAVCodecPCM::decode(const uint8_t *_data, size_t _num_bytes, uint16_t _bits_per_sample, std::vector<float> &_out_samples) const {
+            if (!supportsBits(_bits_per_sample)) return false;
+            const uint32_t __bytes = _bits_per_sample / 8u;
+            const double   __scale = 1. / double(uint64_t(1u) << (_bits_per_sample - 1u));
+
+            _out_samples.resize(_num_bytes / __bytes);
+            for (size_t i = 0u; i < _out_samples.size(); ++i, _data += __bytes) {
+                if (__bytes == 1u) { _out_samples[i] = float((int32_t(*_data) - 128) * __scale); continue; }
+                uint32_t __word = 0u;
+                for (uint32_t b = 0u; b < __bytes; ++b)
+                    __word |= uint32_t(_data[b]) << (8u * b);
+                __word <<= 32u - _bits_per_sample; // Sign extension through the top bit
+                _out_samples[i] = float(double(int32_t(__word) >> (32u - _bits_per_sample)) * __scale);
+            }
+            return true;
+        }
+
+        static std::map<uint16_t, const WAVCodecItf*>& WAVCodecs_() {
+            static WAVCodecPCM __pcm;
+            static std::map<uint16_t, const WAVCodecItf*> __codecs{ {__pcm.formatTag(), &__pcm} };
+            return __codecs;
+        }
+
+        void ContentWAV::RegisterCodec(const WAVCodecItf *_codec) {
+            if (_codec != nullptr) WAVCodecs_()[_codec->formatTag()] = _codec;
+        }
+
+        const WAVCodecItf* ContentWAV::FindCodec(uint16_t _format_tag) {
+            auto __it = WAVCodecs_().find(_format_tag);
+            return __it == WAVCodecs_().end() ? nullptr : __it->second;
+        }
+
+        uint16_t ContentWAV::blockAlign() const {
+            const WAVCodecItf *__codec = FindCodec(format_tag);
+            return __codec != nullptr ? __codec->blockAlign(channels, bits_per_sample) : uint16_t(channels * ((bits_per_sample + 7u) / 8u));
+        }
+
+        uint32_t ContentWAV::numFrames() const {
+            const uint16_t __align = blockAlign();
+            return __align ? uint32_t(data.size() / __align) : 0u;
+        }
+
+        bool ContentWAV::setSamples(const float *_samples, size_t _num_frames) {
+            const WAVCodecItf *__codec = FindCodec(format_tag);
+            if (__codec == nullptr || !__codec->supportsBits(bits_per_sample) || channels == 0u) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ContentWAV :: setSamples", "No codec for format 0x%04X, %u bits\n"), unsigned(format_tag), unsigned(bits_per_sample));
+                return false;
+            }
+            return __codec->encode(_samples, _num_frames * channels, bits_per_sample, data);
+        }
+
+        bool ContentWAV::setSamples(const std::vector<vec2f> &_frames) {
+            channels = 2u;
+            std::vector<float> __samples(_frames.size() * 2u);
+            for (size_t i = 0u; i < _frames.size(); ++i) {
+                __samples[2u * i     ] = _frames[i].x;
+                __samples[2u * i + 1u] = _frames[i].y;
+            }
+            return setSamples(__samples.data(), _frames.size());
+        }
+
+        bool ContentWAV::getSamples(std::vector<float> &_out_samples) const {
+            const WAVCodecItf *__codec = FindCodec(format_tag);
+            if (__codec == nullptr || !__codec->supportsBits(bits_per_sample)) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ContentWAV :: getSamples", "No codec for format 0x%04X, %u bits\n"), unsigned(format_tag), unsigned(bits_per_sample));
+                return false;
+            }
+            return __codec->decode(data.data(), size_t(numFrames()) * blockAlign(), bits_per_sample, _out_samples);
+        }
+
+        ReaderWriterWAV::ReaderWriterWAV(const std::string &_fpath) { if (!_fpath.empty()) read(_fpath); }
+
+        bool ReaderWriterWAV::read(const std::string &_fpath) {
+            FileReader __ftype_file{_fpath};
+            if (!__ftype_file.isOpen()) return false;
+            SVKFW_WASSERT_CMD(tryHeaders(__ftype_file), "File::ReaderWriterWAV :: read", "'" + _fpath + "' is not a RIFF WAVE file\n", return false);
+
+            bool __has_fmt = false, __has_data = false;
+            while (__ftype_file.isValid() && !(__has_fmt && __has_data)) {
+                char __chunk_id[4]{};
+                uint32_t __chunk_size = 0u;
+                if (!__ftype_file.readBinaryArray<char>(__chunk_id, 4) || !__ftype_file.readBinary(__chunk_size)) break;
+                const std::string __id(__chunk_id, __chunk_id + 4);
+
+                std::vector<uint8_t> __chunk(__chunk_size);
+                SVKFW_WASSERT_CMD(__ftype_file.readBinaryArray<uint8_t>(__chunk.data(), __chunk_size), "File::ReaderWriterWAV :: read",
+                                  "Chunk '" + __id + "' is cut off\n", break);
+                if (__chunk_size & 1u) __ftype_file.readBinary<uint8_t>(); // Chunks are padded to even sizes
+
+                if (__id == "fmt ") {
+                    SVKFW_WASSERT_CMD(__chunk_size >= 16u, "File::ReaderWriterWAV :: read", "'fmt ' chunk is too small\n", return false);
+                    auto __u16 = [&__chunk](uint32_t _at) { return uint16_t(__chunk[_at] | (__chunk[_at + 1u] << 8u)); };
+                    file_content.format_tag      = __u16(0u);
+                    file_content.channels        = __u16(2u);
+                    file_content.sample_rate     = uint32_t(__u16(4u)) | (uint32_t(__u16(6u)) << 16u);
+                    file_content.bits_per_sample = __u16(14u);
+                    // WAVE_FORMAT_EXTENSIBLE: cbSize, valid bits, channel mask, sub-format GUID (starts with the real tag)
+                    if (file_content.format_tag == WAV_FORMAT_EXTENSIBLE && __chunk_size >= 40u)
+                        file_content.format_tag = __u16(24u);
+                    __has_fmt = true;
+                }
+                else if (__id == "data") {
+                    file_content.data = std::move(__chunk);
+                    __has_data = true;
+                }
+            }
+
+            SVKFW_WASSERT_CMD(__has_fmt && __has_data, "File::ReaderWriterWAV :: read", "'" + _fpath + "' has no 'fmt ' or 'data' chunk\n", return false);
+            if (ContentWAV::FindCodec(file_content.format_tag) == nullptr)
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("File::ReaderWriterWAV :: read", "No codec for format 0x%04X, samples can't be decoded\n"), unsigned(file_content.format_tag));
+            return true;
+        }
+
+        bool ReaderWriterWAV::write(const std::string &_fpath) {
+            const ContentWAV &__wav = file_content;
+            const uint16_t __align = __wav.blockAlign();
+            const size_t __data_size = size_t(__wav.numFrames()) * __align;
+            SVKFW_WASSERT_CMD(__data_size + 80u < size_t(UINT32_MAX), "File::ReaderWriterWAV :: write", "Data doesn't fit into a RIFF file\n", return false);
+
+            // WAVE_FORMAT_EXTENSIBLE is required above 2 channels or 16 bits (except float)
+            const bool __extensible = __wav.channels > 2u || (__wav.bits_per_sample > 16u && __wav.format_tag != WAV_FORMAT_IEEE_FLOAT);
+            const uint32_t __fmt_size = __extensible ? 40u : 16u;
+
+            FileWriter __ftype_file{_fpath, true};
+            if (!__ftype_file.isOpen()) return false;
+
+            __ftype_file.writeBinaryArray("RIFF", 4);
+            __ftype_file.writeBinary(uint32_t(4u + 8u + __fmt_size + 8u + __data_size + (__data_size & 1u)));
+            __ftype_file.writeBinaryArray("WAVE", 4);
+
+            __ftype_file.writeBinaryArray("fmt ", 4);
+            __ftype_file.writeBinary(__fmt_size);
+            __ftype_file.writeBinary(uint16_t(__extensible ? WAV_FORMAT_EXTENSIBLE : __wav.format_tag));
+            __ftype_file.writeBinary(__wav.channels);
+            __ftype_file.writeBinary(__wav.sample_rate);
+            __ftype_file.writeBinary(uint32_t(__wav.sample_rate * __align)); // Bytes per second
+            __ftype_file.writeBinary(__align);
+            __ftype_file.writeBinary(__wav.bits_per_sample);
+            if (__extensible) {
+                static const uint8_t __guid_tail[14] = { 0x00u, 0x00u, 0x00u, 0x00u, 0x10u, 0x00u, 0x80u, 0x00u, 0x00u, 0xAAu, 0x00u, 0x38u, 0x9Bu, 0x71u };
+                __ftype_file.writeBinary(uint16_t(22u));               // cbSize
+                __ftype_file.writeBinary(__wav.bits_per_sample);       // Valid bits per sample
+                __ftype_file.writeBinary(uint32_t(0u));                // Channel mask: no speaker positions
+                __ftype_file.writeBinary(uint16_t(__wav.format_tag)); // Sub-format GUID
+                __ftype_file.writeBinaryArray(__guid_tail, 14);
+            }
+
+            __ftype_file.writeBinaryArray("data", 4);
+            __ftype_file.writeBinary(uint32_t(__data_size));
+            __ftype_file.writeBinaryArray(__wav.data.data(), __data_size);
+            if (__data_size & 1u) __ftype_file.writeBinary(uint8_t(0u));
+
+            return __ftype_file.isValid();
+        }
+
+        bool ReaderWriterWAV::tryHeaders(ReaderItf &_ftype_file) {
+            char __header[12]{};
+            _ftype_file.read(__header, 12);
+            return _ftype_file.isValid() && !std::memcmp(__header, "RIFF", 4) && !std::memcmp(__header + 8, "WAVE", 4);
+        }
+
 
         namespace Util {
 

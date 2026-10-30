@@ -83,6 +83,7 @@ namespace Simple {
             std::vector<float> wave_preview;
             Audio::Synth::InstrumentParams wave_preview_params;
             bool wave_preview_valid = false;
+            int32_t export_opus_kbps = 160;
             std::string status;
 
             MusicStudio(const std::string &_library_path = "resources/music/instruments.json",
@@ -108,6 +109,8 @@ namespace Simple {
             Audio::Synth::Instrument* editedInstrument_();
             void commitInstrument_(const Audio::Synth::InstrumentParams &_params);
             void loadSong_(const std::string &_fpath);
+            // Renders the song at 48 kHz next to 'song_path' as .wav (16 bit PCM) or .ogg (Opus)
+            bool exportSong_(bool _opus);
             void handleKeys_();
             void handlePatternKey_(WindowInput::ActionId _action, int _glfw_action);
             void typeHex_(char _ch);

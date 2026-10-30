@@ -53,6 +53,34 @@ namespace Simple {
 
             bool decodePacket(const std::vector<unsigned char> &_opus_packet);
         }; // DecoderOpus END
+
+        // Encodes 48 kHz mono/stereo samples into an Ogg Opus stream (RFC 7845)
+        struct EncoderOpus {
+            OpusEncoder* encoder = nullptr;
+            int opus_sample_rate = 48000;
+            int channels         = 0;
+            int frame_size       = 960;    // 20 ms
+            int bitrate          = 128000; // Bits per second
+            int complexity       = 10;     // [0, 10]
+            int preskip          = 0;      // Encoder lookahead, written to OpusHead
+            std::string vendor   = "SimpleVKFW";
+            std::map<std::string, std::string> tags; // OpusTags comments, e.g. TITLE, ARTIST
+
+            EncoderOpus();
+           ~EncoderOpus();
+
+            bool createEncoder(int _channels, int _application = OPUS_APPLICATION_AUDIO);
+
+            bool closeEncoder();
+
+            std::vector<unsigned char> makeOpusHead() const;
+
+            std::vector<unsigned char> makeOpusTags() const;
+
+            // Appends a whole logical stream (headers, audio, end of stream) to '_ogg'.
+            // '_samples' are interleaved, '_num_frames' frames of 'channels' samples.
+            bool encodeOGG(const float *_samples, size_t _num_frames, File::ContentOGG &_ogg, uint32_t _serial = 0x53564B46u);
+        }; // EncoderOpus END
     }; // Codec END
 }; // Simple END
 

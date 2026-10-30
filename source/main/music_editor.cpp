@@ -1,5 +1,7 @@
 #include "main/music_editor.h"
 
+#include "data/codecs.h"
+
 #include <cctype>
 #include <cfloat>
 #include <cstring>
@@ -118,6 +120,46 @@ namespace Simple {
                 __instrument->params = _params;
                 library.is_modified = true;
             }
+        }
+
+        bool MusicStudio::exportSong_(bool _opus) {
+            const uint32_t __sample_rate = 48000u;
+            std::string __fpath = song_path;
+            const size_t __dot = __fpath.find_last_of('.');
+            __fpath = (__dot == std::string::npos ? __fpath : __fpath.substr(0u, __dot)) + (_opus ? ".ogg" : ".wav");
+
+            std::vector<vec2f> __frames;
+            std::string __title;
+            {
+                // Note: renders a copy, so playback and editing go on
+                Audio::Tracker::Song __copy;
+                { SongLock __lock(player.mutex); __copy = song; }
+                __title  = __copy.name;
+                __frames = Audio::Tracker::SongPlayer::renderSong(__copy, __sample_rate);
+            }
+
+            bool __res = false;
+            if (_opus) {
+                Codec::EncoderOpus __encoder;
+                __encoder.bitrate = export_opus_kbps * 1000;
+                __encoder.tags["TITLE"] = __title;
+                std::vector<float> __samples(__frames.size() * 2u);
+                for (size_t i = 0u; i < __frames.size(); ++i) {
+                    __samples[2u * i     ] = __frames[i].x;
+                    __samples[2u * i + 1u] = __frames[i].y;
+                }
+                File::ReaderWriterOGG __ogg;
+                __res = __encoder.createEncoder(2) &&
+                        __encoder.encodeOGG(__samples.data(), __frames.size(), __ogg.file_content) &&
+                        __ogg.write(__fpath);
+            }
+            else {
+                File::ReaderWriterWAV __wav;
+                __wav.file_content.sample_rate = __sample_rate;
+                __res = __wav.file_content.setSamples(__frames) && __wav.write(__fpath);
+            }
+            status = (__res ? "Exported '" : "Could not export '") + __fpath + "'";
+            return __res;
         }
 
         void MusicStudio::loadSong_(const std::string &_fpath) {
@@ -452,20 +494,11 @@ namespace Simple {
                 current_order = current_pattern = 0u;
                 cursor = ImGuiCustom::TextGridCursor{};
             }
+            if (ImGui::Button("Export WAV")) exportSong_(false);
             ImGui::SameLine();
-            if (ImGui::Button("Export WAV")) {
-                std::string __wav = song_path;
-                const size_t __dot = __wav.find_last_of('.');
-                __wav = (__dot == std::string::npos ? __wav : __wav.substr(0u, __dot)) + ".wav";
-                std::vector<vec2f> __frames;
-                {
-                    // Note: renders a copy, so playback and editing go on
-                    Audio::Tracker::Song __copy;
-                    { SongLock __lock(player.mutex); __copy = song; }
-                    __frames = Audio::Tracker::SongPlayer::renderSong(__copy, 48000u);
-                }
-                status = Audio::Synth::writeWAV(__wav, __frames, 48000u) ? "Exported '" + __wav + "'" : "Could not export '" + __wav + "'";
-            }
+            if (ImGui::Button("Export Ogg Opus")) exportSong_(true);
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.f);
+            ImGui::SliderInt("Opus kbps", &export_opus_kbps, 32, 256);
 
             // Transport
             ImGui::SeparatorText("Playback");

@@ -1,5 +1,7 @@
 #include "data/codecs.h"
 
+#include <algorithm>
+
 namespace Simple {
     namespace Codec {
 
@@ -157,6 +159,112 @@ namespace Simple {
                 fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::DecoderOpus :: decodePacket", "Error decoding audio packet - %s\n"), opus_strerror(samples_decoded_per_channel));
             }
             return samples_decoded_per_channel > 0;
+        }
+
+        EncoderOpus::EncoderOpus() {}
+
+        EncoderOpus::~EncoderOpus() { closeEncoder(); }
+
+        bool EncoderOpus::createEncoder(int _channels, int _application) {
+            closeEncoder();
+            if (_channels < 1 || _channels > 2) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::EncoderOpus :: createEncoder", "Only mono and stereo are supported, got %d channels\n"), _channels);
+                return false;
+            }
+
+            int __opus_error = 0;
+            encoder = opus_encoder_create(opus_sample_rate, _channels, _application, &__opus_error);
+            if (__opus_error != OPUS_OK || encoder == nullptr) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::EncoderOpus :: createEncoder", "Could not create Opus encoder (Error: %s)\n"), opus_strerror(__opus_error));
+                encoder = nullptr;
+                return false;
+            }
+            channels = _channels;
+            opus_encoder_ctl(encoder, OPUS_SET_BITRATE(bitrate));
+            opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(complexity));
+
+            opus_int32 __lookahead = 0;
+            opus_encoder_ctl(encoder, OPUS_GET_LOOKAHEAD(&__lookahead));
+            preskip = int(__lookahead);
+            return true;
+        }
+
+        bool EncoderOpus::closeEncoder() {
+            if (encoder != nullptr) {
+                opus_encoder_destroy(encoder);
+                encoder = nullptr;
+            }
+            return false;
+        }
+
+        std::vector<unsigned char> EncoderOpus::makeOpusHead() const {
+            std::vector<unsigned char> __res_packet;
+            Bytes::BytestreamWriter __opus_writer{__res_packet};
+            const bool __swap = Bytes::Endianness.is_big_endian;
+
+            __opus_writer.writeArray("OpusHead", 8, false);
+            __opus_writer.writeValue(uint8_t (1u)              , __swap); // Version
+            __opus_writer.writeValue(uint8_t (channels)        , __swap);
+            __opus_writer.writeValue(uint16_t(preskip)         , __swap);
+            __opus_writer.writeValue(uint32_t(opus_sample_rate), __swap); // Input sample rate
+            __opus_writer.writeValue(int16_t (0)               , __swap); // Output gain
+            __opus_writer.writeValue(uint8_t (0u)              , __swap); // Mapping family 0: mono/stereo
+            return __res_packet;
+        }
+
+        std::vector<unsigned char> EncoderOpus::makeOpusTags() const {
+            std::vector<unsigned char> __res_packet;
+            Bytes::BytestreamWriter __opus_writer{__res_packet};
+            const bool __swap = Bytes::Endianness.is_big_endian;
+
+            __opus_writer.writeArray("OpusTags", 8, false);
+            __opus_writer.writeValue(uint32_t(vendor.size()), __swap);
+            __opus_writer.writeArray(vendor.data(), uint32_t(vendor.size()), false);
+            __opus_writer.writeValue(uint32_t(tags.size()), __swap);
+            for (const auto &key_val : tags) {
+                const std::string __tag = key_val.first + '=' + key_val.second;
+                __opus_writer.writeValue(uint32_t(__tag.size()), __swap);
+                __opus_writer.writeArray(__tag.data(), uint32_t(__tag.size()), false);
+            }
+            return __res_packet;
+        }
+
+        bool EncoderOpus::encodeOGG(const float *_samples, size_t _num_frames, File::ContentOGG &_ogg, uint32_t _serial) {
+            if (encoder == nullptr) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::EncoderOpus :: encodeOGG", "Encoder isn't created\n"));
+                return false;
+            }
+
+            // Header pages: OpusHead and OpusTags each end their page, granule position 0
+            _ogg.addPacket(_serial, makeOpusHead(), 0u, true);
+            _ogg.addPacket(_serial, makeOpusTags(), 0u, true);
+
+            // The decoder drops 'preskip' samples, so the input is padded until the last real sample is out.
+            // The last granule position (preskip + length) trims the padding.
+            const uint64_t __end_granule = uint64_t(preskip) + _num_frames;
+            const size_t   __num_packets = size_t((__end_granule + frame_size - 1u) / frame_size);
+
+            std::vector<float> __frame(size_t(frame_size) * channels);
+            std::vector<unsigned char> __packet(4000u);
+            for (size_t p = 0u; p < __num_packets; ++p) {
+                const size_t __first = p * size_t(frame_size);
+                const size_t __count = __first < _num_frames ? std::min(size_t(frame_size), _num_frames - __first) : 0u;
+                std::fill(__frame.begin(), __frame.end(), 0.f);
+                if (__count) std::copy(_samples + __first * channels, _samples + (__first + __count) * channels, __frame.begin());
+
+                __packet.resize(4000u);
+                const opus_int32 __bytes = opus_encode_float(encoder, __frame.data(), frame_size, __packet.data(), opus_int32(__packet.size()));
+                if (__bytes < 0) {
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Codec::EncoderOpus :: encodeOGG", "Error encoding packet %u - %s\n"), unsigned(p), opus_strerror(__bytes));
+                    return false;
+                }
+                __packet.resize(size_t(__bytes));
+
+                const bool __last = p + 1u == __num_packets;
+                const uint64_t __granule = __last ? __end_granule : uint64_t(p + 1u) * frame_size;
+                _ogg.addPacket(_serial, __packet, __granule, false, __last);
+            }
+            return true;
         }
     }; // Codec END
 }; // Simple END

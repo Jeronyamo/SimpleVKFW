@@ -16,6 +16,7 @@ namespace Simple {
             BIN,
             VMD,
             OGG,
+            WAV,
 
             UNKNOWN = UINT32_MAX
         }; // Filetype END
@@ -291,6 +292,18 @@ namespace Simple {
                 std::vector<unsigned char> segment_data; // segment_data.size() == total_segments, i-th segment data acquired by calculating offset (it's size is in segment_table[i])
             }; // PageOGG END
             std::vector<PageOGG> pages;
+            bool page_open = false; // Writing: the last page still takes packets
+
+            // CRC-32 of a page (polynomial 0x04C11DB7) as stored in its checksum field
+            static uint32_t Checksum(const PageOGG &_page);
+
+            // Writing: laces a packet of the logical stream '_serial' into pages.
+            // '_granule_position' is the stream position after the packet ends. A page is closed
+            // when it is full, when '_flush' is set or at '_end_of_stream' (the packet is the last one).
+            void addPacket(uint32_t _serial, const std::vector<unsigned char> &_packet,
+                           uint64_t _granule_position, bool _flush = false, bool _end_of_stream = false);
+            // Closes the open page and sets its checksum
+            void flushPage();
         }; // ContentOGG END
 
         struct ReaderWriterOGG : FiletypeReaderWriterItf {
@@ -303,6 +316,73 @@ namespace Simple {
 
             bool tryHeaders(ReaderItf &_ftype_file) override;
         }; // ReaderWriterOGG END
+
+
+    // WAV
+
+        // Format tags of the 'fmt ' chunk
+        enum WAVFormatTag : uint16_t {
+            WAV_FORMAT_PCM        = 0x0001u,
+            WAV_FORMAT_IEEE_FLOAT = 0x0003u,
+            WAV_FORMAT_ALAW       = 0x0006u,
+            WAV_FORMAT_MULAW      = 0x0007u,
+            WAV_FORMAT_IMA_ADPCM  = 0x0011u,
+            WAV_FORMAT_EXTENSIBLE = 0xFFFEu, // Real tag is in the first 2 bytes of the sub-format GUID
+        }; // WAVFormatTag END
+
+        // Converts samples between floats in [-1, 1] and the bytes of a 'data' chunk.
+        // There is one codec per format tag, see ContentWAV::RegisterCodec.
+        struct WAVCodecItf {
+            virtual ~WAVCodecItf();
+
+            virtual uint16_t formatTag() const = 0;
+            virtual bool supportsBits(uint16_t _bits_per_sample) const = 0;
+            // Bytes per frame of all channels ('nBlockAlign')
+            virtual uint16_t blockAlign(uint16_t _channels, uint16_t _bits_per_sample) const = 0;
+            // Samples are interleaved by channel
+            virtual bool encode(const float *_samples, size_t _num_samples, uint16_t _bits_per_sample, std::vector<uint8_t> &_out_data) const = 0;
+            virtual bool decode(const uint8_t *_data, size_t _num_bytes, uint16_t _bits_per_sample, std::vector<float> &_out_samples) const = 0;
+        }; // WAVCodecItf END
+
+        // Integer PCM: 8 bit unsigned, 16/24/32 bit signed. Samples are clamped and truncated.
+        struct WAVCodecPCM : WAVCodecItf {
+            virtual uint16_t formatTag() const override;
+            virtual bool supportsBits(uint16_t _bits_per_sample) const override;
+            virtual uint16_t blockAlign(uint16_t _channels, uint16_t _bits_per_sample) const override;
+            virtual bool encode(const float *_samples, size_t _num_samples, uint16_t _bits_per_sample, std::vector<uint8_t> &_out_data) const override;
+            virtual bool decode(const uint8_t *_data, size_t _num_bytes, uint16_t _bits_per_sample, std::vector<float> &_out_samples) const override;
+        }; // WAVCodecPCM END
+
+        struct ContentWAV : FiletypeContentItf {
+            uint16_t format_tag      = WAV_FORMAT_PCM; // Never WAV_FORMAT_EXTENSIBLE, the writer chooses the layout
+            uint16_t channels        = 2u;
+            uint32_t sample_rate     = 48000u;
+            uint16_t bits_per_sample = 16u;
+            std::vector<uint8_t> data; // 'data' chunk as stored in the file
+
+            // Codecs by format tag. PCM is registered by default, a registered codec must stay alive.
+            static void RegisterCodec(const WAVCodecItf *_codec);
+            static const WAVCodecItf* FindCodec(uint16_t _format_tag);
+
+            uint16_t blockAlign() const;
+            uint32_t numFrames() const;
+
+            // Encode with the codec of 'format_tag' and 'bits_per_sample', samples are interleaved by 'channels'
+            bool setSamples(const float *_samples, size_t _num_frames);
+            bool setSamples(const std::vector<vec2f> &_frames); // Sets 'channels' to 2
+            bool getSamples(std::vector<float> &_out_samples) const;
+        }; // ContentWAV END
+
+        struct ReaderWriterWAV : FiletypeReaderWriterItf {
+            ContentWAV file_content;
+
+            ReaderWriterWAV(const std::string &_fpath = "");
+
+            virtual bool read(const std::string &_fpath) override;
+            virtual bool write(const std::string &_fpath) override;
+
+            bool tryHeaders(ReaderItf &_ftype_file) override;
+        }; // ReaderWriterWAV END
 
 
     // JSON
