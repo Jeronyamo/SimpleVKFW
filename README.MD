@@ -1,11 +1,15 @@
 TODO
 
-Compile:
+Compile (CMake 3.21+, presets from CMakePresets.json: win-debug, win-release, linux-debug, linux-release, mac-debug, mac-release):
 
-cmake -DCMAKE_BUILD_TYPE=Release .
-cmake --build . --target svkfw svkfw_test
+cmake --preset linux-release
+cmake --build --preset linux-release --target svkfw svkfw_test
 
-Or: ./build.sh <C compiler> <CXX compiler> [Debug|Release]
+Build files go to build_<BuildType>/<os>/build, binaries to build_<BuildType>/<os> (os: win, linux, mac).
+VS Code (CMake Tools) picks the presets for the current OS, select Debug/Release in the status bar.
+Windows uses MSYS2 MinGW-w64 (gcc, g++, mingw32-make must be in PATH). Local overrides go to CMakeUserPresets.json (not in git).
+
+Or: ./build.sh [<C compiler> <CXX compiler>] [Debug|Release], build.bat [Debug|Release]
 
 Linux packages (Debian/Ubuntu names):
 

@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 
-# Use: './build.sh <path to C compiler> <path to CXX compiler> [Debug|Release]'
+# Use: './build.sh [<path to C compiler> <path to CXX compiler>] [Debug|Release]'
 # C:\Another\MSYS2\mingw64\bin\gcc.exe C:\Another\MSYS2\mingw64\bin\g++.exe 
-# Default: Debug
+# Default: Debug, compilers from the preset (Windows: gcc/g++ from PATH, Linux/Mac: CMake default)
+# Note: the presets are in CMakePresets.json, build files go to build_<BuildType>/<os>/build
 
 
 ## Process input arguments
-COMPILER_C="$1"
-COMPILER_CXX="$2"
+COMPILER_C=""
+COMPILER_CXX=""
 BUILD_TYPE="Debug"
-if (( $# >= 3 )); then
-    BUILD_TYPE="$3"
+if (( $# >= 2 )); then
+    COMPILER_C="$1"
+    COMPILER_CXX="$2"
+    shift 2
+fi
+if (( $# >= 1 )); then
+    BUILD_TYPE="$1"
 fi
 
 if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
@@ -18,41 +24,37 @@ if [[ "$BUILD_TYPE" != "Debug" && "$BUILD_TYPE" != "Release" ]]; then
     exit 1
 fi
 
-## Dir variables
-BUILD_ROOT="$(cd "./" && pwd)"
+## Preset name: <os>-<build type>
+BUILD_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo $BUILD_ROOT
 
-BUILD_DIR=""
-if [[ "$BUILD_TYPE" == "Debug" ]]; then
-    BUILD_DIR="build_debug"
-elif [[ "$BUILD_TYPE" == "Release" ]]; then
-    BUILD_DIR="build_release"
+if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then
+    PRESET_OS="win"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    PRESET_OS="linux"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    PRESET_OS="mac"
+else
+    echo "Unknown OS type: $OSTYPE" 1>&2
+    exit 1
 fi
+PRESET="$PRESET_OS-${BUILD_TYPE,,}"
 
 
 ## CMake arguments
-# Note: arrays keep arguments with spaces ('MinGW Makefiles', compiler paths) in one piece
-CMAKE_FLAGS_CONFIG=()
-if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then
-    BUILD_DIR="$BUILD_DIR/win"
-    CMAKE_FLAGS_CONFIG+=(-G "MinGW Makefiles")
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    BUILD_DIR="$BUILD_DIR/linux"
-    # Note: GLFW builds both X11 and Wayland by default and picks one at runtime.
-    #       Set SVKFW_GLFW_WAYLAND=Off to build without the Wayland dev packages.
-    CMAKE_FLAGS_CONFIG+=(-DGLFW_BUILD_X11=On "-DGLFW_BUILD_WAYLAND=${SVKFW_GLFW_WAYLAND:-On}")
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    BUILD_DIR="$BUILD_DIR/mac"
-else
-    BUILD_DIR="$BUILD_DIR/def"
+# Note: arrays keep arguments with spaces (compiler paths) in one piece
+CMAKE_FLAGS_CONFIG=(--preset "$PRESET")
+if [[ -n "$COMPILER_C" ]]; then
+    CMAKE_FLAGS_CONFIG+=("-DCMAKE_C_COMPILER=$COMPILER_C" "-DCMAKE_CXX_COMPILER=$COMPILER_CXX")
 fi
-
-
-CMAKE_FLAGS_CONFIG+=("-DCMAKE_C_COMPILER=$COMPILER_C" "-DCMAKE_CXX_COMPILER=$COMPILER_CXX" "-DCMAKE_BUILD_TYPE=$BUILD_TYPE")
-# Note: override overriding build location
-CMAKE_FLAGS_CONFIG+=(-DSVKFW_OVERRIDE_RES_LOCATION=Off "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$BUILD_ROOT/$BUILD_DIR" "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=$BUILD_ROOT/$BUILD_DIR/lib" "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$BUILD_ROOT/$BUILD_DIR/lib")
-CMAKE_FLAGS_BUILD=(--build "$BUILD_ROOT/$BUILD_DIR/build" --target svkfw svkfw_test -j8)
+# Note: GLFW builds both X11 and Wayland by default and picks one at runtime.
+#       Set SVKFW_GLFW_WAYLAND=Off to build without the Wayland dev packages.
+if [[ "$PRESET_OS" == "linux" ]]; then
+    CMAKE_FLAGS_CONFIG+=("-DGLFW_BUILD_WAYLAND=${SVKFW_GLFW_WAYLAND:-On}")
+fi
+CMAKE_FLAGS_BUILD=(--build --preset "$PRESET" --target svkfw svkfw_test)
 
 ## CMake config + build
-cmake -S"$BUILD_ROOT" -B"$BUILD_ROOT/$BUILD_DIR/build" "${CMAKE_FLAGS_CONFIG[@]}" || exit 1
+cd "$BUILD_ROOT" || exit 1
+cmake "${CMAKE_FLAGS_CONFIG[@]}" || exit 1
 cmake "${CMAKE_FLAGS_BUILD[@]}"

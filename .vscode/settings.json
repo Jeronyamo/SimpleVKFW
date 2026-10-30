@@ -91,13 +91,8 @@
         "version": "cpp"
     },
     "cmake.sourceDirectory": "${workspaceFolder}",
-    "cmake.buildDirectory": "${workspaceFolder}/build_${buildType}/win/build",
-    "C_Cpp.default.compilerPath": "C:\\Another\\MSYS2\\mingw64\\bin\\cpp.exe",
+    "cmake.useCMakePresets": "always",
     "cmake.configureOnOpen": true,
-    "cmake.configureArgs": [
-        "-DSVKFW_OVERRIDE_RES_LOCATION=On"
-    ],
-    "cmake.setBuildTypeOnMultiConfig": false,
     "[cpp]": {
         "editor.suggest.insertMode": "insert"
     }

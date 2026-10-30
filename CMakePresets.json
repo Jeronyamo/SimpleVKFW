@@ -1,0 +1,80 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "description": "Build files go to build_<BuildType>/<os>/build, binaries to build_<BuildType>/<os> (see SVKFW_OVERRIDE_RES_LOCATION)",
+            "binaryDir": "${sourceDir}/build_$env{SVKFW_BUILD_TYPE}/$env{SVKFW_OS}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "$env{SVKFW_BUILD_TYPE}",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "SVKFW_OVERRIDE_RES_LOCATION": "ON"
+            }
+        },
+
+        {
+            "name": "debug",
+            "hidden": true,
+            "environment": { "SVKFW_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "release",
+            "hidden": true,
+            "environment": { "SVKFW_BUILD_TYPE": "Release" }
+        },
+
+        {
+            "name": "os-win",
+            "hidden": true,
+            "description": "MSYS2 MinGW-w64: its bin directory (gcc, g++, mingw32-make) must be in PATH",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "generator": "MinGW Makefiles",
+            "environment": { "SVKFW_OS": "win" },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "os-linux",
+            "hidden": true,
+            "description": "GLFW builds both X11 and Wayland, set GLFW_BUILD_WAYLAND=OFF to build without the Wayland dev packages",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+            "generator": "Unix Makefiles",
+            "environment": { "SVKFW_OS": "linux" },
+            "cacheVariables": {
+                "GLFW_BUILD_X11": "ON",
+                "GLFW_BUILD_WAYLAND": "ON"
+            }
+        },
+        {
+            "name": "os-mac",
+            "hidden": true,
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+            "generator": "Unix Makefiles",
+            "environment": { "SVKFW_OS": "mac" }
+        },
+
+        { "name": "win-debug",     "displayName": "Debug",   "inherits": [ "os-win",   "debug",   "base" ] },
+        { "name": "win-release",   "displayName": "Release", "inherits": [ "os-win",   "release", "base" ] },
+        { "name": "linux-debug",   "displayName": "Debug",   "inherits": [ "os-linux", "debug",   "base" ] },
+        { "name": "linux-release", "displayName": "Release", "inherits": [ "os-linux", "release", "base" ] },
+        { "name": "mac-debug",     "displayName": "Debug",   "inherits": [ "os-mac",   "debug",   "base" ] },
+        { "name": "mac-release",   "displayName": "Release", "inherits": [ "os-mac",   "release", "base" ] }
+    ],
+    "buildPresets": [
+        { "name": "base", "hidden": true, "jobs": 8 },
+        { "name": "os-win",   "hidden": true, "inherits": "base", "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+        { "name": "os-linux", "hidden": true, "inherits": "base", "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux"   } },
+        { "name": "os-mac",   "hidden": true, "inherits": "base", "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin"  } },
+
+        { "name": "win-debug",     "displayName": "Debug",   "configurePreset": "win-debug",     "inherits": "os-win" },
+        { "name": "win-release",   "displayName": "Release", "configurePreset": "win-release",   "inherits": "os-win" },
+        { "name": "linux-debug",   "displayName": "Debug",   "configurePreset": "linux-debug",   "inherits": "os-linux" },
+        { "name": "linux-release", "displayName": "Release", "configurePreset": "linux-release", "inherits": "os-linux" },
+        { "name": "mac-debug",     "displayName": "Debug",   "configurePreset": "mac-debug",     "inherits": "os-mac" },
+        { "name": "mac-release",   "displayName": "Release", "configurePreset": "mac-release",   "inherits": "os-mac" }
+    ]
+}
