@@ -94,7 +94,7 @@ namespace Simple {
 
         void        WidgetRadioButton::end() {}
 
-        void     WidgetRadioButton::render() { active = !active; printf("Radio button is %d\n", active);   if (action) action->action(); }
+        void     WidgetRadioButton::render() { active = !active; if (action) action->action(); }
 
         void WidgetRadioButton::renderFull() { if (begin()) render(); }
 

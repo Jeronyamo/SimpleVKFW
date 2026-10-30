@@ -1828,6 +1828,44 @@ namespace Simple {
             return {};
         }
 
+        const ContentJSON::JSONNode* ContentJSON::JSONNode::find(const std::string &_key) const {
+            if (node_type != JSON_TYPE_OBJ) return nullptr;
+            // Note: objects keep their keys and values in turn
+            for (size_t i = 0u; i + 1u < value_arr_obj.size(); i += 2u)
+                if (value_arr_obj[i].node_type == JSON_TYPE_STR && value_arr_obj[i].value_str == _key)
+                    return &value_arr_obj[i + 1u];
+            return nullptr;
+        }
+
+        ContentJSON::JSONNode& ContentJSON::JSONNode::addMember(const std::string &_key) {
+            if (node_type != JSON_TYPE_OBJ) switchValueObj();
+            value_arr_obj.push_back(JSONNode{});
+            value_arr_obj.back().setValueStr(_key);
+            value_arr_obj.push_back(JSONNode{});
+            return value_arr_obj.back();
+        }
+
+        ContentJSON::JSONNode& ContentJSON::JSONNode::pushBack() {
+            if (node_type != JSON_TYPE_ARR) switchValueArr();
+            value_arr_obj.push_back(JSONNode{});
+            return value_arr_obj.back();
+        }
+
+        double ContentJSON::JSONNode::getNum(const std::string &_key, double _default) const {
+            const JSONNode *__node = find(_key);
+            return (__node != nullptr && __node->node_type == JSON_TYPE_NUM) ? __node->value_num : _default;
+        }
+
+        bool ContentJSON::JSONNode::getBool(const std::string &_key, bool _default) const {
+            const JSONNode *__node = find(_key);
+            return (__node != nullptr && __node->node_type == JSON_TYPE_BOOL) ? __node->value_bool : _default;
+        }
+
+        std::string ContentJSON::JSONNode::getStr(const std::string &_key, const std::string &_default) const {
+            const JSONNode *__node = find(_key);
+            return (__node != nullptr && __node->node_type == JSON_TYPE_STR) ? __node->value_str : _default;
+        }
+
         ContentJSON::ContentJSON() {}
 
         ContentJSON::~ContentJSON() {}

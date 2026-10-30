@@ -1,14 +1,9 @@
 #ifndef SVKFW_IMGUI_WRAP_H
 #define SVKFW_IMGUI_WRAP_H
 
-#define IMGUI_IMPL_VULKAN_USE_VOLK
-
 #include "interface/vkfw.h"
+#include "interface/imgui_custom.h"
 #include "main/colormodel.h"
-
-#include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_glfw.h"
-#include "imgui/backends/imgui_impl_vulkan.h"
 
 #include <atomic>
 
@@ -137,7 +132,7 @@ namespace Simple {
 
             WidgetInputText(const std::string &_name, uint32_t _buf_size = 255u, ActionItf *_action = nullptr);
             WidgetInputText(const WidgetInputText &_widget);
-            ~WidgetInputText();
+            virtual ~WidgetInputText() override;
 
             virtual bool      begin() override;
             virtual void        end() override;
@@ -164,7 +159,7 @@ namespace Simple {
             WidgetInputFloat(const WidgetInputFloat &_widget);
             virtual ~WidgetInputFloat() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -183,7 +178,7 @@ namespace Simple {
             WidgetInputInt32(const WidgetInputInt32 &_widget);
             virtual ~WidgetInputInt32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -203,7 +198,7 @@ namespace Simple {
             WidgetInputUint32(const WidgetInputUint32 &_widget);
             virtual ~WidgetInputUint32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -228,7 +223,7 @@ namespace Simple {
             WidgetSliderFloat(const WidgetSliderFloat &_widget);
             virtual ~WidgetSliderFloat() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -248,7 +243,7 @@ namespace Simple {
             WidgetSliderInt32(const WidgetSliderInt32 &_widget);
             virtual ~WidgetSliderInt32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -268,7 +263,7 @@ namespace Simple {
             WidgetSliderUint32(const WidgetSliderUint32 &_widget);
             virtual ~WidgetSliderUint32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -294,7 +289,7 @@ namespace Simple {
             WidgetDragFloat(const WidgetDragFloat &_widget);
             virtual ~WidgetDragFloat() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -315,7 +310,7 @@ namespace Simple {
             WidgetDragInt32(const WidgetDragInt32 &_widget);
             virtual ~WidgetDragInt32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -336,7 +331,7 @@ namespace Simple {
             WidgetDragUint32(const WidgetDragUint32 &_widget);
             virtual ~WidgetDragUint32() override;
 
-            virtual bool begin() override;
+            virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
             virtual void renderFull() override;
@@ -391,9 +386,9 @@ namespace Simple {
             WidgetMenuItem& operator=(const WidgetMenuItem &_menu_item);
             virtual ~WidgetMenuItem() override;
 
-            virtual bool begin() override;
-            virtual void end()        override;
-            virtual void render()     override;
+            virtual bool      begin() override;
+            virtual void        end() override;
+            virtual void     render() override;
             virtual void renderFull() override;
         }; // WidgetMenuItem END
 
@@ -406,9 +401,9 @@ namespace Simple {
             WidgetMenu(const WidgetMenu &_menu);
             virtual ~WidgetMenu() override;
 
-            virtual bool  begin() override;
-            virtual void    end() override;
-            virtual void render() override;
+            virtual bool      begin() override;
+            virtual void        end() override;
+            virtual void     render() override;
             virtual void renderFull() override;
         }; // WidgetMenu END
 
@@ -419,9 +414,9 @@ namespace Simple {
             WidgetMenuBar(const std::vector<WidgetMenu> &_menus, bool _is_main = false);
             WidgetMenuBar(const WidgetMenuBar &_menu_bar);
 
-            virtual bool  begin() override;
-            virtual void    end() override;
-            virtual void render() override;
+            virtual bool      begin() override;
+            virtual void        end() override;
+            virtual void     render() override;
             virtual void renderFull() override;
 
             virtual ImGuiWindowFlags reqWindowFlags() override;
@@ -441,9 +436,9 @@ namespace Simple {
             WidgetWindowChild(const std::string &_name, vec2f _size = {}, ImGuiChildFlags _child_flags = 0,
                               ImGuiWindowFlags _window_flags = 0);
 
-            virtual bool  begin() override;
-            virtual void    end() override;
-            virtual void render() override;
+            virtual bool      begin() override;
+            virtual void        end() override;
+            virtual void     render() override;
             virtual void renderFull() override;
 
             virtual ImGuiWindowFlags reqWindowFlags() override;
@@ -458,9 +453,9 @@ namespace Simple {
 
             WidgetWindow(const std::string &_name, ImGuiWindowFlags _window_flags = 0);
 
-            virtual bool  begin() override;
-            virtual void    end() override;
-            virtual void render() override;
+            virtual bool      begin() override;
+            virtual void        end() override;
+            virtual void     render() override;
             virtual void renderFull() override;
 
             virtual ImGuiWindowFlags reqWindowFlags() override;

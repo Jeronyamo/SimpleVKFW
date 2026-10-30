@@ -1,0 +1,363 @@
+{
+  "version" : 1,
+  "instruments" : [
+    {
+      "name" : "lead_pulse12",
+      "volume" : 0.6,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "pulse",
+          "volume" : 1,
+          "detune" : 0,
+          "duty" : 0.125,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.002,
+        "decay" : 0.2,
+        "sustain" : 0.5,
+        "release" : 0.15,
+        "curve" : "exp"
+      },
+      "vibrato" : {
+        "depth" : 0.15,
+        "rate" : 5.5,
+        "delay" : 0.25
+      }
+    },
+    {
+      "name" : "lead_pulse25",
+      "volume" : 0.6,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "pulse",
+          "volume" : 1,
+          "detune" : 0,
+          "duty" : 0.25,
+          "antialias" : true
+        },
+        {
+          "wave" : "pulse",
+          "volume" : 0.35,
+          "detune" : 0.08,
+          "duty" : 0.5,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.002,
+        "decay" : 0.25,
+        "sustain" : 0.6,
+        "release" : 0.2,
+        "curve" : "exp"
+      },
+      "vibrato" : {
+        "depth" : 0.12,
+        "rate" : 6,
+        "delay" : 0.3
+      }
+    },
+    {
+      "name" : "pwm_lead",
+      "volume" : 0.6,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "pulse",
+          "volume" : 1,
+          "detune" : 0,
+          "duty" : 0.5,
+          "pwm_depth" : 0.3,
+          "pwm_rate" : 3,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.01,
+        "decay" : 0.3,
+        "sustain" : 0.7,
+        "release" : 0.25,
+        "curve" : "exp"
+      }
+    },
+    {
+      "name" : "square_bass",
+      "volume" : 0.7,
+      "pan" : 0,
+      "octave" : -1,
+      "oscillators" : [
+        {
+          "wave" : "pulse",
+          "volume" : 1,
+          "detune" : 0,
+          "duty" : 0.5,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.002,
+        "decay" : 0.1,
+        "sustain" : 0.8,
+        "release" : 0.05,
+        "curve" : "linear"
+      }
+    },
+    {
+      "name" : "triangle_bass",
+      "volume" : 0.9,
+      "pan" : 0,
+      "octave" : -1,
+      "oscillators" : [
+        {
+          "wave" : "triangle",
+          "volume" : 1,
+          "detune" : 0,
+          "bits" : 4
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.001,
+        "decay" : 0,
+        "sustain" : 1,
+        "release" : 0.03,
+        "curve" : "linear"
+      }
+    },
+    {
+      "name" : "gb_wave_bass",
+      "volume" : 0.8,
+      "pan" : 0,
+      "octave" : -1,
+      "oscillators" : [
+        {
+          "wave" : "table",
+          "volume" : 1,
+          "detune" : 0,
+          "table_bits" : 4,
+          "table" : "8 9 10 12 13 14 14 15 15 15 14 14 13 12 10 9 8 6 5 3 2 1 1 0 0 0 1 1 2 3 5 6"
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.002,
+        "decay" : 0,
+        "sustain" : 1,
+        "release" : 0.05,
+        "curve" : "linear"
+      }
+    },
+    {
+      "name" : "saw_lead",
+      "volume" : 0.45,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "saw",
+          "volume" : 1,
+          "detune" : -0.1,
+          "antialias" : true
+        },
+        {
+          "wave" : "saw",
+          "volume" : 1,
+          "detune" : 0.1,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.005,
+        "decay" : 0.3,
+        "sustain" : 0.7,
+        "release" : 0.2,
+        "curve" : "exp"
+      },
+      "vibrato" : {
+        "depth" : 0.2,
+        "rate" : 5,
+        "delay" : 0.35
+      }
+    },
+    {
+      "name" : "strings_pad",
+      "volume" : 0.35,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "saw",
+          "volume" : 0.6,
+          "detune" : -0.12,
+          "antialias" : true
+        },
+        {
+          "wave" : "saw",
+          "volume" : 0.6,
+          "detune" : 0,
+          "antialias" : true
+        },
+        {
+          "wave" : "saw",
+          "volume" : 0.6,
+          "detune" : 0.12,
+          "antialias" : true
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.4,
+        "decay" : 0.3,
+        "sustain" : 0.8,
+        "release" : 0.6,
+        "curve" : "exp"
+      }
+    },
+    {
+      "name" : "bell",
+      "volume" : 0.5,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "sine",
+          "volume" : 1,
+          "detune" : 0
+        },
+        {
+          "wave" : "sine",
+          "volume" : 0.4,
+          "detune" : 12
+        },
+        {
+          "wave" : "sine",
+          "volume" : 0.2,
+          "detune" : 19.02
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0.002,
+        "decay" : 1.2,
+        "sustain" : 0,
+        "release" : 0.5,
+        "curve" : "exp"
+      }
+    },
+    {
+      "name" : "kick",
+      "volume" : 1,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "sine",
+          "volume" : 1,
+          "detune" : 0
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0,
+        "decay" : 0.25,
+        "sustain" : 0,
+        "release" : 0.05,
+        "curve" : "exp"
+      },
+      "pitch_env" : {
+        "semitones" : 24,
+        "time" : 0.06
+      }
+    },
+    {
+      "name" : "snare",
+      "volume" : 0.7,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "noise",
+          "volume" : 0.8,
+          "detune" : 0
+        },
+        {
+          "wave" : "triangle",
+          "volume" : 0.5,
+          "detune" : 0
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0,
+        "decay" : 0.18,
+        "sustain" : 0,
+        "release" : 0.05,
+        "curve" : "exp"
+      },
+      "pitch_env" : {
+        "semitones" : 12,
+        "time" : 0.03
+      }
+    },
+    {
+      "name" : "hihat_closed",
+      "volume" : 0.35,
+      "pan" : 0,
+      "octave" : 2,
+      "oscillators" : [
+        {
+          "wave" : "noise",
+          "volume" : 1,
+          "detune" : 0
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0,
+        "decay" : 0.05,
+        "sustain" : 0,
+        "release" : 0.02,
+        "curve" : "exp"
+      }
+    },
+    {
+      "name" : "hihat_open",
+      "volume" : 0.3,
+      "pan" : 0,
+      "octave" : 2,
+      "oscillators" : [
+        {
+          "wave" : "noise",
+          "volume" : 1,
+          "detune" : 0
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0,
+        "decay" : 0.35,
+        "sustain" : 0,
+        "release" : 0.1,
+        "curve" : "exp"
+      }
+    },
+    {
+      "name" : "metal_noise",
+      "volume" : 0.4,
+      "pan" : 0,
+      "octave" : 0,
+      "oscillators" : [
+        {
+          "wave" : "noise_periodic",
+          "volume" : 1,
+          "detune" : 0
+        }
+      ],
+      "amp_env" : {
+        "attack" : 0,
+        "decay" : 0.2,
+        "sustain" : 0,
+        "release" : 0.05,
+        "curve" : "exp"
+      }
+    }
+  ]
+}

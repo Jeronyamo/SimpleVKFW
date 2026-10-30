@@ -10,6 +10,7 @@
 #include "math/vectors.h"
 #include "main/image.h"
 #include "sound/player.h"
+#include "sound/tracker.h"
 #include "interface/rtaudio_wrap.h"
 #include "data/codecs.h"
 
@@ -266,7 +267,9 @@ namespace Simple {
     }
 
 
-    void audioPlayer(std::vector<Audio::Sample::SmpItf*> _sources, const std::vector<float> &_weights) {
+    // '_on_open' gets the stream sample rate before the stream starts
+    void audioPlayer(std::vector<Audio::Sample::SmpItf*> _sources, const std::vector<float> &_weights,
+                     const std::function<void(uint32_t)> &_on_open = nullptr) {
         RTA::AudioHandler audio_o;
         const uint32_t __channels   =   2;
         const uint32_t __buf_frames = 512;
@@ -284,6 +287,7 @@ namespace Simple {
         // Set audio to play
         audio_o.stream_config.audio_sampler.setSources(_sources, _weights);
         audio_o.stream_config.audio_sampler.setSampleRate(audio_o.stream_config.sample_rate);
+        if (_on_open) _on_open(audio_o.stream_config.sample_rate);
 
         // Start stream
         audio_o.streamStart();
@@ -332,6 +336,96 @@ namespace Simple {
         Simple::Audio::Sample::SmpAudioFile __ogg_sampler{"tests/resources/KMT - Daedalus (extended).ogg"};
 
         audioPlayer({&__ogg_sampler}, {1.f});
+    }
+
+
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "Synth"
+
+
+    SVKFW_ADD_TEST(SynthLibraryRoundTrip, "Synth - instrument library save/load") {
+        Audio::Synth::InstrumentLibrary __library;
+        Test::testAssert(__library.load("resources/music/instruments.json"), "Could not load the instrument library");
+        Test::testAssert(__library.size() > 0u, "Instrument library is empty");
+        Test::testAssert(__library.save("tests/resources/instruments_roundtrip.json"), "Could not save the instrument library");
+
+        Audio::Synth::InstrumentLibrary __reloaded;
+        Test::testAssert(__reloaded.load("tests/resources/instruments_roundtrip.json"), "Could not reload the instrument library");
+        Test::testAssert(__reloaded.size() == __library.size(), "Instrument count changed after save/load");
+        for (uint32_t i = 0u; i < __library.size(); ++i) {
+            const Audio::Synth::InstrumentParams &__a = __library.instruments[i].params, &__b = __reloaded.instruments[i].params;
+            Test::testAssert(__library.instruments[i].name == __reloaded.instruments[i].name, "Instrument name changed after save/load");
+            Test::testAssert(__a.num_oscillators == __b.num_oscillators && __a.oscillators[0].wave == __b.oscillators[0].wave &&
+                             __a.amp_env.decay == __b.amp_env.decay, "Instrument parameters changed after save/load");
+        }
+        std::remove("tests/resources/instruments_roundtrip.json");
+    }
+
+
+    SVKFW_ADD_TEST(SynthInstruments, "Synth - play every library instrument (C-E-G-C)") {
+        static Audio::Synth::InstrumentLibrary __library;
+        Test::testAssert(__library.load("resources/music/instruments.json"), "Could not load the instrument library");
+
+        const uint32_t __sample_rate = 48000u;
+        Audio::Music::NoteHandler __notes;
+        static std::vector<float> __track;
+        __track.clear();
+        for (uint32_t i = 0u; i < __library.size(); ++i) {
+            printf("%2u: %s\n", i, __library.instruments[i].name.c_str());
+            for (Audio::Music::NoteFullId __note : {48, 52, 55, 60}) {
+                const std::vector<float> __rendered = Audio::Synth::renderNote(__library.instruments[i].params, __notes.getNoteFreq(__note), 0.2f, __sample_rate, 2.f);
+                __track.insert(__track.end(), __rendered.begin(), __rendered.end());
+                __track.resize(__track.size() + __sample_rate / 20u, 0.f);
+            }
+        }
+
+        // Note: 'audioPlayer' opens the stream at the device rate, so the track is resampled by nearest neighbour
+        static auto __track_sampler = [](float _t) {
+            const size_t __id = size_t(_t * 48000.f);
+            return __id < __track.size() ? __track[__id] : 0.f;
+        };
+        static Audio::Sample::SmpFunction __sampler{__track_sampler};
+        __sampler.setDuration(float(__track.size()) / __sample_rate);
+        audioPlayer({&__sampler}, {1.f});
+    }
+
+
+
+    SVKFW_ADD_TEST(TrackerSongRoundTrip, "Tracker - song save/load and offline render") {
+        Audio::Tracker::Song __song;
+        Test::testAssert(__song.load("resources/music/songs/demo_chip.json"), "Could not load the demo song");
+        Test::testAssert(__song.instruments.size() > 0u, "The demo song has no instruments");
+
+        Test::testAssert(__song.save("tests/resources/song_roundtrip.json"), "Could not save the song");
+        Audio::Tracker::Song __reloaded;
+        Test::testAssert(__reloaded.load("tests/resources/song_roundtrip.json"), "Could not reload the song");
+        Test::testAssert(__reloaded.numChannels() == __song.numChannels() && __reloaded.patterns.size() == __song.patterns.size() &&
+                         __reloaded.order == __song.order && __reloaded.instruments.size() == __song.instruments.size(), "Song structure changed after save/load");
+        for (size_t p = 0u; p < __song.patterns.size(); ++p)
+            for (uint32_t r = 0u; r < __song.patterns[p].rows; ++r)
+                for (uint32_t ch = 0u; ch < __song.numChannels(); ++ch)
+                    Test::testAssert(__song.cell(uint32_t(p), r, ch).toString() == __reloaded.cell(uint32_t(p), r, ch).toString(), "Cell changed after save/load");
+        std::remove("tests/resources/song_roundtrip.json");
+
+        const std::vector<vec2f> __frames = Audio::Tracker::SongPlayer::renderSong(__song, 48000u, 60.f);
+        const float __expected = 3.f * 64.f * __song.rowSeconds(); // 3 orders of 64 rows
+        Test::testAssert(__frames.size() >= size_t(__expected * 48000.f) && __frames.size() < size_t((__expected + 5.f) * 48000.f),
+                         "Rendered song length is off");
+    }
+
+
+    SVKFW_ADD_TEST(TrackerDemoSong, "Tracker - play the demo song") {
+        static Audio::Tracker::Song __song;
+        static Audio::Tracker::SongPlayer __player;
+        Test::testAssert(__song.load("resources/music/songs/demo_chip.json"), "Could not load the demo song");
+
+        __player.setSong(&__song);
+        audioPlayer({&__player}, {1.f}, [](uint32_t _sample_rate) {
+            __player.setSampleRate(_sample_rate);
+            __player.play();
+        });
+        __player.stopNow();
     }
 
 

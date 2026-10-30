@@ -380,6 +380,15 @@ namespace Simple {
                 std::vector<std::string> writeValueObj (uint32_t _indent = 0u);
 
                 std::vector<std::string> writeValue(uint32_t _indent = 0u);
+
+            // Object/array helpers
+
+                const JSONNode* find(const std::string &_key) const; // Object member by key, nullptr if absent or not an object
+                JSONNode& addMember(const std::string &_key);         // Appends a null member to an object (switches to object first)
+                JSONNode& pushBack();                                  // Appends a null element to an array (switches to array first)
+                double getNum(const std::string &_key, double _default) const;
+                bool  getBool(const std::string &_key, bool _default) const;
+                std::string getStr(const std::string &_key, const std::string &_default) const;
             } root_node; // JSONNode END
 
             ContentJSON();

@@ -4,6 +4,7 @@
 #include "main/input_handler.h"
 #include "main/image.h"
 #include "main/imgui_events.h"
+#include "main/music_editor.h"
 #include "interface/vkfw.h"
 #include "interface/vkfw_graph.h"
 #include "interface/imgui_wrap.h"
@@ -110,6 +111,12 @@ int main(int argc, char **argv) {
     main_window_handler.imgui_handler.setFont("resources/fonts/RobotoMono-VariableFont_wght.ttf", 24.f);
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiWidgetLoadFile{});
     main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiTestWindow{});
+
+    // Music: instrument library, song and tracker windows; its keys go right after ImGui, above the camera
+    Simple::Editor::MusicStudio music_studio;
+    music_studio.startAudio();
+    main_window_handler.insertLayer(0u, &music_studio.keys);
+    main_window_handler.imgui_handler.widgets.push_back(&music_studio);
 
     // Callbacks
     main_window_handler.setGLFWCallbacks(main_window.window);
