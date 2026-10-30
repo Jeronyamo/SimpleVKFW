@@ -1,5 +1,6 @@
 build/
 build_*/
+CMakeUserPresets.json
 
 tests/out/
 !tests/out/.gitkeep
