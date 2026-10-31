@@ -38,10 +38,8 @@ namespace Simple {
 
 // Utilities
 
-        bool pathHasExtension(const std::string &_fpath);
-
-        std::string pathGetExtension(const std::string &_fpath);
-
+        bool        pathHasExtension   (const std::string &_fpath);
+        std::string pathGetExtension   (const std::string &_fpath);
         std::string pathRemoveExtension(const std::string &_fpath);
 
 
@@ -147,28 +145,27 @@ namespace Simple {
             static bool IsRightBone (const std::string & _bone_name);
             static bool IsLeftMorph (const std::string &_morph_name);
             static bool IsRightMorph(const std::string &_morph_name);
-            static std::string GetBoneNameSafe(const std::string &_raw_bone_name);
+            static std::string GetBoneNameSafe (const std::string & _raw_bone_name);
             static std::string GetMorphNameSafe(const std::string &_raw_morph_name);
 
-            static std::string GetOppositeBone(const std::string &  _bone_name);
+            static std::string GetOppositeBone (const std::string &  _bone_name);
             static std::string GetOppositeMorph(const std::string & _morph_name);
             static bool GetOppositeNameInplace(char *_bone_morph_name);
             // Reflect through a plane X=0
-            static void ReflectBoneKeyframe(BoneKeyframe &_bone_kf);
+            static void ReflectBoneKeyframe ( BoneKeyframe & _bone_kf);
             static void ReflectMorphKeyframe(MorphKeyframe &_morph_kf);
             // Reflect through a plane X=0
             static void ReflectCameraKeyframe(CameraKeyframe &_camera_kf);
 
             void sortBoneKeyframes();
-
             void sortMorphKeyframes();
 
             // Reflect through a plane X=0
             void reflectMovement();
 
-            void multKeyframes(const std::map<std::string, AttrAdjust> &_mult_bones,
-                               const std::map<std::string,      float> &_mult_morphs,
-                               AttrAdjust _cam_mult = {});
+            void   multKeyframes(const std::map<std::string, AttrAdjust> &_mult_bones,
+                                 const std::map<std::string,      float> &_mult_morphs,
+                                 AttrAdjust _cam_mult = {});
             void offsetKeyframes(const std::map<std::string, AttrAdjust> &_offset_bones,
                                  const std::map<std::string,      float> &_offset_morphs,
                                  AttrAdjust _cam_offset = {});
@@ -195,7 +192,6 @@ namespace Simple {
             float interpolateForMMD(float _t, vec2f _p1, vec2f _p2);
 
             void reinterpolateBone(const std::string &_raw_bone_name);
-
             void reinterpolateBones();
 
             // pos, tangent, fov, dist;
@@ -241,39 +237,16 @@ namespace Simple {
                                     const AttrAdjust &_camera2_scale, const AttrAdjust &_camera2_offset, bool _fix_blink = true);
         }; // ContentVMD END
 
-        // ContentVMD::CRDataP operator+(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
-        //     { return { _op1.x + _op2.pos, _op1.y + _op2.tangent, _op1.z + _op2.fov, _op1.w + _op2.dist }; }
-        // ContentVMD::CRDataP operator-(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
-        //     { return { _op1.x - _op2.pos, _op1.y - _op2.tangent, _op1.z - _op2.fov, _op1.w - _op2.dist }; }
-        // ContentVMD::CRDataP operator*(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
-        //     { return { _op1.x * _op2.pos, _op1.y * _op2.tangent, _op1.z * _op2.fov, _op1.w * _op2.dist }; }
-        // ContentVMD::CRDataP operator/(const ContentVMD::CRDataT&_op1, const ContentVMD::CRDataP&_op2)
-        //     { return { _op1.x / _op2.pos, _op1.y / _op2.tangent, _op1.z / _op2.fov, _op1.w / _op2.dist }; }
-
-
         struct ReaderWriterVMD : FiletypeReaderWriterItf {
             ContentVMD file_content{};
 
             ReaderWriterVMD(const std::string &_fpath = "");
 
             virtual bool read(const std::string &_fpath) override;
-
             virtual bool write(const std::string &_fpath) override;
 
             bool tryHeaders(ReaderItf &_ftype_file) override;
         }; // ReaderWriterVMD END
-
-        // VMD: init mappings
-
-         // bone_name_mappings END
-
-         // morph_name_mappings END
-
-        // VMD: init reversed mappings
-
-         // bone_name_mappings END
-
-         // morph_name_mappings END
 
 
     // OGG
@@ -387,7 +360,6 @@ namespace Simple {
 
     // JSON
 
-
         namespace Util {
             std::pair<uint32_t, uint32_t> parseWords(const std::vector<std::string> &_words, const char *_json_str);
             uint32_t skipWhitespace(const char *_json_str);
@@ -415,7 +387,7 @@ namespace Simple {
 
                 JSONNode();
                 JSONNode(const JSONNode &_node);
-                ~JSONNode();
+               ~JSONNode();
 
                 const JSONNode& operator=(const JSONNode& _node);
 
@@ -455,20 +427,18 @@ namespace Simple {
                 std::vector<std::string> writeValueBool(uint32_t _indent = 0u);
                 std::vector<std::string> writeValueNum (uint32_t _indent = 0u);
                 std::vector<std::string> writeValueStr (uint32_t _indent = 0u);
-
                 std::vector<std::string> writeValueArr (uint32_t _indent = 0u);
                 std::vector<std::string> writeValueObj (uint32_t _indent = 0u);
-
-                std::vector<std::string> writeValue(uint32_t _indent = 0u);
+                std::vector<std::string> writeValue    (uint32_t _indent = 0u);
 
             // Object/array helpers
 
                 const JSONNode* find(const std::string &_key) const; // Object member by key, nullptr if absent or not an object
-                JSONNode& addMember(const std::string &_key);         // Appends a null member to an object (switches to object first)
-                JSONNode& pushBack();                                  // Appends a null element to an array (switches to array first)
-                double getNum(const std::string &_key, double _default) const;
-                bool  getBool(const std::string &_key, bool _default) const;
-                std::string getStr(const std::string &_key, const std::string &_default) const;
+                JSONNode& addMember(const std::string &_key);        // Appends a null member to an object (switches to object first)
+                JSONNode& pushBack();                                // Appends a null element to an array (switches to  array first)
+                double      getNum (const std::string &_key,            double  _default) const;
+                bool        getBool(const std::string &_key,              bool  _default) const;
+                std::string getStr (const std::string &_key, const std::string &_default) const;
             } root_node; // JSONNode END
 
             ContentJSON();
