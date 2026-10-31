@@ -1334,9 +1334,11 @@ namespace Simple {
         }
         template <class Y> Mat3Base<Util::comm_type<C,Y>> operator&(const Mat3Base<Y> &_m) const {
             Mat3Base<Util::comm_type<C,Y>> tmp;
-            for (uint32_t i = 0; i <= 6; i += 3)
+            for (uint32_t i = 0; i < 3; ++i)
                 for (uint32_t j = 0; j < 3; ++j)
-                    (*tmp.M)[i + j] = (*_m.M)[j] * (*M)[i] + (*_m.M)[j + 3] * (*M)[i + 1] + (*_m.M)[j + 6] * (*M)[i + 2];
+                    tmp.M[i][j] = _m.M[0][j] * M[i][0] +
+                                  _m.M[1][j] * M[i][1] +
+                                  _m.M[2][j] * M[i][2];
             return tmp;
         }
         // Note: the result is computed into a temporary, because every element depends on the whole row of 'M'
@@ -1540,10 +1542,12 @@ namespace Simple {
         }
         template <class Y> Mat4Base<Util::comm_type<C,Y>> operator&(const Mat4Base<Y> &_m) const {
             Mat4Base<Util::comm_type<C,Y>> tmp;
-            for (uint32_t i = 0; i <= 12; i += 4)
+            for (uint32_t i = 0; i < 4; ++i)
                 for (uint32_t j = 0; j < 4; ++j)
-                    (*tmp.M)[i + j] = (*_m.M)[j    ] * (*M)[i    ] + (*_m.M)[j +  4] * (*M)[i + 1] +
-                                      (*_m.M)[j + 8] * (*M)[i + 2] + (*_m.M)[j + 12] * (*M)[i + 3];
+                    tmp.M[i][j] = _m.M[0][j] * M[i][0] +
+                                  _m.M[1][j] * M[i][1] +
+                                  _m.M[2][j] * M[i][2] +
+                                  _m.M[3][j] * M[i][3];
             return tmp;
         }
         // Note: the result is computed into a temporary, because every element depends on the whole row of 'M'
