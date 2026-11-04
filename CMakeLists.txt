@@ -79,42 +79,45 @@ set(SVKFW_EXTERN_SRC_DIR ${PROJECT_SOURCE_DIR}/ext_sources)
 set(SVKFW_EXTERN_INC_DIR ${PROJECT_SOURCE_DIR}/ext_includes)
 
 ### Includes
-# set(EXTERN_INC_GLAD_DIR     ${SVKFW_EXTERN_INC_DIR}/glad)
-set(EXTERN_INC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw/include)
-set(EXTERN_INC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus/include)
-set(EXTERN_INC_STBI_DIR     ${SVKFW_EXTERN_INC_DIR}/STBI)
+set(EXTERN_INC_ASSIMP_DIR   ${SVKFW_EXTERN_SRC_DIR}/assimp/include)
+set(EXTERN_INC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw/include  )
+set(EXTERN_INC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus/include  )
 set(EXTERN_INC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
+set(EXTERN_INC_IMGUI_DIR    ${SVKFW_EXTERN_SRC_DIR}/imgui  )
+set(EXTERN_INC_STBI_DIR     ${SVKFW_EXTERN_INC_DIR}/STBI   )
 
 ### Sources
-set(EXTERN_SRC_IMGUI_DIR    ${SVKFW_EXTERN_SRC_DIR}/imgui)
-set(EXTERN_SRC_VOLK_DIR     ${SVKFW_EXTERN_SRC_DIR}/volk)
-set(EXTERN_SRC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw)
+set(EXTERN_SRC_ASSIMP_DIR   ${SVKFW_EXTERN_SRC_DIR}/assimp )
+set(EXTERN_SRC_GLFW_DIR     ${SVKFW_EXTERN_SRC_DIR}/glfw   )
+set(EXTERN_SRC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus   )
 set(EXTERN_SRC_RTAUDIO_DIR  ${SVKFW_EXTERN_SRC_DIR}/rtaudio)
-set(EXTERN_SRC_OPUS_DIR     ${SVKFW_EXTERN_SRC_DIR}/opus)
+set(EXTERN_SRC_IMGUI_DIR    ${SVKFW_EXTERN_SRC_DIR}/imgui  )
+set(EXTERN_SRC_VOLK_DIR     ${SVKFW_EXTERN_SRC_DIR}/volk   )
 
 ### Libraries
 # Note: includes from ext_libs should be declared here
 
 
 set(SVKFW_ALL_INCULDES
+    ## SVKFW
+    ${SVKFW_INCLUDE_DIR}
+
+    ## External (Vulkan)
     ${Vulkan_INCLUDE_DIR}
 
     ## External
     ${SVKFW_EXTERN_INC_DIR}
     ${SVKFW_EXTERN_LIB_DIR}
     ${SVKFW_EXTERN_SRC_DIR}
-    # Note: GLAD not needed for vulkan/volk (SOGLFW legacy):
-    # ${EXTERN_INC_GLAD_DIR}
+
     ${EXTERN_INC_STBI_DIR}
     ${EXTERN_INC_GLFW_DIR}
     ${EXTERN_INC_OPUS_DIR}
     ${EXTERN_INC_RTAUDIO_DIR}
+    ${EXTERN_INC_ASSIMP_DIR}
 
-    ${EXTERN_SRC_IMGUI_DIR}
-    ${EXTERN_SRC_IMGUI_DIR}/backends
-
-    ## SVKFW
-    ${SVKFW_INCLUDE_DIR}
+    ${EXTERN_INC_IMGUI_DIR}
+    ${EXTERN_INC_IMGUI_DIR}/backends
 )
 
 
@@ -165,6 +168,16 @@ PRIVATE
     ${Vulkan_INCLUDE_DIR}
     ${EXTERN_SRC_VOLK_DIR}
 )
+
+
+## Assimp
+set(BUILD_SHARED_LIBS OFF)
+set(ASSIMP_BUILD_TESTS OFF)
+set(ASSIMP_INSTALL OFF)
+set(ASSIMP_INSTALL_PDB OFF)
+set(ASSIMP_BUILD_ASSIMP_VIEW OFF)
+
+add_subdirectory(${EXTERN_SRC_ASSIMP_DIR})
 
 
 ## RTAudio
@@ -277,7 +290,7 @@ list(FILTER SVKFW_LIB_SOURCES EXCLUDE REGEX "^${SVKFW_SOURCE_DIR}/meta/")
 add_library(svkfw_lib STATIC ${SVKFW_LIB_SOURCES})
 svkfw_set_definitions(svkfw_lib PUBLIC)
 target_include_directories(svkfw_lib PUBLIC ${SVKFW_ALL_INCULDES})
-target_link_libraries(svkfw_lib PUBLIC volk_headers glfw imgui rtaudio opus)
+target_link_libraries(svkfw_lib PUBLIC volk_headers glfw imgui rtaudio opus assimp)
 
 
 ## SVKFW Executables

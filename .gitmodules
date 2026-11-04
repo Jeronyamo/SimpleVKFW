@@ -13,3 +13,6 @@
 [submodule "ext_sources/opus"]
 	path = ext_sources/opus
 	url = https://github.com/xiph/opus
+[submodule "ext_sources/assimp"]
+	path = ext_sources/assimp
+	url = https://github.com/assimp/assimp

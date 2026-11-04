@@ -1,7 +1,8 @@
-build/
-build_*/
+# Build-related
+build*/
 CMakeUserPresets.json
 
+# Tests
 tests/out/
 !tests/out/.gitkeep
 
@@ -16,3 +17,5 @@ include/interface/vkfw_struct_traits.h
 include/interface/vkfw_func.h
 source/interface/vkfw_enum.cpp
 source/interface/vkfw_func.cpp
+
+# Temporary - this section must be empty in main
