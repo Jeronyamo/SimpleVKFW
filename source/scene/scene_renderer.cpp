@@ -95,7 +95,7 @@ namespace Simple {
                 joint_offsets[i] = __joint_count;
                 __joint_count += (uint32_t)_scene.skeletons[_scene.skins[i].skeleton].bones.size();
             }
-            const VkDeviceSize __joint_size = std::max<VkDeviceSize>(__joint_count, 1u) * sizeof(mat4);
+            const VkDeviceSize __joint_size = std::max<VkDeviceSize>(__joint_count, 1u) * sizeof(JointGPU);
             for (uint32_t i = 0u; i < _info.frames_in_flight; ++i) {
                 frame_buffers.push_back(createBuffer(cxt, sizeof(FrameGPU), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, __families));
@@ -273,7 +273,8 @@ namespace Simple {
             __skinned_desc.shader(VK_SHADER_STAGE_VERTEX_BIT, skinned_vertex_shader).shader(VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader);
             __skinned_desc.vertexBinding(1u, sizeof(SkinVertex))
                           .vertexAttribute(4u, 1u, VK_FORMAT_R16G16B16A16_UINT,   offsetof(SkinVertex, bones))
-                          .vertexAttribute(5u, 1u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinVertex, weights));
+                          .vertexAttribute(5u, 1u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinVertex, weights))
+                          .vertexAttribute(6u, 1u, VK_FORMAT_R32_UINT,            offsetof(SkinVertex, mode));
             // All variants: opaque / blended, culled / two-sided, with / without depth writes (blended only), rigid / skinned
             for (uint32_t __key = 0u; __key < 16u; ++__key) {
                 const bool __blend = (__key & 1u) != 0u, __cull = (__key & 2u) != 0u, __depth_write = (__key & 4u) != 0u;
@@ -321,12 +322,25 @@ namespace Simple {
             __gpu.light_count[0] = __count;
             frame_buffers[_frame].write(&__gpu, sizeof(__gpu));
 
-        // Skinning matrices (the poses computed by 'Scene::updateSkins')
+        // Skinning matrices and dual quaternions (the poses computed by 'Scene::updateSkins')
             for (size_t i = 0u; i < joint_offsets.size() && i < __scene.skins.size(); ++i) {
                 const std::vector<mat4> &__skinning = __scene.skins[i].pose.skinning;
                 const size_t __bones = __scene.skeletons[__scene.skins[i].skeleton].bones.size();
                 if (__skinning.size() != __bones || __bones == 0u) continue;
-                joint_buffers[_frame].write(__skinning.data(), __bones * sizeof(mat4), (VkDeviceSize)joint_offsets[i] * sizeof(mat4));
+                joint_data.resize(__bones);
+                for (size_t b = 0u; b < __bones; ++b) {
+                    const mat4 &__m = __skinning[b];
+                    // Note: the dual part is t * q / 2 (t: the translation as a pure quaternion); the scale is dropped
+                    const Quat __q = rotationOf(__m);
+                    const float tx = __m.M[3][0], ty = __m.M[3][1], tz = __m.M[3][2];
+                    joint_data[b].matrix = __m;
+                    joint_data[b].real   = { __q.i, __q.j, __q.k, __q.s };
+                    joint_data[b].dual   = { 0.5f * ( tx * __q.s + ty * __q.k - tz * __q.j),
+                                             0.5f * (-tx * __q.k + ty * __q.s + tz * __q.i),
+                                             0.5f * ( tx * __q.j - ty * __q.i + tz * __q.s),
+                                            -0.5f * ( tx * __q.i + ty * __q.j + tz * __q.k) };
+                }
+                joint_buffers[_frame].write(joint_data.data(), __bones * sizeof(JointGPU), (VkDeviceSize)joint_offsets[i] * sizeof(JointGPU));
             }
 
         // Draw lists

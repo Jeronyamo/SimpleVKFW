@@ -9,7 +9,7 @@
 #include "interface/vkfw_graph.h"
 #include "interface/imgui_wrap.h"
 #include "scene/scene_graph.h"
-#include "scene/scene_assimp.h"
+#include "scene/scene_pmx.h"
 #include "scene/scene_renderer.h"
 
 #include <cmath>
@@ -87,13 +87,13 @@ int main(int argc, char **argv) {
     Simple::WindowInput::CameraControlsCentered main_view_centered_proj{Simple::ProjPerspective{fb_size.cast<float>(), fov, p_near, p_far},
                                                                         Simple::ViewCentered{cam_pos, look_at, up_vect}};
 
-    // Scene graph: the stage and the character (PMX through assimp), lights added by hand (PMX files have none)
+    // Scene graph: the stage and the character (PMX through the own reader), lights added by hand (PMX files have none)
     // Note: a model that can't be loaded is reported and skipped
     SG::Scene scene;
     uint32_t  chara_root = SG::SCENE_NONE;
     try {
-        SG::loadAssimp(scene, "resources/assets/scene/Circular rainbow Stage xV1 by Xentetion/Circular rainbow Stage xV1.pmx");
-        chara_root = SG::loadAssimp(scene, "resources/assets/chara/SiriusBlue200505/Sirius_Blue_01fs.pmx", SG::ImportOptions(),
+        SG::loadModel(scene, "resources/assets/scene/Circular rainbow Stage xV1 by Xentetion/Circular rainbow Stage xV1.pmx");
+        chara_root = SG::loadModel(scene, "resources/assets/chara/SiriusBlue200505/Sirius_Blue_01fs.pmx", SG::ImportOptions(),
                                     scene.addNode("chara", SG::SCENE_NONE, SG::translation({0.f, 5.2f, 0.f}))); // on the top platform
     } catch (const std::exception &_e) {
         printf("main: scene: %s\n", _e.what());

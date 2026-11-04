@@ -2159,5 +2159,231 @@ namespace Simple {
             }
             return __res;
         }
+
+
+    // PMX
+
+        namespace {
+            // UTF-16LE -> UTF-8 (surrogate pairs included, unpaired ones become U+FFFD)
+            std::string utf16ToUtf8(const std::vector<uint8_t> &_bytes) {
+                std::string __res;
+                const size_t __count = _bytes.size() / 2u;
+                for (size_t i = 0u; i < __count; ++i) {
+                    uint32_t __c = _bytes[2u * i] | (uint32_t(_bytes[2u * i + 1u]) << 8u);
+                    if (__c >= 0xD800u && __c < 0xDC00u && i + 1u < __count) {
+                        uint32_t __low = _bytes[2u * i + 2u] | (uint32_t(_bytes[2u * i + 3u]) << 8u);
+                        if (__low >= 0xDC00u && __low < 0xE000u) { __c = 0x10000u + ((__c - 0xD800u) << 10u) + (__low - 0xDC00u); ++i; }
+                        else __c = 0xFFFDu;
+                    } else if (__c >= 0xD800u && __c < 0xE000u) __c = 0xFFFDu;
+                    if (__c < 0x80u) __res += char(__c);
+                    else if (__c < 0x800u) { __res += char(0xC0u | (__c >> 6u)); __res += char(0x80u | (__c & 0x3Fu)); }
+                    else if (__c < 0x10000u) { __res += char(0xE0u | (__c >> 12u)); __res += char(0x80u | ((__c >> 6u) & 0x3Fu)); __res += char(0x80u | (__c & 0x3Fu)); }
+                    else { __res += char(0xF0u | (__c >> 18u)); __res += char(0x80u | ((__c >> 12u) & 0x3Fu));
+                           __res += char(0x80u | ((__c >> 6u) & 0x3Fu)); __res += char(0x80u | (__c & 0x3Fu)); }
+                }
+                return __res;
+            }
+
+            // Sequential reading of the PMX fields; any failure (a cut file) leaves 'ok' false
+            struct PMXStream {
+                FileReader &file;
+                uint8_t     encoding = 0u, vertex_index = 4u, texture_index = 4u, material_index = 4u, bone_index = 4u;
+                bool        ok = true;
+
+                explicit PMXStream(FileReader &_file) : file(_file) {}
+
+                template <class T> T get() { T __v = T(); ok = file.readBinary(__v) && ok; return __v; }
+                vec2f vec2() { vec2f __v; __v.x = get<float>(); __v.y = get<float>(); return __v; }
+                vec3f vec3() { vec3f __v; __v.x = get<float>(); __v.y = get<float>(); __v.z = get<float>(); return __v; }
+                vec4f vec4() { vec4f __v; __v.x = get<float>(); __v.y = get<float>(); __v.z = get<float>(); __v.w = get<float>(); return __v; }
+
+                std::string text() {
+                    int32_t __len = get<int32_t>();
+                    if (!ok || __len <= 0) return std::string();
+                    if (__len > (1 << 24)) { ok = false; return std::string(); } // a broken length
+                    std::vector<uint8_t> __bytes((size_t)__len);
+                    ok = file.readBinaryArray<uint8_t>(__bytes.data(), __bytes.size()) && ok;
+                    return encoding == 0u ? utf16ToUtf8(__bytes) : std::string(__bytes.begin(), __bytes.end());
+                }
+
+                // Signed indices (-1: none); vertex indices are unsigned for sizes 1 and 2
+                int32_t index(uint8_t _size) {
+                    switch (_size) {
+                        case 1u: return get<int8_t>();
+                        case 2u: return get<int16_t>();
+                        default: return get<int32_t>();
+                    }
+                }
+                uint32_t vertexIndex() {
+                    switch (vertex_index) {
+                        case 1u: return get<uint8_t>();
+                        case 2u: return get<uint16_t>();
+                        default: return (uint32_t)get<int32_t>();
+                    }
+                }
+            }; // PMXStream END
+        } // anonymous namespace END
+
+        int32_t ContentPMX::findBone(const std::string &_name) const {
+            for (size_t i = 0u; i < bones.size(); ++i)
+                if (bones[i].name == _name) return (int32_t)i;
+            return -1;
+        }
+
+        ReaderWriterPMX::ReaderWriterPMX(const std::string &_fpath) { if (!_fpath.empty()) read(_fpath); }
+
+        bool ReaderWriterPMX::tryHeaders(ReaderItf &_ftype_file) {
+            char __magic[4]{};
+            _ftype_file.read(__magic, 4u);
+            return _ftype_file.isValid() && std::string(__magic, __magic + 4) == "PMX ";
+        }
+
+        bool ReaderWriterPMX::write(const std::string &_fpath) {
+            fprintf(svkfwwarn, "%s'%s'\n", SVKFW_WRAPWARN("File::ReaderWriterPMX :: write", "writing is not supported yet: "), _fpath.c_str());
+            return false;
+        }
+
+        bool ReaderWriterPMX::read(const std::string &_fpath) {
+            FileReader __file{_fpath};
+            SVKFW_WASSERT_CMD(__file.isOpen(), "File::ReaderWriterPMX :: read", "can't open '" + _fpath + "'\n", return false);
+            SVKFW_WASSERT_CMD(tryHeaders(__file), "File::ReaderWriterPMX :: read", "'" + _fpath + "' is not a PMX file\n", return false);
+            ContentPMX &__c = file_content;
+            __c = ContentPMX();
+            PMXStream __in(__file);
+
+        // Header
+            __c.version = __in.get<float>();
+            const uint8_t __globals_count = __in.get<uint8_t>();
+            uint8_t __globals[16]{};
+            for (uint8_t i = 0u; i < __globals_count; ++i) {
+                uint8_t __g = __in.get<uint8_t>();
+                if (i < 16u) __globals[i] = __g;
+            }
+            SVKFW_WASSERT_CMD(__in.ok && __globals_count >= 8u, "File::ReaderWriterPMX :: read", "bad header in '" + _fpath + "'\n", return false);
+            __c.encoding       = __in.encoding = __globals[0];
+            __c.additional_uvs = std::min<uint8_t>(__globals[1], 4u);
+            __in.vertex_index  = __globals[2];
+            __in.texture_index = __globals[3];
+            __in.material_index = __globals[4];
+            __in.bone_index    = __globals[5];
+            __c.name       = __in.text();
+            __c.name_en    = __in.text();
+            __c.comment    = __in.text();
+            __c.comment_en = __in.text();
+
+        // Vertices
+            int32_t __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad vertex count\n", return false);
+            __c.vertices.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.vertices.size() && __in.ok; ++i) {
+                ContentPMX::Vertex &__v = __c.vertices[i];
+                __v.position = __in.vec3();
+                __v.normal   = __in.vec3();
+                __v.uv       = __in.vec2();
+                for (uint8_t u = 0u; u < __c.additional_uvs; ++u) __v.additional_uv[u] = __in.vec4();
+                __v.deform = (ContentPMX::DeformType)__in.get<uint8_t>();
+                switch (__v.deform) {
+                    case ContentPMX::DEFORM_BDEF1:
+                        __v.bones[0] = __in.index(__in.bone_index);
+                        __v.weights[0] = 1.f;
+                        break;
+                    case ContentPMX::DEFORM_BDEF2:
+                    case ContentPMX::DEFORM_SDEF:
+                        __v.bones[0] = __in.index(__in.bone_index);
+                        __v.bones[1] = __in.index(__in.bone_index);
+                        __v.weights[0] = __in.get<float>();
+                        __v.weights[1] = 1.f - __v.weights[0];
+                        if (__v.deform == ContentPMX::DEFORM_SDEF) {
+                            __v.sdef_c  = __in.vec3();
+                            __v.sdef_r0 = __in.vec3();
+                            __v.sdef_r1 = __in.vec3();
+                        }
+                        break;
+                    case ContentPMX::DEFORM_BDEF4:
+                    case ContentPMX::DEFORM_QDEF:
+                        for (int b = 0; b < 4; ++b) __v.bones[b] = __in.index(__in.bone_index);
+                        for (int b = 0; b < 4; ++b) __v.weights[b] = __in.get<float>();
+                        break;
+                    default:
+                        SVKFW_WASSERT_CMD(false, "File::ReaderWriterPMX :: read", "unknown deform type " + std::to_string((int)__v.deform) + "\n", return false);
+                }
+                __v.edge_scale = __in.get<float>();
+            }
+
+        // Faces
+            __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad index count\n", return false);
+            __c.indices.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.indices.size() && __in.ok; ++i) __c.indices[i] = __in.vertexIndex();
+
+        // Textures
+            __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad texture count\n", return false);
+            __c.textures.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.textures.size() && __in.ok; ++i) __c.textures[i] = __in.text();
+
+        // Materials
+            __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad material count\n", return false);
+            __c.materials.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.materials.size() && __in.ok; ++i) {
+                ContentPMX::Material &__m = __c.materials[i];
+                __m.name           = __in.text();
+                __m.name_en        = __in.text();
+                __m.diffuse        = __in.vec4();
+                __m.specular       = __in.vec3();
+                __m.specular_power = __in.get<float>();
+                __m.ambient        = __in.vec3();
+                __m.flags          = __in.get<uint8_t>();
+                __m.edge_color     = __in.vec4();
+                __m.edge_size      = __in.get<float>();
+                __m.texture        = __in.index(__in.texture_index);
+                __m.sphere_texture = __in.index(__in.texture_index);
+                __m.sphere_mode    = __in.get<uint8_t>();
+                __m.shared_toon    = __in.get<uint8_t>() != 0u;
+                __m.toon           = __m.shared_toon ? (int32_t)__in.get<uint8_t>() : __in.index(__in.texture_index);
+                __m.memo           = __in.text();
+                __m.index_count    = (uint32_t)__in.get<int32_t>();
+            }
+
+        // Bones
+            __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad bone count\n", return false);
+            __c.bones.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.bones.size() && __in.ok; ++i) {
+                ContentPMX::Bone &__b = __c.bones[i];
+                __b.name     = __in.text();
+                __b.name_en  = __in.text();
+                __b.position = __in.vec3();
+                __b.parent   = __in.index(__in.bone_index);
+                __b.layer    = __in.get<int32_t>();
+                __b.flags    = __in.get<uint16_t>();
+                if (__b.flags & ContentPMX::BONE_TAIL_IS_BONE) __b.tail_bone = __in.index(__in.bone_index);
+                else __b.tail_offset = __in.vec3();
+                if (__b.flags & (ContentPMX::BONE_GRANT_ROTATION | ContentPMX::BONE_GRANT_TRANSLATION)) {
+                    __b.grant_parent = __in.index(__in.bone_index);
+                    __b.grant_ratio  = __in.get<float>();
+                }
+                if (__b.flags & ContentPMX::BONE_FIXED_AXIS) __b.fixed_axis = __in.vec3();
+                if (__b.flags & ContentPMX::BONE_LOCAL_AXES) { __b.local_x = __in.vec3(); __b.local_z = __in.vec3(); }
+                if (__b.flags & ContentPMX::BONE_EXTERNAL_PARENT) __b.external_key = __in.get<int32_t>();
+                if (__b.flags & ContentPMX::BONE_IK) {
+                    __b.ik_target      = __in.index(__in.bone_index);
+                    __b.ik_loops       = __in.get<int32_t>();
+                    __b.ik_limit_angle = __in.get<float>();
+                    int32_t __links = __in.get<int32_t>();
+                    if (!__in.ok || __links < 0 || __links > 4096) { __in.ok = false; break; }
+                    __b.ik_links.resize((size_t)__links);
+                    for (size_t l = 0u; l < __b.ik_links.size(); ++l) {
+                        __b.ik_links[l].bone    = __in.index(__in.bone_index);
+                        __b.ik_links[l].limited = __in.get<uint8_t>() != 0u;
+                        if (__b.ik_links[l].limited) { __b.ik_links[l].limit_min = __in.vec3(); __b.ik_links[l].limit_max = __in.vec3(); }
+                    }
+                }
+            }
+            SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "' is cut off\n", return false);
+            return true;
+        }
+
     }; // File END
 }; // Simple END

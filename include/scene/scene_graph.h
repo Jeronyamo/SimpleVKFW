@@ -85,11 +85,26 @@ namespace Simple {
             vec4 tangent;
         }; // Vertex END
 
+        enum SkinMode : uint32_t {
+            SCENE_SKIN_LINEAR = 0,   // linear blend skinning (LBS): the bone matrices are blended (MMD BDEF1/2/4)
+            SCENE_SKIN_DUAL_QUATERNION // dual quaternion skinning (DQS): no collapse at bent joints (MMD SDEF and QDEF)
+        };
+
         // Note: the bones (indices in the skeleton of the skin) and their weights of one vertex; unused slots have zero weight
         struct SkinVertex {
             uint16_t bones[4];
             vec4     weights;
+            uint32_t mode;           // SkinMode
         }; // SkinVertex END
+
+        // Note: spherical deform (MMD SDEF) of a vertex with two bones (the first two of its 'SkinVertex'): the rotations of the
+        //       bones are blended around 'center' instead of the matrices, so joints don't collapse. 'center.w' = 1 marks an SDEF
+        //       vertex; 'r0', 'r1' are the corrected PMX R0/R1 points (see 'loadPMX'). Kept for a later SDEF mode, the renderer
+        //       draws these vertices with DQS for now
+        struct SdefVertex {
+            vec4 center;
+            vec3 r0, r1;
+        }; // SdefVertex END
 
         // Note: triangles only (indexed); one material per mesh
         struct Mesh {
@@ -97,6 +112,7 @@ namespace Simple {
             std::vector<Vertex>     vertices;
             std::vector<uint32_t>   indices;
             std::vector<SkinVertex> skin;                  // empty or one per vertex: a skinned mesh (see 'Skin')
+            std::vector<SdefVertex> sdef;                  // empty or one per vertex (skinned meshes with SDEF vertices)
             uint32_t                material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
             AABB                    bounds;                // in the mesh space (the bind pose for skinned meshes)
 
@@ -171,34 +187,93 @@ namespace Simple {
         //       Bones are stored parents first; a bone's 'rest' is its local transform in the bind pose (relative to the parent
         //       bone, or to the skeleton space for root bones). 'inverse_bind' maps the skeleton space to the bone space in
         //       the bind pose; skinned vertices are in the skeleton space
+        //       Grant (MMD 付与): the bone adds 'grant_ratio' of the rotation / translation of 'grant_parent' to its own.
+        //       Deform order (MMD): bones after physics last, then by 'layer', then by index; grants and IK follow it
         struct Bone {
             std::string name;
             uint32_t    parent = SCENE_NONE;
             TRS         rest;
             mat4        inverse_bind = Mat::Eye4;
+
+            int32_t     layer = 0;
+            bool        after_physics = false;
+            uint32_t    grant_parent  = SCENE_NONE;
+            float       grant_ratio   = 0.f;
+            bool        grant_rotation = false, grant_translation = false;
+            uint32_t    ik = SCENE_NONE;   // the IK chain solved when this bone is reached in the deform order
         }; // Bone END
 
+        enum IKSolver {
+            SCENE_IK_CCD = 0,  // iterative, any chain length, joint limits (MMD)
+            SCENE_IK_TWO_BONE  // analytic, for two links (arms, legs); the bend direction comes from the current pose
+        };
+
+        // Note: a link with limits keeps its rotation (Euler XYZ, radians) in [limit_min, limit_max]; a link limited around one
+        //       axis only (knees) is solved in that plane
+        struct IKLink {
+            uint32_t bone = SCENE_NONE;
+            bool     limited = false;
+            vec3     limit_min = {0.f, 0.f, 0.f}, limit_max = {0.f, 0.f, 0.f};
+        }; // IKLink END
+
+        // Note: rotates 'links' (from the effector side up, MMD order) so that 'effector' reaches 'goal'
+        struct IKChain {
+            std::string         name;
+            IKSolver            solver = SCENE_IK_CCD;
+            uint32_t            goal = SCENE_NONE;     // the IK bone: the position to reach
+            uint32_t            effector = SCENE_NONE; // the bone that has to reach it
+            uint32_t            iterations = 10u;
+            float               limit_angle = 3.14159265f; // radians per link and iteration (CCD)
+            std::vector<IKLink> links;
+            bool                enabled = true;
+        }; // IKChain END
+
         struct Skeleton {
-            std::string       name;
-            std::vector<Bone> bones;
+            std::string          name;
+            std::vector<Bone>    bones;
+            std::vector<IKChain> iks;
+
+            // Computed by 'finalize'
+            std::vector<uint32_t>              order;    // the deform order
+            std::vector<std::vector<uint32_t>> children;
 
             // The parent must already be in the skeleton; returns the index of the bone
             uint32_t addBone(const Bone &_bone);
+            // Attaches the chain to its goal bone; returns its index
+            uint32_t addIK(const IKChain &_ik);
             uint32_t findBone(const std::string &_name) const; // SCENE_NONE if there is none
             // Sets 'inverse_bind' of all bones from the rest transforms
             void computeInverseBind();
+            // Inverse bind matrices, deform order, children (after adding bones and IK chains)
+            void finalize();
         }; // Skeleton END
 
-        // Note: the state of one posed skeleton. 'local' starts at the rest transforms; after changing it call 'Scene::updateSkins'
-        //       (or 'computeFK') to get 'model' (bone -> skeleton space) and 'skinning' ('inverse_bind & model', for the vertices)
+        // Note: the state of one posed skeleton. 'local' is the animated pose (starts at the rest transforms); after changing it
+        //       call 'Scene::updateSkins' (or 'computeFK') to get 'model' (bone -> skeleton space) and 'skinning'
+        //       ('inverse_bind & model', for the vertices). The final local rotation is 'ik * local * grant' (grant first)
         struct Pose {
             std::vector<TRS>  local;
             std::vector<mat4> model;
             std::vector<mat4> skinning;
+            std::vector<Quat> ik_rotation, grant_rotation; // computed
+            std::vector<vec3> grant_translation;           // computed
             bool              dirty = true;
+            bool              solve_ik = true;
 
             void reset(const Skeleton &_skeleton);  // back to the rest pose
+            // Forward kinematics with grants and IK chains in the deform order
             void computeFK(const Skeleton &_skeleton);
+
+        private:
+            mat4 localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const;
+            void updateModel_(const Skeleton &_skeleton, uint32_t _bone);    // the bone and its descendants
+            void applyGrant_(const Skeleton &_skeleton, uint32_t _bone);
+            void solveCCD_(const Skeleton &_skeleton, const IKChain &_ik);
+            void solveTwoBone_(const Skeleton &_skeleton, const IKChain &_ik);
+            // Rotates '_bone' by '_angle' around '_axis' (in its own space, after its current rotation) through its IK rotation
+            void rotateLink_(const Skeleton &_skeleton, uint32_t _bone, const vec3 &_axis, float _angle);
+            // Keeps the IK rotation of a limited link inside its limits (Euler XYZ); '_previous' is the angle of the last step
+            void limitLink_(const Skeleton &_skeleton, const IKLink &_link, float _limit_angle, vec3 &_previous);
         }; // Pose END
 
         // Note: a skeleton instance placed in the scene: the skeleton space is the space of 'node'. The skinned meshes of the

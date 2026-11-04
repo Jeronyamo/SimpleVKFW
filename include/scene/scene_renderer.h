@@ -34,8 +34,9 @@ namespace Simple {
         //       GPU data: all meshes in one vertex and one index buffer, all textures in one memory chunk (with mip levels),
         //       one descriptor set per material (parameters + base color, normal and emissive textures), one uniform buffer per
         //       frame in flight (camera and lights); the node matrix goes in push constants.
-        //       Skinned meshes: the bones and weights in a second vertex buffer, the skinning matrices of all skins in one storage
-        //       buffer per frame in flight; a draw finds the matrices of its skin by 'gl_InstanceIndex' (the first instance).
+        //       Skinned meshes: the bones, weights and skin mode in a second vertex buffer, the joints of all skins (matrix for
+        //       LBS, dual quaternion for DQS) in one storage buffer per frame in flight; a draw finds the joints of its skin by
+        //       'gl_InstanceIndex' (the first instance).
         //       Draw order: opaque and masked meshes first, then blended ones back to front by their node (the meshes of one
         //       node keep their order, like MMD draws the materials of a model in the file order).
         //
@@ -83,6 +84,11 @@ namespace Simple {
                 uint32_t light_count[4];
                 LightGPU lights[MAX_LIGHTS];
             };
+            // Note: matches 'Joint' in 'shaders/scene.vert' (std430): the skinning matrix (LBS) and dual quaternion (DQS, xyzw)
+            struct JointGPU {
+                mat4 matrix;
+                vec4 real, dual;
+            };
             struct PushConstants {
                 mat4 model;
                 mat4 normal; // inverse transpose of 'model' (upper 3x3 used)
@@ -110,7 +116,8 @@ namespace Simple {
             std::vector<Graph::Buffer>  frame_buffers;  // per frame in flight, HOST_VISIBLE
             Graph::Buffer               skin_buffer;    // 'SkinVertex' of the skinned meshes
             std::vector<Graph::Buffer>  joint_buffers;  // per frame in flight, HOST_VISIBLE: the skinning matrices of all skins
-            std::vector<uint32_t>       joint_offsets;  // per skin: its first matrix in the joint buffers
+            std::vector<uint32_t>       joint_offsets;  // per skin: its first joint in the joint buffers
+            std::vector<JointGPU>       joint_data;     // 'update' scratch
             VkDeviceSize                material_stride = 0u;
             MemoryId                    texture_memory;
             std::vector<Graph::Texture> textures;       // per scene texture, then the defaults: white, flat normal

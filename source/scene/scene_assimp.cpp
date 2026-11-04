@@ -56,6 +56,20 @@ namespace Simple {
                 return __absolute ? _file : _dir + _file;
             }
 
+            // A png, jpg, bmp, tga... in memory -> RGBA8 texels
+            bool decodeImage(Texture &_tex, const unsigned char *_data, int _size) {
+                int __w = 0, __h = 0, __ch = 0;
+                unsigned char *__px = stbi_load_from_memory(_data, _size, &__w, &__h, &__ch, 4);
+                if (!__px) return false;
+                _tex.image.width  = __w;
+                _tex.image.height = __h;
+                _tex.image.img.resize((size_t)__w * __h);
+                std::memcpy(_tex.image.img.data(), __px, (size_t)__w * __h * 4u);
+                stbi_image_free(__px);
+                _tex.scanAlpha();
+                return true;
+            }
+
             struct Converter {
                 Scene                &scene;
                 const aiScene        &ai;
@@ -77,7 +91,6 @@ namespace Simple {
                 std::vector<mat4>     mesh_to_skeleton;        // aiMesh index -> its space in the skeleton space (bind pose)
                 std::map<const aiNode*, uint32_t> node_map;    // aiNode -> scene node
                 std::vector<uint32_t> skinned_nodes;           // scene nodes with skinned meshes
-                Assimp::DefaultIOSystem io;                    // reads UTF-8 paths on Windows too
 
                 Converter(Scene &_scene, const aiScene &_ai, const std::string &_dir, bool _left_handed, const ImportOptions &_options,
                           const std::string &_ext)
@@ -180,7 +193,7 @@ namespace Simple {
                         const uint32_t __parent = __skeleton.bones[i].parent;
                         __skeleton.bones[i].rest = TRS::fromMatrix(__parent == SCENE_NONE ? __bind[i] : __bind[i] & __bind[__parent].inverse<float>());
                     }
-                    __skeleton.computeInverseBind();
+                    __skeleton.finalize();
                     skeleton = scene.addSkeleton(__skeleton);
                 }
 
@@ -189,6 +202,7 @@ namespace Simple {
                     SkinVertex __empty;
                     __empty.bones[0] = __empty.bones[1] = __empty.bones[2] = __empty.bones[3] = 0u;
                     __empty.weights = {0.f, 0.f, 0.f, 0.f};
+                    __empty.mode    = SCENE_SKIN_LINEAR;
                     _mesh.skin.assign(_mesh.vertices.size(), __empty);
                     for (uint32_t b = 0u; b < _ai_mesh.mNumBones; ++b) {
                         const aiBone &__ai_bone = *_ai_mesh.mBones[b];
@@ -214,18 +228,7 @@ namespace Simple {
                     }
                 }
 
-                bool decode(Texture &_tex, const unsigned char *_data, int _size) {
-                    int __w = 0, __h = 0, __ch = 0;
-                    unsigned char *__px = stbi_load_from_memory(_data, _size, &__w, &__h, &__ch, 4);
-                    if (!__px) return false;
-                    _tex.image.width  = __w;
-                    _tex.image.height = __h;
-                    _tex.image.img.resize((size_t)__w * __h);
-                    std::memcpy(_tex.image.img.data(), __px, (size_t)__w * __h * 4u);
-                    stbi_image_free(__px);
-                    _tex.scanAlpha();
-                    return true;
-                }
+                bool decode(Texture &_tex, const unsigned char *_data, int _size) { return decodeImage(_tex, _data, _size); }
 
                 bool loadEmbedded(Texture &_tex, const aiTexture &_ai_tex) {
                     if (_ai_tex.mHeight == 0u) // compressed (png, jpg...) in memory
@@ -241,13 +244,7 @@ namespace Simple {
                     return true;
                 }
 
-                bool loadFile(Texture &_tex, const std::string &_path) {
-                    std::unique_ptr<Assimp::IOStream> __file(io.Exists(_path.c_str()) ? io.Open(_path.c_str(), "rb") : nullptr);
-                    if (!__file) return false;
-                    std::vector<unsigned char> __bytes(__file->FileSize());
-                    if (__bytes.empty() || __file->Read(__bytes.data(), 1u, __bytes.size()) != __bytes.size()) return false;
-                    return decode(_tex, __bytes.data(), (int)__bytes.size());
-                }
+                bool loadFile(Texture &_tex, const std::string &_path) { return loadTextureFile(_tex, _path); }
 
                 uint32_t texture(const aiMaterial &_mat, aiTextureType _type, bool _srgb) {
                     if (_mat.GetTextureCount(_type) == 0u) return SCENE_NONE;
@@ -476,6 +473,15 @@ namespace Simple {
                 return __root;
             }
         } // anonymous namespace END
+
+        bool loadTextureFile(Texture &_texture, const std::string &_path) {
+            Assimp::DefaultIOSystem __io; // reads UTF-8 paths on Windows too
+            std::unique_ptr<Assimp::IOStream> __file(__io.Exists(_path.c_str()) ? __io.Open(_path.c_str(), "rb") : nullptr);
+            if (!__file) return false;
+            std::vector<unsigned char> __bytes(__file->FileSize());
+            if (__bytes.empty() || __file->Read(__bytes.data(), 1u, __bytes.size()) != __bytes.size()) return false;
+            return decodeImage(_texture, __bytes.data(), (int)__bytes.size());
+        }
 
         uint32_t convertAssimp(Scene &_scene, const aiScene &_ai_scene, const std::string &_dir, bool _left_handed,
                                const ImportOptions &_options, uint32_t _parent) {

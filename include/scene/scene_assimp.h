@@ -47,6 +47,10 @@ namespace Simple {
         uint32_t convertAssimp(Scene &_scene, const aiScene &_ai_scene, const std::string &_dir, bool _left_handed,
                                const ImportOptions &_options = ImportOptions(), uint32_t _parent = SCENE_NONE);
 
+        // Reads and decodes an image file (png, jpg, bmp, tga...: what stb_image reads) into '_texture' ('image' and the alpha
+        // flags; the name and the color space are left to the caller). UTF-8 paths. Returns false if it can't
+        bool loadTextureFile(Texture &_texture, const std::string &_path);
+
     }; // SceneGraph END
 }; // Simple END
 

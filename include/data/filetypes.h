@@ -17,6 +17,7 @@ namespace Simple {
             VMD,
             OGG,
             WAV,
+            PMX,
 
             UNKNOWN = UINT32_MAX
         }; // Filetype END
@@ -356,6 +357,118 @@ namespace Simple {
 
             bool tryHeaders(ReaderItf &_ftype_file) override;
         }; // ReaderWriterWAV END
+
+
+    // PMX
+
+        // Note: MMD model (PMX 2.0/2.1). Read now: the header, vertices (with the deform data, SDEF included), faces, textures,
+        //       materials and bones (IK and grant included); morphs, display frames, rigid bodies and joints are not read yet.
+        //       Texts are converted to UTF-8. The data stays in the MMD space: left-handed, Y up, the model faces -Z
+        struct ContentPMX : FiletypeContentItf {
+            enum DeformType : uint8_t { DEFORM_BDEF1 = 0, DEFORM_BDEF2, DEFORM_BDEF4, DEFORM_SDEF, DEFORM_QDEF };
+
+            enum BoneFlags : uint16_t {
+                BONE_TAIL_IS_BONE        = 0x0001,
+                BONE_ROTATABLE           = 0x0002,
+                BONE_TRANSLATABLE        = 0x0004,
+                BONE_VISIBLE             = 0x0008,
+                BONE_ENABLED             = 0x0010,
+                BONE_IK                  = 0x0020,
+                BONE_GRANT_LOCAL         = 0x0080,
+                BONE_GRANT_ROTATION      = 0x0100,
+                BONE_GRANT_TRANSLATION   = 0x0200,
+                BONE_FIXED_AXIS          = 0x0400,
+                BONE_LOCAL_AXES          = 0x0800,
+                BONE_AFTER_PHYSICS       = 0x1000,
+                BONE_EXTERNAL_PARENT     = 0x2000,
+            };
+
+            enum MaterialFlags : uint8_t {
+                MATERIAL_NO_CULL         = 0x01,
+                MATERIAL_GROUND_SHADOW   = 0x02,
+                MATERIAL_SHADOW_CASTER   = 0x04,
+                MATERIAL_SHADOW_RECEIVER = 0x08,
+                MATERIAL_EDGE            = 0x10,
+            };
+
+            struct Vertex {
+                vec3f      position, normal;
+                vec2f      uv;
+                vec4f      additional_uv[4];
+                DeformType deform = DEFORM_BDEF1;
+                int32_t    bones[4]   = { -1, -1, -1, -1 };
+                float      weights[4] = { 0.f, 0.f, 0.f, 0.f }; // BDEF2/SDEF: weights[1] = 1 - weights[0]
+                vec3f      sdef_c, sdef_r0, sdef_r1;
+                float      edge_scale = 1.f;
+            };
+
+            struct Material {
+                std::string name, name_en;
+                vec4f       diffuse;            // rgb, alpha
+                vec3f       specular;
+                float       specular_power = 0.f;
+                vec3f       ambient;
+                uint8_t     flags = 0u;         // MaterialFlags
+                vec4f       edge_color;
+                float       edge_size = 0.f;
+                int32_t     texture = -1, sphere_texture = -1;
+                uint8_t     sphere_mode = 0u;   // 0: none, 1: multiply, 2: add, 3: sub-texture
+                bool        shared_toon = false;
+                int32_t     toon = -1;          // a texture index, or 0..9 for toon01..toon10 if 'shared_toon'
+                std::string memo;
+                uint32_t    index_count = 0u;   // the faces of the material follow the ones of the previous materials
+            };
+
+            struct IKLink {
+                int32_t bone = -1;
+                bool    limited = false;
+                vec3f   limit_min, limit_max;   // radians (Euler XYZ)
+            };
+
+            struct Bone {
+                std::string name, name_en;
+                vec3f       position;           // in the model space (the bind pose)
+                int32_t     parent = -1;
+                int32_t     layer  = 0;         // deform layer
+                uint16_t    flags  = 0u;        // BoneFlags
+                int32_t     tail_bone = -1;     // if BONE_TAIL_IS_BONE
+                vec3f       tail_offset;        // otherwise
+                int32_t     grant_parent = -1;  // if BONE_GRANT_ROTATION or BONE_GRANT_TRANSLATION
+                float       grant_ratio  = 0.f;
+                vec3f       fixed_axis;
+                vec3f       local_x, local_z;
+                int32_t     external_key = 0;
+                int32_t     ik_target = -1;     // if BONE_IK: the bone that has to reach this one
+                int32_t     ik_loops  = 0;
+                float       ik_limit_angle = 0.f; // radians per iteration
+                std::vector<IKLink> ik_links;
+            };
+
+            float       version = 2.f;
+            uint8_t     encoding = 0u;          // 0: UTF-16LE, 1: UTF-8 (in the file)
+            uint8_t     additional_uvs = 0u;
+            std::string name, name_en, comment, comment_en;
+
+            std::vector<Vertex>      vertices;
+            std::vector<uint32_t>    indices;   // triangles
+            std::vector<std::string> textures;  // paths relative to the model file, as written (Windows separators possible)
+            std::vector<Material>    materials;
+            std::vector<Bone>        bones;
+
+            int32_t findBone(const std::string &_name) const; // -1 if there is none
+        }; // ContentPMX END
+
+        struct ReaderWriterPMX : FiletypeReaderWriterItf {
+            ContentPMX file_content;
+
+            ReaderWriterPMX(const std::string &_fpath = "");
+
+            virtual bool read(const std::string &_fpath) override;
+            // Note: not supported yet, returns false
+            virtual bool write(const std::string &_fpath) override;
+
+            bool tryHeaders(ReaderItf &_ftype_file) override;
+        }; // ReaderWriterPMX END
 
 
     // JSON

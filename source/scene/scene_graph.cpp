@@ -195,6 +195,34 @@ namespace Simple {
             return SCENE_NONE;
         }
 
+        uint32_t Skeleton::addIK(const IKChain &_ik) {
+            SVKFW_ASSERT(_ik.goal < bones.size() && _ik.effector < bones.size(), std::out_of_range, "SceneGraph::Skeleton :: addIK",
+                            "bad goal or effector bone in '" + _ik.name + "'");
+            for (size_t l = 0u; l < _ik.links.size(); ++l)
+                SVKFW_ASSERT(_ik.links[l].bone < bones.size(), std::out_of_range, "SceneGraph::Skeleton :: addIK", "bad link in '" + _ik.name + "'");
+            iks.push_back(_ik);
+            bones[_ik.goal].ik = (uint32_t)iks.size() - 1u;
+            return (uint32_t)iks.size() - 1u;
+        }
+
+        void Skeleton::finalize() {
+            computeInverseBind();
+            children.assign(bones.size(), std::vector<uint32_t>());
+            for (uint32_t i = 0u; i < (uint32_t)bones.size(); ++i)
+                if (bones[i].parent != SCENE_NONE) children[bones[i].parent].push_back(i);
+            order.resize(bones.size());
+            for (uint32_t i = 0u; i < (uint32_t)bones.size(); ++i) order[i] = i;
+            struct DeformOrder {
+                const std::vector<Bone> &bones;
+                bool operator()(uint32_t _a, uint32_t _b) const {
+                    if (bones[_a].after_physics != bones[_b].after_physics) return !bones[_a].after_physics;
+                    if (bones[_a].layer != bones[_b].layer) return bones[_a].layer < bones[_b].layer;
+                    return _a < _b;
+                }
+            };
+            std::sort(order.begin(), order.end(), DeformOrder{bones});
+        }
+
         void Skeleton::computeInverseBind() {
             std::vector<mat4> __bind(bones.size());
             for (size_t i = 0u; i < bones.size(); ++i) {
@@ -203,22 +231,245 @@ namespace Simple {
             }
         }
 
+        namespace {
+            // '_t' of the rotation (any real '_t': negative ratios give the inverse direction, like MMD grants)
+            Quat scaleRotation(const Quat &_q, float _t) {
+                Quat __q = _q.normalize();
+                if (__q.s < 0.f) __q = Quat(-__q.s, -__q.i, -__q.j, -__q.k);
+                const float __v = std::sqrt(__q.i * __q.i + __q.j * __q.j + __q.k * __q.k);
+                if (__v < 1e-7f) return Quat();
+                const float __angle = 2.f * std::atan2(__v, __q.s) * _t;
+                return Quat(vec3{__q.i / __v, __q.j / __v, __q.k / __v}, __angle);
+            }
+
+            vec3 origin(const mat4 &_m) { return { _m.M[3][0], _m.M[3][1], _m.M[3][2] }; }
+
+            float clampf(float _v, float _min, float _max) { return _v < _min ? _min : (_v > _max ? _max : _v); }
+
+            // Euler angles of 'q = qx * qy * qz' (Z is applied first); '_near' picks the solution closest to it
+            vec3 eulerXYZ(const Quat &_q, const vec3 &_near) {
+                const mat4 m = rotation(_q); // row style: m.M[r][c] is the usual c(c, r)
+                const float __sy = clampf(m.M[2][0], -1.f, 1.f);
+                vec3 __a, __b;
+                if (std::fabs(__sy) > 0.99999f) { // gimbal lock: keep X
+                    __a.x = _near.x;
+                    __a.y = std::asin(__sy);
+                    // with x fixed: z from the remaining rotation
+                    const mat4 __rest = rotation(Quat(vec3{1.f, 0.f, 0.f}, __a.x).inverse() * _q);
+                    __a.z = std::atan2(__rest.M[0][1], __rest.M[1][1]);
+                    return __a;
+                }
+                __a.y = std::asin(__sy);
+                __a.x = std::atan2(-m.M[2][1], m.M[2][2]);
+                __a.z = std::atan2(-m.M[1][0], m.M[0][0]);
+                const float __pi = 3.14159265f;
+                __b.x = __a.x + (__a.x > 0.f ? -__pi : __pi);
+                __b.y = (__a.y > 0.f ? __pi : -__pi) - __a.y;
+                __b.z = __a.z + (__a.z > 0.f ? -__pi : __pi);
+                const vec3 __da = __a - _near, __db = __b - _near;
+                return Math::dot(__da, __da) <= Math::dot(__db, __db) ? __a : __b;
+            }
+
+            Quat fromEulerXYZ(const vec3 &_a) {
+                return Quat(vec3{1.f, 0.f, 0.f}, _a.x) * Quat(vec3{0.f, 1.f, 0.f}, _a.y) * Quat(vec3{0.f, 0.f, 1.f}, _a.z);
+            }
+        } // anonymous namespace END
+
         void Pose::reset(const Skeleton &_skeleton) {
-            local.resize(_skeleton.bones.size());
-            for (size_t i = 0u; i < local.size(); ++i) local[i] = _skeleton.bones[i].rest;
+            const size_t __count = _skeleton.bones.size();
+            local.resize(__count);
+            for (size_t i = 0u; i < __count; ++i) local[i] = _skeleton.bones[i].rest;
+            ik_rotation.assign(__count, Quat());
+            grant_rotation.assign(__count, Quat());
+            grant_translation.assign(__count, vec3{0.f, 0.f, 0.f});
+            model.resize(__count, Mat::Eye4);
+            skinning.resize(__count, Mat::Eye4);
             dirty = true;
+        }
+
+        mat4 Pose::localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const {
+            TRS __trs = local[_bone];
+            __trs.rotation    = ik_rotation[_bone] * local[_bone].rotation * grant_rotation[_bone];
+            __trs.translation = __trs.translation + grant_translation[_bone];
+            const uint32_t __parent = _skeleton.bones[_bone].parent;
+            return __parent == SCENE_NONE ? __trs.matrix() : __trs.matrix() & model[__parent];
+        }
+
+        void Pose::updateModel_(const Skeleton &_skeleton, uint32_t _bone) {
+            std::vector<uint32_t> __stack(1u, _bone);
+            while (!__stack.empty()) {
+                const uint32_t __b = __stack.back();
+                __stack.pop_back();
+                model[__b] = localMatrix_(_skeleton, __b);
+                if (__b < _skeleton.children.size())
+                    __stack.insert(__stack.end(), _skeleton.children[__b].begin(), _skeleton.children[__b].end());
+            }
+        }
+
+        void Pose::applyGrant_(const Skeleton &_skeleton, uint32_t _bone) {
+            const Bone &__bone = _skeleton.bones[_bone];
+            const uint32_t g = __bone.grant_parent;
+            const Bone &__source = _skeleton.bones[g];
+            // Note: a grant of a granted bone takes its grant only (MMD), otherwise the animated rotation with the IK
+            if (__bone.grant_rotation) {
+                Quat __rotation = __source.grant_rotation ? grant_rotation[g] : local[g].rotation * __source.rest.rotation.inverse();
+                __rotation = ik_rotation[g] * __rotation;
+                grant_rotation[_bone] = scaleRotation(__rotation, __bone.grant_ratio);
+            }
+            if (__bone.grant_translation) {
+                const vec3 __translation = __source.grant_translation ? grant_translation[g] : local[g].translation - __source.rest.translation;
+                grant_translation[_bone] = __translation * __bone.grant_ratio;
+            }
+        }
+
+        void Pose::rotateLink_(const Skeleton &_skeleton, uint32_t _bone, const vec3 &_axis, float _angle) {
+            const Quat __animated = local[_bone].rotation;
+            const Quat __total = ik_rotation[_bone] * __animated * Quat(_axis, _angle);
+            ik_rotation[_bone] = (__total * __animated.inverse()).normalize();
+            updateModel_(_skeleton, _bone);
+        }
+
+        void Pose::limitLink_(const Skeleton &_skeleton, const IKLink &_link, float _limit_angle, vec3 &_previous) {
+            const Quat __animated = local[_link.bone].rotation;
+            const Quat __total = ik_rotation[_link.bone] * __animated;
+            vec3 __angles = eulerXYZ(__total, _previous);
+            __angles = { clampf(__angles.x, _link.limit_min.x, _link.limit_max.x),
+                         clampf(__angles.y, _link.limit_min.y, _link.limit_max.y),
+                         clampf(__angles.z, _link.limit_min.z, _link.limit_max.z) };
+            __angles = { _previous.x + clampf(__angles.x - _previous.x, -_limit_angle, _limit_angle),
+                         _previous.y + clampf(__angles.y - _previous.y, -_limit_angle, _limit_angle),
+                         _previous.z + clampf(__angles.z - _previous.z, -_limit_angle, _limit_angle) };
+            _previous = __angles;
+            ik_rotation[_link.bone] = (fromEulerXYZ(__angles) * __animated.inverse()).normalize();
+            updateModel_(_skeleton, _link.bone);
+        }
+
+        void Pose::solveCCD_(const Skeleton &_skeleton, const IKChain &_ik) {
+            const size_t __links = _ik.links.size();
+            std::vector<vec3>  __previous(__links, vec3{0.f, 0.f, 0.f});
+            std::vector<float> __plane_angle(__links, 0.f);
+            std::vector<Quat>  __best(__links);
+            float __best_distance = 1e30f;
+            for (uint32_t it = 0u; it < _ik.iterations; ++it) {
+                for (size_t l = 0u; l < __links; ++l) {
+                    const IKLink &__link = _ik.links[l];
+                    if (__link.bone == _ik.effector) continue;
+                    const mat4 __inverse = model[__link.bone].inverse<float>();
+                    vec3 __to_goal     = transformPoint(__inverse, origin(model[_ik.goal]));
+                    vec3 __to_effector = transformPoint(__inverse, origin(model[_ik.effector]));
+                    if (__to_goal.norm() < 1e-7f || __to_effector.norm() < 1e-7f) continue;
+                    __to_goal = __to_goal.normalize();
+                    __to_effector = __to_effector.normalize();
+                    float __angle = std::acos(clampf(Math::dot(__to_effector, __to_goal), -1.f, 1.f));
+
+                    // A link limited around one axis only (knees): rotate in that plane, within the limits
+                    int __axis = -1;
+                    if (__link.limited) {
+                        const bool __x = __link.limit_min.x != 0.f || __link.limit_max.x != 0.f;
+                        const bool __y = __link.limit_min.y != 0.f || __link.limit_max.y != 0.f;
+                        const bool __z = __link.limit_min.z != 0.f || __link.limit_max.z != 0.f;
+                        if (__x && !__y && !__z) __axis = 0; else if (!__x && __y && !__z) __axis = 1; else if (!__x && !__y && __z) __axis = 2;
+                    }
+                    if (__axis >= 0) {
+                        const vec3  __a   = { __axis == 0 ? 1.f : 0.f, __axis == 1 ? 1.f : 0.f, __axis == 2 ? 1.f : 0.f };
+                        const float __min = __axis == 0 ? __link.limit_min.x : __axis == 1 ? __link.limit_min.y : __link.limit_min.z;
+                        const float __max = __axis == 0 ? __link.limit_max.x : __axis == 1 ? __link.limit_max.y : __link.limit_max.z;
+                        __angle = clampf(__angle, -_ik.limit_angle, _ik.limit_angle);
+                        // Which direction brings the effector closer
+                        const float __plus  = Math::dot(Quat(__a,  __angle).rotate(__to_effector), __to_goal);
+                        const float __minus = Math::dot(Quat(__a, -__angle).rotate(__to_effector), __to_goal);
+                        float __new = __plane_angle[l] + (__plus > __minus ? __angle : -__angle);
+                        if (it == 0u && (__new < __min || __new > __max)) {
+                            if (-__new > __min && -__new < __max) __new = -__new;
+                            else {
+                                const float __half = (__min + __max) * 0.5f;
+                                if (std::fabs(__half - __new) > std::fabs(__half + __new)) __new = -__new;
+                            }
+                        }
+                        __new = clampf(__new, __min, __max);
+                        __plane_angle[l] = __new;
+                        ik_rotation[__link.bone] = (Quat(__a, __new) * local[__link.bone].rotation.inverse()).normalize();
+                        updateModel_(_skeleton, __link.bone);
+                        continue;
+                    }
+
+                    if (__angle < 1e-5f) continue;
+                    __angle = clampf(__angle, -_ik.limit_angle, _ik.limit_angle);
+                    vec3 __axis_v = Math::cross(__to_effector, __to_goal);
+                    if (__axis_v.norm() < 1e-7f) continue;
+                    rotateLink_(_skeleton, __link.bone, __axis_v.normalize(), __angle);
+                    if (__link.limited) limitLink_(_skeleton, __link, _ik.limit_angle, __previous[l]);
+                }
+                // Keep the best iteration (MMD): stop when the distance doesn't improve
+                const vec3  __d = origin(model[_ik.goal]) - origin(model[_ik.effector]);
+                const float __distance = Math::dot(__d, __d);
+                if (__distance < __best_distance) {
+                    __best_distance = __distance;
+                    for (size_t l = 0u; l < __links; ++l) __best[l] = ik_rotation[_ik.links[l].bone];
+                } else {
+                    for (size_t l = 0u; l < __links; ++l) {
+                        ik_rotation[_ik.links[l].bone] = __best[l];
+                        updateModel_(_skeleton, _ik.links[l].bone);
+                    }
+                    break;
+                }
+                if (__distance < 1e-10f) break;
+            }
+        }
+
+        void Pose::solveTwoBone_(const Skeleton &_skeleton, const IKChain &_ik) {
+            if (_ik.links.size() != 2u) { solveCCD_(_skeleton, _ik); return; }
+            const uint32_t __mid = _ik.links[0].bone, __root = _ik.links[1].bone;
+            const vec3 a = origin(model[__root]), b = origin(model[__mid]), c = origin(model[_ik.effector]), t = origin(model[_ik.goal]);
+            const float __upper = (b - a).norm(), __lower = (c - b).norm();
+            if (__upper < 1e-7f || __lower < 1e-7f) return;
+            // 1. The middle joint: the angle that makes the root-effector distance equal to the root-goal distance
+            const float __d = clampf((t - a).norm(), std::fabs(__upper - __lower) + 1e-5f, __upper + __lower - 1e-5f);
+            const vec3  __u = (a - b).normalize(), __w = (c - b).normalize();
+            const float __current = std::acos(clampf(Math::dot(__u, __w), -1.f, 1.f));
+            const float __wanted  = std::acos(clampf((__upper * __upper + __lower * __lower - __d * __d) / (2.f * __upper * __lower), -1.f, 1.f));
+            vec3 __bend = Math::cross(__w, __u); // the bend plane of the current pose
+            if (__bend.norm() < 1e-6f) __bend = Math::cross(__w, t - a);    // a straight limb: bend towards the goal
+            if (__bend.norm() < 1e-6f) __bend = Math::cross(__w, vec3{0.f, 0.f, 1.f});
+            if (__bend.norm() > 1e-7f) {
+                const vec3 __local = transformDir(model[__mid].inverse<float>(), __bend.normalize());
+                if (__local.norm() > 1e-7f) rotateLink_(_skeleton, __mid, __local.normalize(), __current - __wanted);
+            }
+            // 2. The root joint: turn the effector onto the goal
+            const mat4 __inverse = model[__root].inverse<float>();
+            vec3 __to_effector = transformPoint(__inverse, origin(model[_ik.effector])), __to_goal = transformPoint(__inverse, t);
+            if (__to_effector.norm() < 1e-7f || __to_goal.norm() < 1e-7f) return;
+            __to_effector = __to_effector.normalize();
+            __to_goal = __to_goal.normalize();
+            const vec3 __axis = Math::cross(__to_effector, __to_goal);
+            if (__axis.norm() < 1e-7f) return;
+            rotateLink_(_skeleton, __root, __axis.normalize(), std::acos(clampf(Math::dot(__to_effector, __to_goal), -1.f, 1.f)));
         }
 
         void Pose::computeFK(const Skeleton &_skeleton) {
             const size_t __count = _skeleton.bones.size();
-            if (local.size() != __count) reset(_skeleton);
+            if (local.size() != __count || ik_rotation.size() != __count) reset(_skeleton);
             model.resize(__count);
             skinning.resize(__count);
-            for (size_t i = 0u; i < __count; ++i) {
-                const Bone &__bone = _skeleton.bones[i];
-                model[i]    = __bone.parent == SCENE_NONE ? local[i].matrix() : local[i].matrix() & model[__bone.parent];
-                skinning[i] = __bone.inverse_bind & model[i];
+            ik_rotation.assign(__count, Quat());
+            grant_rotation.assign(__count, Quat());
+            grant_translation.assign(__count, vec3{0.f, 0.f, 0.f});
+            for (uint32_t i = 0u; i < (uint32_t)__count; ++i) model[i] = localMatrix_(_skeleton, i);
+            // Grants and IK in the deform order (without 'finalize' there is none: plain FK)
+            for (size_t o = 0u; o < _skeleton.order.size(); ++o) {
+                const uint32_t __b = _skeleton.order[o];
+                const Bone &__bone = _skeleton.bones[__b];
+                if (__bone.grant_parent != SCENE_NONE && (__bone.grant_rotation || __bone.grant_translation)) {
+                    applyGrant_(_skeleton, __b);
+                    updateModel_(_skeleton, __b);
+                }
+                if (__bone.ik != SCENE_NONE && solve_ik && _skeleton.iks[__bone.ik].enabled) {
+                    const IKChain &__ik = _skeleton.iks[__bone.ik];
+                    if (__ik.solver == SCENE_IK_TWO_BONE) solveTwoBone_(_skeleton, __ik);
+                    else solveCCD_(_skeleton, __ik);
+                }
             }
+            for (size_t i = 0u; i < __count; ++i) skinning[i] = _skeleton.bones[i].inverse_bind & model[i];
             dirty = false;
         }
 
