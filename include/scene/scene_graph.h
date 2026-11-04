@@ -31,9 +31,9 @@ namespace Simple {
         //       Scene scene;
         //       uint32_t stage = loadAssimp(scene, "resources/assets/stage.pmx");                 // see 'scene_assimp.h'
         //       uint32_t chara = loadAssimp(scene, "resources/assets/chara.pmx", ImportOptions(), scene.addNode("chara"));
-        //       scene.node(chara).local = translation({0.f, 0.f, 5.f});
+        //       scene.setLocal(chara, translation({0.f, 0.f, 5.f}));
         //       scene.addLight(Light::directional({1.f, 0.95f, 0.9f}, 2.f), scene.addNode("sun", SCENE_NONE, lookAlong(...)));
-        //       scene.updateTransforms();                                                         // after changing 'local'
+        //       scene.updateTransforms();                       // recomputes only the changed nodes and their descendants
 
         const uint32_t SCENE_NONE = UINT32_MAX;
 
@@ -146,10 +146,10 @@ namespace Simple {
             std::string           name;
             uint32_t              parent = SCENE_NONE;
             std::vector<uint32_t> children;
-            mat4                  local = Mat::Eye4;
+            mat4                  local = Mat::Eye4;  // after a direct change call 'Scene::markDirty' (or use 'Scene::setLocal')
             std::vector<uint32_t> meshes;
             uint32_t              light = SCENE_NONE;
-            bool                  visible = true; // hides the meshes of the node and all its descendants
+            bool                  visible = true; // hides the meshes of the node and all its descendants ('Scene::setVisible')
         }; // Node END
 
         struct Scene {
@@ -163,6 +163,8 @@ namespace Simple {
             // Computed by 'updateTransforms': the world matrix and the world visibility of each node
             std::vector<mat4>     world;
             std::vector<uint8_t>  world_visible;
+            // The nodes recomputed by the last 'updateTransforms' (parents before children), e.g. for refitting the bounds
+            std::vector<uint32_t> changed;
 
             uint32_t addNode(const std::string &_name, uint32_t _parent = SCENE_NONE, const mat4 &_local = Mat::Eye4);
             uint32_t addMesh(const Mesh &_mesh);
@@ -178,7 +180,16 @@ namespace Simple {
             // Moves '_node' under '_new_parent' (SCENE_NONE: makes it a root), keeping its local transform
             void reparent(uint32_t _node, uint32_t _new_parent);
 
-            // Recomputes 'world' and 'world_visible' from the local transforms (parents are not required to come first)
+            // Change the local transform / the visibility of a node and mark it for 'updateTransforms'
+            void setLocal(uint32_t _node, const mat4 &_local);
+            void setVisible(uint32_t _node, bool _visible);
+            // Marks a node whose 'local' or 'visible' was changed directly; its descendants are recomputed with it
+            void markDirty(uint32_t _node);
+            // Makes the next 'updateTransforms' recompute the whole tree (e.g. after editing 'nodes' by hand)
+            void markAllDirty();
+
+            // Recomputes 'world' and 'world_visible' of the marked nodes and their descendants (the whole tree after
+            // 'append', 'clear' or 'markAllDirty'); fills 'changed'. Parents are not required to come before children in 'nodes'
             void updateTransforms();
 
             // Bounds of the visible meshes in the world (after 'updateTransforms')
@@ -190,7 +201,13 @@ namespace Simple {
             void clear();
 
         private:
-            void updateNode_(uint32_t _index, std::vector<uint8_t> &_done);
+            // Note: 'depth_' is the number of ancestors; 'stamp_' marks the nodes done by the current update
+            std::vector<uint32_t> depth_, dirty_, stamp_;
+            uint32_t              stamp_count_ = 0u;
+            bool                  full_update_ = true;
+
+            void updateSubtree_(uint32_t _index);
+            void updateDepth_(uint32_t _index);
         }; // Scene END
 
     }; // SceneGraph END

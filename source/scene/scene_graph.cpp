@@ -127,6 +127,11 @@ namespace Simple {
             uint32_t __index = (uint32_t)nodes.size() - 1u;
             if (_parent != SCENE_NONE)
                 nodes[_parent].children.push_back(__index);
+            if (!full_update_ && depth_.size() == __index) {
+                depth_.push_back(_parent == SCENE_NONE ? 0u : depth_[_parent] + 1u);
+                dirty_.push_back(__index);
+            } else
+                full_update_ = true;
             return __index;
         }
 
@@ -181,28 +186,94 @@ namespace Simple {
             __node.parent = _new_parent;
             if (_new_parent != SCENE_NONE)
                 nodes[_new_parent].children.push_back(_node);
+            if (!full_update_ && depth_.size() == nodes.size()) {
+                updateDepth_(_node);
+                dirty_.push_back(_node);
+            } else
+                full_update_ = true;
         }
 
-        void Scene::updateNode_(uint32_t _index, std::vector<uint8_t> &_done) {
-            if (_done[_index]) return;
-            const Node &__node = nodes[_index];
-            if (__node.parent == SCENE_NONE) {
-                world[_index] = __node.local;
-                world_visible[_index] = __node.visible ? 1u : 0u;
-            } else {
-                updateNode_(__node.parent, _done);
-                world[_index] = __node.local & world[__node.parent];
-                world_visible[_index] = (__node.visible && world_visible[__node.parent]) ? 1u : 0u;
+        void Scene::setLocal(uint32_t _node, const mat4 &_local) {
+            node(_node).local = _local;
+            markDirty(_node);
+        }
+
+        void Scene::setVisible(uint32_t _node, bool _visible) {
+            node(_node).visible = _visible;
+            markDirty(_node);
+        }
+
+        void Scene::markDirty(uint32_t _node) {
+            SVKFW_ASSERT(_node < nodes.size(), std::out_of_range, "SceneGraph::Scene :: markDirty", "no node " + std::to_string(_node));
+            if (!full_update_) dirty_.push_back(_node);
+        }
+
+        void Scene::markAllDirty() {
+            full_update_ = true;
+        }
+
+        void Scene::updateDepth_(uint32_t _index) {
+            std::vector<uint32_t> __stack(1u, _index);
+            while (!__stack.empty()) {
+                uint32_t __n = __stack.back();
+                __stack.pop_back();
+                depth_[__n] = nodes[__n].parent == SCENE_NONE ? 0u : depth_[nodes[__n].parent] + 1u;
+                __stack.insert(__stack.end(), nodes[__n].children.begin(), nodes[__n].children.end());
             }
-            _done[_index] = 1u;
+        }
+
+        void Scene::updateSubtree_(uint32_t _index) {
+            // Note: depth first; a node is computed before its children are pushed, so the parent's world is always ready
+            std::vector<uint32_t> __stack(1u, _index);
+            while (!__stack.empty()) {
+                uint32_t __n = __stack.back();
+                __stack.pop_back();
+                const Node &__node = nodes[__n];
+                if (__node.parent == SCENE_NONE) {
+                    world[__n]         = __node.local;
+                    world_visible[__n] = __node.visible ? 1u : 0u;
+                    depth_[__n]        = 0u;
+                } else {
+                    world[__n]         = __node.local & world[__node.parent];
+                    world_visible[__n] = (__node.visible && world_visible[__node.parent]) ? 1u : 0u;
+                    depth_[__n]        = depth_[__node.parent] + 1u;
+                }
+                stamp_[__n] = stamp_count_;
+                changed.push_back(__n);
+                __stack.insert(__stack.end(), __node.children.begin(), __node.children.end());
+            }
         }
 
         void Scene::updateTransforms() {
-            world.resize(nodes.size());
-            world_visible.resize(nodes.size());
-            std::vector<uint8_t> __done(nodes.size(), 0u);
-            for (uint32_t i = 0u; i < (uint32_t)nodes.size(); ++i)
-                updateNode_(i, __done);
+            const uint32_t __count = (uint32_t)nodes.size();
+            changed.clear();
+            if (++stamp_count_ == 0u) { // wrapped: forget the old marks
+                stamp_.assign(stamp_.size(), 0u);
+                stamp_count_ = 1u;
+            }
+            stamp_.resize(__count, 0u);
+
+            world.resize(__count);         // nodes added since the last update are marked
+            world_visible.resize(__count);
+            if (full_update_ || depth_.size() != __count) {
+                depth_.assign(__count, 0u);
+                changed.reserve(__count);
+                for (uint32_t i = 0u; i < __count; ++i)
+                    if (nodes[i].parent == SCENE_NONE) updateSubtree_(i);
+                full_update_ = false;
+                dirty_.clear();
+                return;
+            }
+
+            // Shallow nodes first: the subtree of a marked node covers its marked descendants, which are then skipped
+            struct ByDepth {
+                const std::vector<uint32_t> &depth;
+                bool operator()(uint32_t _a, uint32_t _b) const { return depth[_a] < depth[_b]; }
+            };
+            std::sort(dirty_.begin(), dirty_.end(), ByDepth{depth_});
+            for (size_t i = 0u; i < dirty_.size(); ++i)
+                if (stamp_[dirty_[i]] != stamp_count_) updateSubtree_(dirty_[i]);
+            dirty_.clear();
         }
 
         AABB Scene::bounds() const {
@@ -249,12 +320,16 @@ namespace Simple {
                 if (_other.nodes[i].parent == SCENE_NONE && _parent != SCENE_NONE)
                     nodes[_parent].children.push_back((uint32_t)nodes.size() - 1u);
             }
+            full_update_ = true;
             return __node0;
         }
 
         void Scene::clear() {
             nodes.clear(); meshes.clear(); materials.clear(); textures.clear(); lights.clear();
-            world.clear(); world_visible.clear();
+            world.clear(); world_visible.clear(); changed.clear();
+            depth_.clear(); dirty_.clear(); stamp_.clear();
+            stamp_count_ = 0u;
+            full_update_ = true;
         }
 
     }; // SceneGraph END
