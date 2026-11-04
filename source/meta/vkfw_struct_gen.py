@@ -9,8 +9,12 @@ import xml.etree.ElementTree as ET
 #   StructExtends<T, Base>::value - true if T may be chained into Base's pNext ('structextends' in vk.xml)
 #   FeatureNames<T>               - member names of feature structures (VkPhysicalDeviceFeatures and the structures
 #                                   extending VkPhysicalDeviceFeatures2 that hold only VkBool32 members after sType/pNext)
-# Each specialization is guarded by the macros of the core versions/extensions that declare the types,
-# so the header compiles with older SDK headers and without platform-specific headers.
+# Types declared by a core version get no guard. Types declared only by extensions are guarded by the extension
+# macros (so platform-specific types are skipped without their platform headers), and sType values with a
+# 'protect' attribute by that macro (e.g. VK_ENABLE_BETA_EXTENSIONS).
+# Note: since ~1.4.335 vk.xml splits core versions into internal features (VK_BASE_VERSION_1_0,
+#       VK_COMPUTE_VERSION_1_0, VK_GRAPHICS_VERSION_1_0, ...) that are not macros in the headers,
+#       so the names of core features must never be used as guards.
 #
 # Usage: python vkfw_struct_gen.py [path/to/vk.xml] [path/to/vkfw_struct_traits.h]
 #   vk.xml is searched in $VULKAN_SDK (or $VK_SDK_PATH)/share/vulkan/registry if not passed.
@@ -42,6 +46,10 @@ vkfw_traits_end: str =\
 }; // Simple END
 
 #endif"""
+
+
+# Owner name of the types declared by any core version
+CORE: str = "<core>"
 
 
 def isVulkanApi(api: str | None) -> bool:
@@ -93,9 +101,10 @@ def loadRegistry(vk_xml_path: str):
                 if re_.get("extends") == "VkStructureType" and re_.get("protect"):
                     stype_protect[re_.get("name")] = re_.get("protect")
 
+    # Note: core versions are not guarded, so all core features (including the internal ones) are one owner
     for feature in root.findall("feature"):
         if isVulkanApi(feature.get("api")):
-            addRequires(feature, feature.get("name"))
+            addRequires(feature, CORE)
     for ext in root.find("extensions"):
         if "vulkan" in (ext.get("supported") or "").split(","):
             addRequires(ext, ext.get("name"))
@@ -105,7 +114,7 @@ def loadRegistry(vk_xml_path: str):
 
 def guardOf(type_name: str, providers: dict[str, set[str]]) -> str:
     owners = providers[type_name]
-    if "VK_VERSION_1_0" in owners:
+    if CORE in owners:
         return ""
     return " || ".join(f"defined({o})" for o in sorted(owners))
 
