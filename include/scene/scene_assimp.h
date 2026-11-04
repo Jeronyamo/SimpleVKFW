@@ -17,11 +17,12 @@ namespace Simple {
 
         // Note: what is converted now: the node tree with transforms, triangle meshes (positions, normals, the first UV set,
         //       tangents), materials (base color, specular, shininess, emissive, opacity, two-sided, the base color / normal /
-        //       emissive textures from files or embedded) and lights (directional, point, spot, ambient). Other data (bones,
-        //       animations, morphs, cameras, extra UV sets, vertex colors) is skipped for now; meshes stay in the bind pose.
+        //       emissive textures from files or embedded), lights (directional, point, spot, ambient) and the skeleton with the
+        //       bone weights (one skeleton per file, see 'Skin'). Other data (animations, morphs, cameras, extra UV sets, vertex
+        //       colors) is skipped for now.
         struct ImportOptions {
-            // Coordinate system of the file: assimp gives right-handed data for all formats except MMD (.pmx/.pmd), which stay
-            // left-handed like the engine. AUTO converts right-handed files (mirrors Z and flips the winding)
+            // Coordinate system of the data given by assimp: right-handed for all formats (the MMD importer converts the
+            // left-handed PMX data itself). AUTO = RIGHT: Z is mirrored back to the engine's left-handed space
             enum Handedness { HANDEDNESS_AUTO = 0, HANDEDNESS_LEFT, HANDEDNESS_RIGHT };
             Handedness handedness = HANDEDNESS_AUTO;
 

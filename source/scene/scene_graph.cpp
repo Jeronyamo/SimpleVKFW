@@ -47,6 +47,72 @@ namespace Simple {
         }
 
 
+        mat4 rotation(const Quat &_q) {
+            const Quat  __q = _q.normalize();
+            const float s = __q.s, i = __q.i, j = __q.j, k = __q.k;
+            // Note: the transpose of the usual column-vector style matrix
+            return { 1.f - 2.f * (j * j + k * k),       2.f * (i * j + s * k),       2.f * (i * k - s * j), 0.f,
+                           2.f * (i * j - s * k), 1.f - 2.f * (i * i + k * k),       2.f * (j * k + s * i), 0.f,
+                           2.f * (i * k + s * j),       2.f * (j * k - s * i), 1.f - 2.f * (i * i + j * j), 0.f,
+                     0.f, 0.f, 0.f, 1.f };
+        }
+
+        Quat rotationOf(const mat4 &_m) {
+            // Note: c(r, c) is the usual column-vector style matrix (the transpose of '_m'), rows normalized to drop the scale
+            float __len[3];
+            for (int r = 0; r < 3; ++r) {
+                __len[r] = std::sqrt(_m.M[r][0] * _m.M[r][0] + _m.M[r][1] * _m.M[r][1] + _m.M[r][2] * _m.M[r][2]);
+                if (__len[r] < 1e-12f) __len[r] = 1.f;
+            }
+            float c[3][3];
+            for (int r = 0; r < 3; ++r)
+                for (int col = 0; col < 3; ++col) c[r][col] = _m.M[col][r] / __len[col];
+            const float __trace = c[0][0] + c[1][1] + c[2][2];
+            Quat __q;
+            if (__trace > 0.f) {
+                float __t = std::sqrt(__trace + 1.f) * 2.f;
+                __q = Quat(0.25f * __t, (c[2][1] - c[1][2]) / __t, (c[0][2] - c[2][0]) / __t, (c[1][0] - c[0][1]) / __t);
+            } else if (c[0][0] > c[1][1] && c[0][0] > c[2][2]) {
+                float __t = std::sqrt(1.f + c[0][0] - c[1][1] - c[2][2]) * 2.f;
+                __q = Quat((c[2][1] - c[1][2]) / __t, 0.25f * __t, (c[0][1] + c[1][0]) / __t, (c[0][2] + c[2][0]) / __t);
+            } else if (c[1][1] > c[2][2]) {
+                float __t = std::sqrt(1.f + c[1][1] - c[0][0] - c[2][2]) * 2.f;
+                __q = Quat((c[0][2] - c[2][0]) / __t, (c[0][1] + c[1][0]) / __t, 0.25f * __t, (c[1][2] + c[2][1]) / __t);
+            } else {
+                float __t = std::sqrt(1.f + c[2][2] - c[0][0] - c[1][1]) * 2.f;
+                __q = Quat((c[1][0] - c[0][1]) / __t, (c[0][2] + c[2][0]) / __t, (c[1][2] + c[2][1]) / __t, 0.25f * __t);
+            }
+            return __q.normalize();
+        }
+
+        mat4 TRS::matrix() const {
+            mat4 __m = SceneGraph::rotation(rotation);
+            const float __s[3] = { scale.x, scale.y, scale.z };
+            for (int r = 0; r < 3; ++r)
+                for (int c = 0; c < 3; ++c) __m.M[r][c] *= __s[r];
+            __m.M[3][0] = translation.x; __m.M[3][1] = translation.y; __m.M[3][2] = translation.z;
+            return __m;
+        }
+
+        TRS TRS::fromMatrix(const mat4 &_m) {
+            TRS __trs;
+            __trs.translation = { _m.M[3][0], _m.M[3][1], _m.M[3][2] };
+            float __s[3];
+            for (int r = 0; r < 3; ++r) __s[r] = std::sqrt(_m.M[r][0] * _m.M[r][0] + _m.M[r][1] * _m.M[r][1] + _m.M[r][2] * _m.M[r][2]);
+            // A mirroring matrix: the mirror goes into the X scale
+            const float __det = _m.M[0][0] * (_m.M[1][1] * _m.M[2][2] - _m.M[1][2] * _m.M[2][1])
+                              - _m.M[0][1] * (_m.M[1][0] * _m.M[2][2] - _m.M[1][2] * _m.M[2][0])
+                              + _m.M[0][2] * (_m.M[1][0] * _m.M[2][1] - _m.M[1][1] * _m.M[2][0]);
+            mat4 __r = _m;
+            if (__det < 0.f) {
+                __s[0] = -__s[0];
+                __r.M[0][0] = -__r.M[0][0]; __r.M[0][1] = -__r.M[0][1]; __r.M[0][2] = -__r.M[0][2];
+            }
+            __trs.scale    = { __s[0], __s[1], __s[2] };
+            __trs.rotation = rotationOf(__r);
+            return __trs;
+        }
+
 //  == === ==== >  AABB
 
         bool AABB::valid() const { return min.x <= max.x && min.y <= max.y && min.z <= max.z; }
@@ -114,6 +180,49 @@ namespace Simple {
         }
 
 
+//  == === ==== >  Skeleton, Pose
+
+        uint32_t Skeleton::addBone(const Bone &_bone) {
+            SVKFW_ASSERT(_bone.parent == SCENE_NONE || _bone.parent < bones.size(), std::out_of_range, "SceneGraph::Skeleton :: addBone",
+                            "the parent of '" + _bone.name + "' must be added first");
+            bones.push_back(_bone);
+            return (uint32_t)bones.size() - 1u;
+        }
+
+        uint32_t Skeleton::findBone(const std::string &_name) const {
+            for (size_t i = 0u; i < bones.size(); ++i)
+                if (bones[i].name == _name) return (uint32_t)i;
+            return SCENE_NONE;
+        }
+
+        void Skeleton::computeInverseBind() {
+            std::vector<mat4> __bind(bones.size());
+            for (size_t i = 0u; i < bones.size(); ++i) {
+                __bind[i] = bones[i].parent == SCENE_NONE ? bones[i].rest.matrix() : bones[i].rest.matrix() & __bind[bones[i].parent];
+                bones[i].inverse_bind = __bind[i].inverse<float>();
+            }
+        }
+
+        void Pose::reset(const Skeleton &_skeleton) {
+            local.resize(_skeleton.bones.size());
+            for (size_t i = 0u; i < local.size(); ++i) local[i] = _skeleton.bones[i].rest;
+            dirty = true;
+        }
+
+        void Pose::computeFK(const Skeleton &_skeleton) {
+            const size_t __count = _skeleton.bones.size();
+            if (local.size() != __count) reset(_skeleton);
+            model.resize(__count);
+            skinning.resize(__count);
+            for (size_t i = 0u; i < __count; ++i) {
+                const Bone &__bone = _skeleton.bones[i];
+                model[i]    = __bone.parent == SCENE_NONE ? local[i].matrix() : local[i].matrix() & model[__bone.parent];
+                skinning[i] = __bone.inverse_bind & model[i];
+            }
+            dirty = false;
+        }
+
+
 //  == === ==== >  Scene
 
         uint32_t Scene::addNode(const std::string &_name, uint32_t _parent, const mat4 &_local) {
@@ -157,6 +266,35 @@ namespace Simple {
             lights.back().node = _node;
             __node.light = __index;
             return __index;
+        }
+
+        uint32_t Scene::addSkeleton(const Skeleton &_skeleton) {
+            skeletons.push_back(_skeleton);
+            return (uint32_t)skeletons.size() - 1u;
+        }
+
+        uint32_t Scene::addSkin(uint32_t _skeleton, uint32_t _node, const std::string &_name) {
+            SVKFW_ASSERT(_skeleton < skeletons.size(), std::out_of_range, "SceneGraph::Scene :: addSkin", "no skeleton " + std::to_string(_skeleton));
+            node(_node);
+            Skin __skin;
+            __skin.name     = _name.empty() ? skeletons[_skeleton].name : _name;
+            __skin.skeleton = _skeleton;
+            __skin.node     = _node;
+            __skin.pose.reset(skeletons[_skeleton]);
+            __skin.pose.computeFK(skeletons[_skeleton]);
+            skins.push_back(__skin);
+            return (uint32_t)skins.size() - 1u;
+        }
+
+        Pose &Scene::pose(uint32_t _skin) {
+            SVKFW_ASSERT(_skin < skins.size(), std::out_of_range, "SceneGraph::Scene :: pose", "no skin " + std::to_string(_skin));
+            skins[_skin].pose.dirty = true;
+            return skins[_skin].pose;
+        }
+
+        void Scene::updateSkins() {
+            for (size_t i = 0u; i < skins.size(); ++i)
+                if (skins[i].pose.dirty) skins[i].pose.computeFK(skeletons[skins[i].skeleton]);
         }
 
         Node &Scene::node(uint32_t _index) {
@@ -293,6 +431,14 @@ namespace Simple {
             const uint32_t __node0 = (uint32_t)nodes.size(),     __mesh0 = (uint32_t)meshes.size();
             const uint32_t __mat0  = (uint32_t)materials.size(), __tex0  = (uint32_t)textures.size();
             const uint32_t __light0 = (uint32_t)lights.size();
+            const uint32_t __skel0 = (uint32_t)skeletons.size(), __skin0 = (uint32_t)skins.size();
+
+            skeletons.insert(skeletons.end(), _other.skeletons.begin(), _other.skeletons.end());
+            for (size_t i = 0u; i < _other.skins.size(); ++i) {
+                skins.push_back(_other.skins[i]);
+                skins.back().skeleton += __skel0;
+                skins.back().node      = (skins.back().node == SCENE_NONE ? SCENE_NONE : skins.back().node + __node0);
+            }
 
             textures.insert(textures.end(), _other.textures.begin(), _other.textures.end());
             for (size_t i = 0u; i < _other.materials.size(); ++i) {
@@ -316,6 +462,7 @@ namespace Simple {
                 for (size_t c = 0u; c < __node.children.size(); ++c) __node.children[c] += __node0;
                 for (size_t m = 0u; m < __node.meshes.size();   ++m) __node.meshes[m]   += __mesh0;
                 __node.light = (__node.light == SCENE_NONE ? SCENE_NONE : __node.light + __light0);
+                __node.skin  = (__node.skin  == SCENE_NONE ? SCENE_NONE : __node.skin  + __skin0);
                 nodes.push_back(__node);
                 if (_other.nodes[i].parent == SCENE_NONE && _parent != SCENE_NONE)
                     nodes[_parent].children.push_back((uint32_t)nodes.size() - 1u);
@@ -325,7 +472,7 @@ namespace Simple {
         }
 
         void Scene::clear() {
-            nodes.clear(); meshes.clear(); materials.clear(); textures.clear(); lights.clear();
+            nodes.clear(); meshes.clear(); materials.clear(); textures.clear(); lights.clear(); skeletons.clear(); skins.clear();
             world.clear(); world_visible.clear(); changed.clear();
             depth_.clear(); dirty_.clear(); stamp_.clear();
             stamp_count_ = 0u;

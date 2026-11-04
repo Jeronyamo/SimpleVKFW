@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "math/vectors.h"
+#include "math/linalg.h"
 #include "main/image.h"
 
 
@@ -37,6 +38,8 @@ namespace Simple {
 
         const uint32_t SCENE_NONE = UINT32_MAX;
 
+        typedef Affine::Rotation::Quaternion Quat;
+
         mat4 translation(const vec3 &_offset);
         mat4 scaling(const vec3 &_scale);
         // Rotation that turns +Z into '_dir' (normalized inside); '_up' picks the roll. For lights and cameras that look along +Z
@@ -44,6 +47,21 @@ namespace Simple {
         // Transforms a point (w = 1) or a direction (w = 0) with a row-vector style matrix
         vec3 transformPoint(const mat4 &_m, const vec3 &_p);
         vec3 transformDir  (const mat4 &_m, const vec3 &_d);
+        // Row-vector style rotation matrix of a quaternion ('rotation(q1 * q2) == rotation(q2) & rotation(q1)': q2 goes first)
+        mat4 rotation(const Quat &_q);
+        // The rotation of the upper 3x3 part (the scale is removed first); the inverse of 'rotation'
+        Quat rotationOf(const mat4 &_m);
+
+        // Note: translation, rotation, scale; the matrix is 'scale & rotation & translation' (scale first)
+        struct TRS {
+            vec3 translation = {0.f, 0.f, 0.f};
+            Quat rotation;
+            vec3 scale       = {1.f, 1.f, 1.f};
+
+            mat4 matrix() const;
+            // Splits a matrix without shear (with shear the result is approximate)
+            static TRS fromMatrix(const mat4 &_m);
+        }; // TRS END
 
         struct AABB {
             vec3 min = { 1e30f,  1e30f,  1e30f};
@@ -67,13 +85,20 @@ namespace Simple {
             vec4 tangent;
         }; // Vertex END
 
+        // Note: the bones (indices in the skeleton of the skin) and their weights of one vertex; unused slots have zero weight
+        struct SkinVertex {
+            uint16_t bones[4];
+            vec4     weights;
+        }; // SkinVertex END
+
         // Note: triangles only (indexed); one material per mesh
         struct Mesh {
-            std::string           name;
-            std::vector<Vertex>   vertices;
-            std::vector<uint32_t> indices;
-            uint32_t              material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
-            AABB                  bounds;                // in the mesh space
+            std::string             name;
+            std::vector<Vertex>     vertices;
+            std::vector<uint32_t>   indices;
+            std::vector<SkinVertex> skin;                  // empty or one per vertex: a skinned mesh (see 'Skin')
+            uint32_t                material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
+            AABB                    bounds;                // in the mesh space (the bind pose for skinned meshes)
 
             void computeBounds();
         }; // Mesh END
@@ -142,6 +167,49 @@ namespace Simple {
             static Light spot(const vec3 &_color, float _intensity, float _inner, float _outer, float _range = 0.f);
         }; // Light END
 
+        // Note: the bones of a skeleton are not scene nodes: a skeleton is posed as a whole (animation, IK) and has many bones.
+        //       Bones are stored parents first; a bone's 'rest' is its local transform in the bind pose (relative to the parent
+        //       bone, or to the skeleton space for root bones). 'inverse_bind' maps the skeleton space to the bone space in
+        //       the bind pose; skinned vertices are in the skeleton space
+        struct Bone {
+            std::string name;
+            uint32_t    parent = SCENE_NONE;
+            TRS         rest;
+            mat4        inverse_bind = Mat::Eye4;
+        }; // Bone END
+
+        struct Skeleton {
+            std::string       name;
+            std::vector<Bone> bones;
+
+            // The parent must already be in the skeleton; returns the index of the bone
+            uint32_t addBone(const Bone &_bone);
+            uint32_t findBone(const std::string &_name) const; // SCENE_NONE if there is none
+            // Sets 'inverse_bind' of all bones from the rest transforms
+            void computeInverseBind();
+        }; // Skeleton END
+
+        // Note: the state of one posed skeleton. 'local' starts at the rest transforms; after changing it call 'Scene::updateSkins'
+        //       (or 'computeFK') to get 'model' (bone -> skeleton space) and 'skinning' ('inverse_bind & model', for the vertices)
+        struct Pose {
+            std::vector<TRS>  local;
+            std::vector<mat4> model;
+            std::vector<mat4> skinning;
+            bool              dirty = true;
+
+            void reset(const Skeleton &_skeleton);  // back to the rest pose
+            void computeFK(const Skeleton &_skeleton);
+        }; // Pose END
+
+        // Note: a skeleton instance placed in the scene: the skeleton space is the space of 'node'. The skinned meshes of the
+        //       nodes that refer to the skin are drawn in that space (their own node gives only the visibility, like in glTF)
+        struct Skin {
+            std::string name;
+            uint32_t    skeleton = SCENE_NONE;
+            uint32_t    node     = SCENE_NONE;
+            Pose        pose;
+        }; // Skin END
+
         struct Node {
             std::string           name;
             uint32_t              parent = SCENE_NONE;
@@ -149,6 +217,7 @@ namespace Simple {
             mat4                  local = Mat::Eye4;  // after a direct change call 'Scene::markDirty' (or use 'Scene::setLocal')
             std::vector<uint32_t> meshes;
             uint32_t              light = SCENE_NONE;
+            uint32_t              skin  = SCENE_NONE; // the skin of the skinned meshes of this node
             bool                  visible = true; // hides the meshes of the node and all its descendants ('Scene::setVisible')
         }; // Node END
 
@@ -158,6 +227,8 @@ namespace Simple {
             std::vector<Material> materials;
             std::vector<Texture>  textures;
             std::vector<Light>    lights;
+            std::vector<Skeleton> skeletons;
+            std::vector<Skin>     skins;
             vec3                  ambient = {0.03f, 0.03f, 0.03f}; // constant light everywhere
 
             // Computed by 'updateTransforms': the world matrix and the world visibility of each node
@@ -172,6 +243,13 @@ namespace Simple {
             uint32_t addTexture(const Texture &_texture);
             // Attaches the light to '_node' (a node holds one light)
             uint32_t addLight(const Light &_light, uint32_t _node);
+            uint32_t addSkeleton(const Skeleton &_skeleton);
+            // Places an instance of '_skeleton' in the space of '_node' (in the rest pose)
+            uint32_t addSkin(uint32_t _skeleton, uint32_t _node, const std::string &_name = std::string());
+
+            Pose &pose(uint32_t _skin); // marks the pose as changed
+            // Recomputes the changed poses (forward kinematics)
+            void updateSkins();
 
             Node &node(uint32_t _index);
             const Node &node(uint32_t _index) const;

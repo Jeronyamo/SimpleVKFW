@@ -115,12 +115,25 @@ int main(int argc, char **argv) {
         Simple::ViewCentered &__view = main_view_centered_proj.getClassView();
         __view.look_at = __bounds.center();
         __view.dist    = __bounds.size().y * 1.6f / (2.f * std::tan(fov * 3.14159265f / 360.f));
-        __view.yaw     = 180.f; // this model faces +Z
+        __view.yaw     = 0.f;
         __view.pitch   = 5.f;
     }
 
     ubo_camera.view = main_view_centered_proj.getView();
     ubo_camera.proj = main_view_centered_proj.getProj();
+
+    // Skeleton test: the character raises the left arm and waves (forward kinematics on the standard PMX bones)
+    uint32_t chara_skin = SG::SCENE_NONE, arm_bone = SG::SCENE_NONE, elbow_bone = SG::SCENE_NONE;
+    for (uint32_t i = 0u; i < scene.skins.size(); ++i)
+        if (scene.skins[i].node == chara_root) chara_skin = i;
+    if (chara_skin != SG::SCENE_NONE) {
+        const SG::Skeleton &__skeleton = scene.skeletons[scene.skins[chara_skin].skeleton];
+        arm_bone   = __skeleton.findBone("\xE5\xB7\xA6\xE8\x85\x95");                 // left arm
+        elbow_bone = __skeleton.findBone("\xE5\xB7\xA6\xE3\x81\xB2\xE3\x81\x98");     // left elbow
+        printf("main: skeleton '%s': %u bones, arm %d, elbow %d\n", __skeleton.name.c_str(), (uint32_t)__skeleton.bones.size(),
+               (int)arm_bone, (int)elbow_bone);
+    }
+    double wave_time = 0.;
 
 
 // Input handlers
@@ -612,6 +625,16 @@ int main(int argc, char **argv) {
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
         vk.cxt_memory.writeBuffer(ci_buffer_uniform[current_frame], &ubo_camera, sizeof(ubo_camera));
+        if (arm_bone != SG::SCENE_NONE && elbow_bone != SG::SCENE_NONE) {
+            wave_time += main_window_handler.frame_time;
+            const SG::Skeleton &__skeleton = scene.skeletons[scene.skins[chara_skin].skeleton];
+            SG::Pose &__pose = scene.pose(chara_skin);
+            const float __wave = 0.5f * (float)std::sin(wave_time * 4.);
+            // Note: the arm points along +X; around +Z it goes up, the elbow bends around +Y (towards the front)
+            __pose.local[arm_bone].rotation   = SG::Quat(Simple::vec3{0.f, 0.f, 1.f}, 1.1f) * __skeleton.bones[arm_bone].rest.rotation;
+            __pose.local[elbow_bone].rotation = SG::Quat(Simple::vec3{0.f, 1.f, 0.f}, 0.9f + __wave) * __skeleton.bones[elbow_bone].rest.rotation;
+            scene.updateSkins();
+        }
         scene_renderer.update(current_frame, ubo_camera.view, ubo_camera.proj);
 
 
