@@ -37,7 +37,6 @@ namespace Simple {
 
         const uint32_t SCENE_NONE = UINT32_MAX;
 
-        mat4 identity();
         mat4 translation(const vec3 &_offset);
         mat4 scaling(const vec3 &_scale);
         // Rotation that turns +Z into '_dir' (normalized inside); '_up' picks the roll. For lights and cameras that look along +Z
@@ -147,7 +146,7 @@ namespace Simple {
             std::string           name;
             uint32_t              parent = SCENE_NONE;
             std::vector<uint32_t> children;
-            mat4                  local = identity();
+            mat4                  local = Mat::Eye4;
             std::vector<uint32_t> meshes;
             uint32_t              light = SCENE_NONE;
             bool                  visible = true; // hides the meshes of the node and all its descendants
@@ -165,7 +164,7 @@ namespace Simple {
             std::vector<mat4>     world;
             std::vector<uint8_t>  world_visible;
 
-            uint32_t addNode(const std::string &_name, uint32_t _parent = SCENE_NONE, const mat4 &_local = identity());
+            uint32_t addNode(const std::string &_name, uint32_t _parent = SCENE_NONE, const mat4 &_local = Mat::Eye4);
             uint32_t addMesh(const Mesh &_mesh);
             uint32_t addMaterial(const Material &_material);
             uint32_t addTexture(const Texture &_texture);

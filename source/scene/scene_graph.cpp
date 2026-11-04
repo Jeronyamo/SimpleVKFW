@@ -8,21 +8,14 @@
 namespace Simple {
     namespace SceneGraph {
 
-        mat4 identity() {
-            return { 1.f, 0.f, 0.f, 0.f,
-                     0.f, 1.f, 0.f, 0.f,
-                     0.f, 0.f, 1.f, 0.f,
-                     0.f, 0.f, 0.f, 1.f };
-        }
-
         mat4 translation(const vec3 &_offset) {
-            mat4 __m = identity();
+            mat4 __m = Mat::Eye4;
             __m.M[3][0] = _offset.x; __m.M[3][1] = _offset.y; __m.M[3][2] = _offset.z;
             return __m;
         }
 
         mat4 scaling(const vec3 &_scale) {
-            mat4 __m = identity();
+            mat4 __m = Mat::Eye4;
             __m.M[0][0] = _scale.x; __m.M[1][1] = _scale.y; __m.M[2][2] = _scale.z;
             return __m;
         }
@@ -124,8 +117,8 @@ namespace Simple {
 //  == === ==== >  Scene
 
         uint32_t Scene::addNode(const std::string &_name, uint32_t _parent, const mat4 &_local) {
-            if (_parent != SCENE_NONE && _parent >= nodes.size())
-                throw std::out_of_range("SceneGraph::Scene::addNode: no parent node " + std::to_string(_parent));
+            SVKFW_ASSERT(_parent == SCENE_NONE || _parent < nodes.size(), std::out_of_range, "SceneGraph::Scene :: addNode",
+                            "no parent node " + std::to_string(_parent));
             Node __node;
             __node.name   = _name;
             __node.parent = _parent;
@@ -162,12 +155,12 @@ namespace Simple {
         }
 
         Node &Scene::node(uint32_t _index) {
-            if (_index >= nodes.size()) throw std::out_of_range("SceneGraph::Scene::node: no node " + std::to_string(_index));
+            SVKFW_ASSERT(_index < nodes.size(), std::out_of_range, "SceneGraph::Scene :: node", "no node " + std::to_string(_index));
             return nodes[_index];
         }
 
         const Node &Scene::node(uint32_t _index) const {
-            if (_index >= nodes.size()) throw std::out_of_range("SceneGraph::Scene::node: no node " + std::to_string(_index));
+            SVKFW_ASSERT(_index < nodes.size(), std::out_of_range, "SceneGraph::Scene :: node", "no node " + std::to_string(_index));
             return nodes[_index];
         }
 
@@ -180,7 +173,7 @@ namespace Simple {
         void Scene::reparent(uint32_t _node, uint32_t _new_parent) {
             Node &__node = node(_node);
             for (uint32_t p = _new_parent; p != SCENE_NONE; p = node(p).parent)
-                if (p == _node) throw std::invalid_argument("SceneGraph::Scene::reparent: the new parent is a descendant of the node");
+                SVKFW_ASSERT(p != _node, std::invalid_argument, "SceneGraph::Scene :: reparent", "the new parent is a descendant of the node");
             if (__node.parent != SCENE_NONE) {
                 std::vector<uint32_t> &__siblings = nodes[__node.parent].children;
                 __siblings.erase(std::remove(__siblings.begin(), __siblings.end(), _node), __siblings.end());
@@ -229,35 +222,33 @@ namespace Simple {
             const uint32_t __node0 = (uint32_t)nodes.size(),     __mesh0 = (uint32_t)meshes.size();
             const uint32_t __mat0  = (uint32_t)materials.size(), __tex0  = (uint32_t)textures.size();
             const uint32_t __light0 = (uint32_t)lights.size();
-            #define SVKFW_SCENE_SHIFT(_v, _base) ((_v) == SCENE_NONE ? SCENE_NONE : (_v) + (_base))
 
             textures.insert(textures.end(), _other.textures.begin(), _other.textures.end());
             for (size_t i = 0u; i < _other.materials.size(); ++i) {
                 Material __mat = _other.materials[i];
-                __mat.base_color_texture = SVKFW_SCENE_SHIFT(__mat.base_color_texture, __tex0);
-                __mat.normal_texture     = SVKFW_SCENE_SHIFT(__mat.normal_texture,     __tex0);
-                __mat.emissive_texture   = SVKFW_SCENE_SHIFT(__mat.emissive_texture,   __tex0);
+                __mat.base_color_texture = (__mat.base_color_texture == SCENE_NONE ? SCENE_NONE : __mat.base_color_texture + __tex0);
+                __mat.normal_texture     = (__mat.normal_texture == SCENE_NONE ? SCENE_NONE : __mat.normal_texture + __tex0);
+                __mat.emissive_texture   = (__mat.emissive_texture == SCENE_NONE ? SCENE_NONE : __mat.emissive_texture + __tex0);
                 materials.push_back(__mat);
             }
             for (size_t i = 0u; i < _other.meshes.size(); ++i) {
                 meshes.push_back(_other.meshes[i]);
-                meshes.back().material = SVKFW_SCENE_SHIFT(meshes.back().material, __mat0);
+                meshes.back().material = (meshes.back().material == SCENE_NONE ? SCENE_NONE : meshes.back().material + __mat0);
             }
             for (size_t i = 0u; i < _other.lights.size(); ++i) {
                 lights.push_back(_other.lights[i]);
-                lights.back().node = SVKFW_SCENE_SHIFT(lights.back().node, __node0);
+                lights.back().node = (lights.back().node == SCENE_NONE ? SCENE_NONE : lights.back().node + __node0);
             }
             for (size_t i = 0u; i < _other.nodes.size(); ++i) {
                 Node __node = _other.nodes[i];
                 __node.parent = __node.parent == SCENE_NONE ? _parent : __node.parent + __node0;
                 for (size_t c = 0u; c < __node.children.size(); ++c) __node.children[c] += __node0;
                 for (size_t m = 0u; m < __node.meshes.size();   ++m) __node.meshes[m]   += __mesh0;
-                __node.light = SVKFW_SCENE_SHIFT(__node.light, __light0);
+                __node.light = (__node.light == SCENE_NONE ? SCENE_NONE : __node.light + __light0);
                 nodes.push_back(__node);
                 if (_other.nodes[i].parent == SCENE_NONE && _parent != SCENE_NONE)
                     nodes[_parent].children.push_back((uint32_t)nodes.size() - 1u);
             }
-            #undef SVKFW_SCENE_SHIFT
             return __node0;
         }
 

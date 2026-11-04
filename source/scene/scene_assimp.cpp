@@ -243,7 +243,7 @@ namespace Simple {
                         if (__mesh != SCENE_NONE) scene.nodes[__index].meshes.push_back(__mesh);
                     }
                     for (uint32_t c = 0u; c < _ai_node.mNumChildren; ++c)
-                        node(*_ai_node.mChildren[c], __index, identity());
+                        node(*_ai_node.mChildren[c], __index, Mat::Eye4);
                     return __index;
                 }
 
@@ -329,8 +329,8 @@ namespace Simple {
             __flags |= aiProcess_FindDegenerates;
 
             const aiScene *__ai = __importer.ReadFile(_path, __flags);
-            if (!__ai || !__ai->mRootNode || (__ai->mFlags & AI_SCENE_FLAGS_INCOMPLETE))
-                throw std::runtime_error("SceneGraph::loadAssimp: can't load '" + _path + "': " + __importer.GetErrorString());
+            SVKFW_ASSERT(__ai && __ai->mRootNode && !(__ai->mFlags & AI_SCENE_FLAGS_INCOMPLETE), std::runtime_error, "SceneGraph :: loadAssimp",
+                            "can't load '" + _path + "': " + __importer.GetErrorString());
 
             Converter __conv(_scene, *__ai, directory(_path), __left_handed, _options, __ext);
             return convert(__conv, _parent);
