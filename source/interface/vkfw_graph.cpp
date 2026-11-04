@@ -1111,6 +1111,172 @@ namespace Simple {
                 return importImage(_name, _texture.image(), _texture.view(), _texture.info().format, VkExtent2D{__extent.width, __extent.height},
                                    _layout, _layout, false);
             }
+
+            std::vector<VkFormat> RenderGraph::colorFormats(PassId _pass) const {
+                const Pass &__pass = passes.at(_pass.index);
+                std::vector<VkFormat> __formats;
+                for (size_t i = 0u; i < __pass.accesses.size(); ++i)
+                    if (__pass.accesses[i].type == VKFW_ACCESS_COLOR) __formats.push_back(format_(resources.at(__pass.accesses[i].res.index)));
+                return __formats;
+            }
+
+            VkFormat RenderGraph::depthFormat(PassId _pass) const {
+                const Pass &__pass = passes.at(_pass.index);
+                for (size_t i = 0u; i < __pass.accesses.size(); ++i)
+                    if (__pass.accesses[i].type == VKFW_ACCESS_DEPTH) return format_(resources.at(__pass.accesses[i].res.index));
+                return VK_FORMAT_UNDEFINED;
+            }
+
+
+//  == === ==== >  Buffers
+
+            Buffer::Buffer() {}
+
+            bool Buffer::isNone() const { return cxt == nullptr || buffer_id.isNone(); }
+
+            VkBuffer Buffer::handle() const { return cxt->get(buffer_id); }
+
+            void *Buffer::mapped() const { return cxt->cxt_memory.getMappedBuffer(buffer_id); }
+
+            void Buffer::write(const void *_data, VkDeviceSize _size, VkDeviceSize _offset) const {
+                cxt->cxt_memory.writeBuffer(buffer_id, _data, _size, _offset);
+            }
+
+            VkDescriptorBufferInfo Buffer::info(VkDeviceSize _offset, VkDeviceSize _range) const {
+                VkDescriptorBufferInfo __info{};
+                __info.buffer = handle();
+                __info.offset = _offset;
+                __info.range  = _range;
+                return __info;
+            }
+
+            void Buffer::destroy() {
+                if (isNone()) return;
+                VulkanContext::ContextMemory &__memory = cxt->cxt_memory;
+                if (own_memory) __memory.removeMemoryChunk(buffer_id.parent);
+                else            __memory.chunk(buffer_id.parent).destroyBuffer(buffer_id.index); // the memory stays with the chunk
+                buffer_id = BufferId();
+                size = 0u;
+            }
+
+            Buffer createBuffer(VulkanContext &_cxt, VkDeviceSize _size, VkBufferUsageFlags _usage, VkMemoryPropertyFlags _memory_flags,
+                                Span<QueueFamilyId> _queue_families, VkSharingMode _sharing_mode, MemoryId _memory_id) {
+                SVKFW_ASSERT(_size > 0u && _size <= VkDeviceSize(UINT32_MAX), std::invalid_argument, "VKFW::Graph :: createBuffer",
+                                "the size must be in (0, 4 GB), got " + std::to_string(_size));
+                Buffer __buffer;
+                __buffer.cxt        = &_cxt;
+                __buffer.size       = _size;
+                __buffer.own_memory = _memory_id.isNone();
+
+                VulkanContext::ContextMemory &__memory = _cxt.cxt_memory;
+                const MemoryId __memory_id = __buffer.own_memory ? __memory.addMemoryChunk(_memory_flags) : _memory_id;
+                SVKFW_ASSERT(__memory.chunk(__memory_id).memory.handle == VK_NULL_HANDLE, std::logic_error, "VKFW::Graph :: createBuffer",
+                                "the memory chunk is already allocated, a new buffer can't be placed in it");
+
+                __buffer.buffer_id = __memory.addChunkBuffer(__memory_id, (uint32_t)_size);
+                __memory.setWholeBufferCreateInfoStruct(__buffer.buffer_id, _queue_families, _sharing_mode, _usage);
+                __memory.createChunkBuffer(__buffer.buffer_id);
+                if (__buffer.own_memory) __memory.allocateChunkMemory(__memory_id);
+                return __buffer;
+            }
+
+            VkDeviceSize alignUp(VkDeviceSize _size, VkDeviceSize _alignment) {
+                return _alignment <= 1u ? _size : (_size + _alignment - 1u) & ~(_alignment - 1u);
+            }
+
+
+//  == === ==== >  Pipelines for passes
+
+            ShaderModuleId loadShader(VulkanContext &_cxt, const std::string &_path) {
+                ShaderModuleId __id = _cxt.cxt_pipeline.addShader();
+                _cxt.cxt_pipeline.shader(__id).create_info.fromFile(_path.c_str());
+                _cxt.cxt_pipeline.createShader(__id);
+                return __id;
+            }
+
+            GraphicsPipelineDesc::GraphicsPipelineDesc() {}
+
+            GraphicsPipelineDesc &GraphicsPipelineDesc::shader(VkShaderStageFlagBits _stage, ShaderModuleId _module, const std::string &_entry) {
+                Stage __stage;
+                __stage.stage  = _stage;
+                __stage.module = _module;
+                __stage.entry  = _entry;
+                stages.push_back(__stage);
+                return *this;
+            }
+
+            GraphicsPipelineDesc &GraphicsPipelineDesc::vertexBinding(uint32_t _binding, uint32_t _stride, VkVertexInputRate _rate) {
+                bindings.push_back(VkVertexInputBindingDescription{ _binding, _stride, _rate });
+                return *this;
+            }
+
+            GraphicsPipelineDesc &GraphicsPipelineDesc::vertexAttribute(uint32_t _location, uint32_t _binding, VkFormat _format, uint32_t _offset) {
+                attributes.push_back(VkVertexInputAttributeDescription{ _location, _binding, _format, _offset });
+                return *this;
+            }
+
+            PipelineId createGraphicsPipeline(VulkanContext &_cxt, const RenderGraph &_graph, PassId _pass, const GraphicsPipelineDesc &_desc) {
+                SVKFW_ASSERT(_graph.compiled, std::logic_error, "VKFW::Graph :: createGraphicsPipeline", "the graph is not compiled");
+                SVKFW_ASSERT(!_desc.layout.isNone(), std::invalid_argument, "VKFW::Graph :: createGraphicsPipeline", "no pipeline layout");
+                const std::vector<VkFormat> __colors = _graph.colorFormats(_pass);
+                const VkFormat __depth = _graph.depthFormat(_pass);
+                const bool __has_stencil = __depth != VK_FORMAT_UNDEFINED && (VKFW::Detail::formatAspects(__depth) & VK_IMAGE_ASPECT_STENCIL_BIT) != 0u;
+
+                PipelineId __id = _cxt.cxt_pipeline.addPipeline();
+                Object::Pipeline &__pipeline = _cxt.cxt_pipeline.pipeline(__id); // valid until another pipeline is added
+                __pipeline.setPipelineType(VKFW_PIPELINE_TYPE_GRAPHICS);
+                Struct::StructWrap<VkGraphicsPipelineCreateInfo> &__info = __pipeline.graphics_create_info_wrap;
+
+                for (size_t i = 0u; i < _desc.stages.size(); ++i) {
+                    ShaderStageId __stage = _cxt.cxt_pipeline.addShaderStage(__id);
+                    _cxt.cxt_pipeline.shaderStage(__stage).setShaderInfo(_cxt.get(_desc.stages[i].module), _desc.stages[i].stage, _desc.stages[i].entry);
+                }
+
+                __info.dynamic_state_wrap.dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+                __info.dynamic_state_wrap.dynamic_states.insert(__info.dynamic_state_wrap.dynamic_states.end(),
+                                                                _desc.dynamic_states.begin(), _desc.dynamic_states.end());
+
+                __info.vertex_input_state_wrap.bindings   = _desc.bindings;
+                __info.vertex_input_state_wrap.attributes = _desc.attributes;
+                __info.input_assembly_state_wrap.setWholeStruct(_desc.topology, VK_FALSE);
+                __info.viewport_state_wrap. setScissorsDynamic(1u);
+                __info.viewport_state_wrap.setViewportsDynamic(1u);
+
+                __info.rasterization_state_wrap.setDepthBias(false);
+                __info.rasterization_state_wrap.edit().polygonMode = _desc.polygon_mode;
+                __info.rasterization_state_wrap.edit().cullMode    = _desc.cull_mode;
+                __info.rasterization_state_wrap.edit().frontFace   = _desc.front_face;
+                __info.rasterization_state_wrap.edit().lineWidth   = 1.f;
+
+                __info.multisample_state_wrap.edit().rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+                __info.multisample_state_wrap.edit().minSampleShading     = 1.f;
+
+                const bool __depth_used = __depth != VK_FORMAT_UNDEFINED;
+                __info.depth_stencil_state_wrap.setDepth(__depth_used && _desc.depth_test, __depth_used && _desc.depth_write, _desc.depth_compare);
+                __info.depth_stencil_state_wrap.setStencil(false);
+
+                __info.color_blend_state_wrap.setLogicOp(); // off: logic ops would disable blending
+                __info.color_blend_state_wrap.attachments_wrap.resize(__colors.size());
+                for (size_t i = 0u; i < __colors.size(); ++i) {
+                    Struct::StructWrap<VkPipelineColorBlendAttachmentState> &__att = __info.color_blend_state_wrap.attachments_wrap[i];
+                    __att.edit().blendEnable = _desc.blend == VKFW_BLEND_NONE ? VK_FALSE : VK_TRUE;
+                    switch (_desc.blend) {
+                        case VKFW_BLEND_ALPHA:
+                            __att.setColorBlend(VK_BLEND_OP_ADD, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA); break;
+                        case VKFW_BLEND_ADDITIVE:
+                            __att.setColorBlend(VK_BLEND_OP_ADD, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE); break;
+                        default:
+                            __att.setColorBlend(VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA); break;
+                    }
+                    __att.setAlphaBlend(VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+                }
+
+                __info.setPipelineStates(0xfffu);
+                __info.rendering_wrap.setFormats(__colors, __depth, __has_stencil ? __depth : VK_FORMAT_UNDEFINED);
+                _cxt.cxt_pipeline.createPipeline(__id, _cxt.cxt_core.profile.dynamic_rendering ? VK_NULL_HANDLE : _graph.renderPass(_pass),
+                                                 0u, _desc.layout);
+                return __id;
+            }
         }; // Graph END
     }; // VKFW END
 }; // Simple END
