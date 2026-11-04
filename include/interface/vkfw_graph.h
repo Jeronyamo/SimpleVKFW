@@ -170,6 +170,47 @@ namespace Simple {
                           VkImageLayout _final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 
+//  == === ==== ================================== ==== === ==  \\
+                    Buffers
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: a buffer of ContextMemory; a copyable handle like 'Texture' (it doesn't destroy anything by itself).
+        //       HOST_VISIBLE buffers stay mapped ('mapped', 'write'); DEVICE_LOCAL ones are filled with an 'UploadBatch'
+        struct Buffer {
+            VulkanContext *cxt = nullptr;
+            BufferId       buffer_id;
+            VkDeviceSize   size = 0u;
+            bool           own_memory = false; // the buffer has its own memory chunk
+
+            Buffer();
+
+            bool isNone() const;
+            VkBuffer handle() const;
+            // nullptr if the memory isn't HOST_VISIBLE (or not allocated yet)
+            void *mapped() const;
+            // Copies into a HOST_VISIBLE buffer and flushes it if needed (the device must not use the range)
+            void write(const void *_data, VkDeviceSize _size, VkDeviceSize _offset = 0u) const;
+            // For descriptor writes
+            VkDescriptorBufferInfo info(VkDeviceSize _offset = 0u, VkDeviceSize _range = VK_WHOLE_SIZE) const;
+
+            // Destroys the buffer (with its own memory chunk if it has one); the device must not use it
+            void destroy();
+        }; // Buffer END
+
+        // Creates a buffer of '_size' bytes.
+        //   '_memory_id' is none: the buffer gets its own memory chunk with '_memory_flags' and is ready to use;
+        //   otherwise the buffer is added to that chunk (it must not be allocated yet, '_memory_flags' is ignored) and can be used
+        //   after 'ContextMemory::allocateChunkMemory' (many buffers, one allocation).
+        // '_queue_families': the families that use it (several with VK_SHARING_MODE_CONCURRENT, see 'TextureInfo::queue_families')
+        Buffer createBuffer(VulkanContext &_cxt, VkDeviceSize _size, VkBufferUsageFlags _usage,
+                            VkMemoryPropertyFlags _memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                            Span<QueueFamilyId> _queue_families = {}, VkSharingMode _sharing_mode = VK_SHARING_MODE_EXCLUSIVE,
+                            MemoryId _memory_id = MemoryId());
+
+        // Rounds '_size' up to a multiple of '_alignment' (a power of two), e.g. for 'minUniformBufferOffsetAlignment'
+        VkDeviceSize alignUp(VkDeviceSize _size, VkDeviceSize _alignment);
+
+
         // Note: a HOST_VISIBLE buffer that receives a copy of one image (see 'RenderGraph::readback'), e.g. for screenshots.
         //       The buffer is created and grown by 'RenderGraph::readback'; the data is ready after the fence of the submit with the
         //       copy is signaled, then 'readColor', 'readDepth', 'readStencil' or 'data' read it (the last recorded copy).
@@ -344,6 +385,9 @@ namespace Simple {
             // Note: only without dynamic rendering; pipelines of the pass are created with it (see 'ContextPipeline::createPipeline')
             VkRenderPass renderPass(PassId _pass) const;
             bool isLive(PassId _pass) const;
+            // Attachment formats of a graphics pass (known before 'compile', the swapchain format needs the swapchain)
+            std::vector<VkFormat> colorFormats(PassId _pass) const;
+            VkFormat depthFormat(PassId _pass) const; // VK_FORMAT_UNDEFINED if the pass has no depth attachment
 
         // Compilation
 
@@ -413,6 +457,63 @@ namespace Simple {
             RenderGraph(const RenderGraph &);
             RenderGraph& operator=(const RenderGraph &);
         }; // RenderGraph END
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Pipelines for passes
+//  == === ==== ================================== ==== === ==  \\
+
+        // Loads a SPIR-V file and creates the shader module (throws if the file can't be read)
+        ShaderModuleId loadShader(VulkanContext &_cxt, const std::string &_path);
+
+        enum BlendMode {
+            VKFW_BLEND_NONE = 0,       // the color is written as is
+            VKFW_BLEND_ALPHA,          // src * a + dst * (1 - a)
+            VKFW_BLEND_PREMULTIPLIED,  // src + dst * (1 - a)
+            VKFW_BLEND_ADDITIVE        // src * a + dst
+        };
+
+        // Note: the usual state of a graphics pipeline drawn in a pass of the render graph. The attachment formats (or the render
+        //       pass without dynamic rendering) come from the pass, viewport and scissor are dynamic (the graph sets them).
+        //       The same blend mode is used for all color attachments. For anything else edit the pipeline create info
+        //       ('vk.cxt_pipeline.pipeline(id).graphics_create_info_wrap') and call 'createPipeline' again
+        struct GraphicsPipelineDesc {
+            struct Stage {
+                VkShaderStageFlagBits stage;
+                ShaderModuleId        module;
+                std::string           entry;
+            };
+            std::vector<Stage> stages;
+            PipelineLayoutId   layout;
+
+            std::vector<VkVertexInputBindingDescription>   bindings;
+            std::vector<VkVertexInputAttributeDescription> attributes;
+            VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+            VkPolygonMode   polygon_mode = VK_POLYGON_MODE_FILL;
+            VkCullModeFlags cull_mode    = VK_CULL_MODE_NONE;
+            VkFrontFace     front_face   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+            // Used only if the pass has a depth attachment
+            bool        depth_test    = true;
+            bool        depth_write   = true;
+            VkCompareOp depth_compare = VK_COMPARE_OP_LESS;
+
+            BlendMode   blend = VKFW_BLEND_NONE;
+
+            // Added to VK_DYNAMIC_STATE_VIEWPORT and VK_DYNAMIC_STATE_SCISSOR
+            std::vector<VkDynamicState> dynamic_states;
+
+            GraphicsPipelineDesc();
+            GraphicsPipelineDesc &shader(VkShaderStageFlagBits _stage, ShaderModuleId _module, const std::string &_entry = "main");
+            // One interleaved vertex buffer at binding '_binding'
+            GraphicsPipelineDesc &vertexBinding(uint32_t _binding, uint32_t _stride, VkVertexInputRate _rate = VK_VERTEX_INPUT_RATE_VERTEX);
+            GraphicsPipelineDesc &vertexAttribute(uint32_t _location, uint32_t _binding, VkFormat _format, uint32_t _offset);
+        }; // GraphicsPipelineDesc END
+
+        // Creates a graphics pipeline for drawing in the pass '_pass' (the graph must be compiled: the pass gives the attachment
+        // formats or its render pass). Pipelines don't depend on the swapchain extent, so they survive 'compile' after a resize
+        PipelineId createGraphicsPipeline(VulkanContext &_cxt, const RenderGraph &_graph, PassId _pass, const GraphicsPipelineDesc &_desc);
 
 
         // Note: screenshots. 'request' asks for one, 'record' (before 'RenderGraph::execute') requests its copy with 'readbackAfter',
