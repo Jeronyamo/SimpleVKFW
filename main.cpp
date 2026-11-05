@@ -9,8 +9,6 @@
 #include "interface/vkfw_graph.h"
 #include "interface/imgui_wrap.h"
 #include "scene/scene_graph.h"
-#include "scene/scene_pmx.h"
-#include "scene/scene_animation.h"
 #include "scene/scene_culling.h"
 #include "scene/scene_renderer.h"
 
@@ -89,58 +87,18 @@ int main(int argc, char **argv) {
     Simple::WindowInput::CameraControlsCentered main_view_centered_proj{Simple::ProjPerspective{fb_size.cast<float>(), fov, p_near, p_far},
                                                                         Simple::ViewCentered{cam_pos, look_at, up_vect}};
 
-    // Scene graph: the stage and the character (PMX through the own reader), lights added by hand (PMX files have none)
-    // Note: a model that can't be loaded is reported and skipped
+    // Scene graph: models are added here (e.g. 'SG::loadModel', see 'scene/scene_pmx.h'), lights added by hand
     SG::Scene scene;
-    uint32_t  chara_root = SG::SCENE_NONE;
-    try {
-        SG::loadModel(scene, "resources/assets/scene/Circular rainbow Stage xV1 by Xentetion/Circular rainbow Stage xV1.pmx");
-        chara_root = SG::loadModel(scene, "resources/assets/chara/SiriusBlue200505/Sirius_Blue_01fs.pmx", SG::ImportOptions(),
-                                    scene.addNode("chara", SG::SCENE_NONE, SG::translation({0.f, 5.2f, 0.f}))); // on the top platform
-    } catch (const std::exception &_e) {
-        printf("main: scene: %s\n", _e.what());
-    }
     scene.ambient = {0.35f, 0.35f, 0.4f};
-    // Key light from the front-left above, a warm point light behind the character, a pink spot on the stage
+    // Key light from the front-left above, a warm point light behind, a pink spot from above
     scene.addLight(SG::Light::directional({1.f, 0.97f, 0.92f}, 0.9f), scene.addNode("sun", SG::SCENE_NONE, SG::lookAlong({0.5f, -0.8f, 0.6f})));
     scene.addLight(SG::Light::point({1.f, 0.7f, 0.4f}, 400.f, 80.f), scene.addNode("back_light", SG::SCENE_NONE, SG::translation({0.f, 25.f, 20.f})));
     scene.addLight(SG::Light::spot({1.f, 0.3f, 0.8f}, 3000.f, 0.25f, 0.4f, 200.f),
                    scene.addNode("stage_spot", SG::SCENE_NONE, SG::lookAlong({0.f, -1.f, 0.4f}) & SG::translation({0.f, 60.f, -40.f})));
     scene.updateTransforms();
 
-    // Camera: looks at the character from the front (MMD models face -Z)
-    if (chara_root != SG::SCENE_NONE) {
-        SG::AABB __bounds;
-        for (uint32_t n = chara_root; n < scene.nodes.size(); ++n)
-            for (size_t m = 0u; m < scene.nodes[n].meshes.size(); ++m)
-                __bounds.add(scene.meshes[scene.nodes[n].meshes[m]].bounds.transformed(scene.world[n]));
-        Simple::ViewCentered &__view = main_view_centered_proj.getClassView();
-        __view.look_at = __bounds.center();
-        __view.dist    = __bounds.size().y * 1.6f / (2.f * std::tan(fov * 3.14159265f / 360.f));
-        __view.yaw     = 0.f;
-        __view.pitch   = 5.f;
-    }
-
     ubo_camera.view = main_view_centered_proj.getView();
     ubo_camera.proj = main_view_centered_proj.getProj();
-
-    // Animation: an MMD motion (VMD) on the character, looped; bones the model doesn't have are reported and skipped
-    uint32_t              chara_skin = SG::SCENE_NONE;
-    SG::AnimationClip     chara_motion;
-    SG::AnimationBinding  chara_binding;
-    double                motion_time = 0.;
-    for (uint32_t i = 0u; i < scene.skins.size(); ++i)
-        if (scene.skins[i].node == chara_root) chara_skin = i;
-    if (chara_skin != SG::SCENE_NONE) {
-        try {
-            chara_motion  = SG::loadVMD("resources/assets/anim/IA_Conqueror_full_key_version.vmd");
-            chara_binding = SG::bindAnimation(chara_motion, scene.skeletons[scene.skins[chara_skin].skeleton]);
-            printf("main: motion '%s': %u bone tracks, %u morph tracks, %u frames\n", chara_motion.name.c_str(), (uint32_t)chara_motion.bones.size(),
-                   (uint32_t)chara_motion.morphs.size(), (uint32_t)chara_motion.length);
-        } catch (const std::exception &_e) {
-            printf("main: motion: %s\n", _e.what());
-        }
-    }
 
 
 // Input handlers
@@ -635,14 +593,7 @@ int main(int argc, char **argv) {
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
         vk.cxt_memory.writeBuffer(ci_buffer_uniform[current_frame], &ubo_camera, sizeof(ubo_camera));
-        if (chara_skin != SG::SCENE_NONE && !chara_motion.bones.empty()) {
-            motion_time += main_window_handler.frame_time;
-            const double __frames = (double)chara_motion.length + 1.;
-            const float  __frame  = (float)std::fmod(motion_time * chara_motion.frames_per_second, __frames);
-            SG::applyAnimation(chara_motion, chara_binding, scene.skeletons[scene.skins[chara_skin].skeleton], __frame,
-                               scene.pose(chara_skin));
-            scene.updateSkins();
-        }
+        scene.updateSkins(); // the poses changed since the last frame (animations: see 'scene/scene_animation.h')
         scene_renderer.update(current_frame, ubo_camera.view, ubo_camera.proj);
 
 
