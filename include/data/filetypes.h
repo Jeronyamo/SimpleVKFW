@@ -389,7 +389,8 @@ namespace Simple {
     // PMX
 
         // Note: MMD model (PMX 2.0/2.1). Read now: the header, vertices (with the deform data, SDEF included), faces, textures,
-        //       materials, bones (IK and grant included) and morphs; display frames, rigid bodies and joints are not read yet.
+        //       materials, bones (IK and grant included), morphs, rigid bodies and joints; display frames are skipped, soft bodies
+        //       (PMX 2.1) are not read.
         //       Texts are converted to UTF-8. The data stays in the MMD space: left-handed, Y up, the model faces -Z
         struct ContentPMX : FiletypeContentItf {
             enum DeformType : uint8_t { DEFORM_BDEF1 = 0, DEFORM_BDEF2, DEFORM_BDEF4, DEFORM_SDEF, DEFORM_QDEF };
@@ -519,6 +520,42 @@ namespace Simple {
             std::vector<Material>    materials;
             std::vector<Bone>        bones;
             std::vector<Morph>       morphs;
+
+            enum RigidShape : uint8_t { RIGID_SPHERE = 0, RIGID_BOX, RIGID_CAPSULE };
+            enum RigidMode  : uint8_t {
+                RIGID_FOLLOW_BONE = 0,      // kinematic: placed by its bone
+                RIGID_PHYSICS,              // dynamic: moves its bone
+                RIGID_PHYSICS_BONE_POSITION // dynamic: rotates its bone, the bone keeps its animated position
+            };
+
+            // Note: Bullet-style shapes: sphere (size.x radius), box (size = half extents), capsule along the local Y
+            //       (size.x radius, size.y height of the cylinder part). Position and rotation (Euler radians, applied Z, X, Y:
+            //       q = qY * qX * qZ) are in the model space
+            struct RigidBody {
+                std::string name, name_en;
+                int32_t     bone = -1;              // -1: the model itself
+                uint8_t     group = 0u;             // 0..15
+                uint16_t    collision_mask = 0xFFFFu; // bit i: collides with group i
+                RigidShape  shape = RIGID_SPHERE;
+                vec3f       size, position, rotation;
+                float       mass = 1.f, linear_damping = 0.f, angular_damping = 0.f, restitution = 0.f, friction = 0.5f;
+                RigidMode   mode = RIGID_FOLLOW_BONE;
+            };
+
+            // Note: a 6DOF spring joint (Bullet 'btGeneric6DofSpringConstraint'); the limits are in the joint frame (angles:
+            //       Euler XYZ radians), min > max frees an axis, min == max locks it; springs: stiffness per axis (0: none).
+            //       PMX 2.1 joint types other than 0 are read and treated as 6DOF springs
+            struct Joint {
+                std::string name, name_en;
+                uint8_t     type = 0u;
+                int32_t     body_a = -1, body_b = -1;
+                vec3f       position, rotation;     // model space, rotation like 'RigidBody::rotation'
+                vec3f       linear_min, linear_max, angular_min, angular_max;
+                vec3f       linear_spring, angular_spring;
+            };
+
+            std::vector<RigidBody>   rigid_bodies;
+            std::vector<Joint>       joints;
 
             int32_t findBone (const std::string &_name) const; // -1 if there is none
             int32_t findMorph(const std::string &_name) const; // -1 if there is none

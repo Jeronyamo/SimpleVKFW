@@ -13,6 +13,10 @@
 #include "sound/tracker.h"
 #include "interface/rtaudio_wrap.h"
 #include "data/codecs.h"
+#include "main/etcs_base.h"
+#include "main/event_handler.h"
+#include "physics/physics_world.h"
+#include "scene/scene_physics.h"
 
 
 
@@ -667,6 +671,199 @@ namespace Simple {
         uint32_t __tstyle_color_red   = terminal_handler.addState(TermCtrl::TextStyle{{TermCtrl::TFlag::FG_RGB8}, TermCtrl::TColor::BrightRed});
 
         Test::testAssert(terminal_handler.style.states[__tstyle_color_red].get<TermCtrl::RGBModeFG>() == TermCtrl::RGBModeFG::RGB8, "Red color state error - doesn't show color change");
+    }
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "ETCS"
+
+
+    SVKFW_ADD_TEST(ETCSEntities, "Entities, tags, components, generations") {
+        struct Health { int hp; };
+        struct Name   { std::string name; };
+        ComponentStorage ecs;
+        EntityID a = ecs.create(tagMask(TagID::TAG_PHYSICS_DYNAMIC));
+        EntityID b = ecs.create();
+        ecs.add<Health>(a, Health{10});
+        ecs.add<Health>(b, Health{20});
+        ecs.add<Name>(b, Name{"b"});
+        Test::testAssert(ecs.count() == 2u && ecs.get<Health>(a)->hp == 10 && ecs.has<Name>(b) && !ecs.has<Name>(a), "components");
+        Test::testAssert(ecs.hasTag(a, TagID::TAG_PHYSICS_DYNAMIC) && !ecs.hasTag(b, TagID::TAG_PHYSICS_DYNAMIC), "tags");
+
+        int __sum = 0, __calls = 0;
+        ecs.each<Health>([&](EntityID, Health &_h) { __sum += _h.hp; ++__calls; });
+        Test::testAssert(__sum == 30 && __calls == 2, "each<Health>");
+        __calls = 0;
+        ecs.each<Name, Health>([&](EntityID _e, Name &_n, Health &_h) { Test::testAssert(_e == b && _n.name == "b" && _h.hp == 20, "each<Name, Health> data"); ++__calls; });
+        Test::testAssert(__calls == 1, "each<Name, Health> count");
+        __calls = 0;
+        ecs.each<Health>([&](EntityID, Health &) { ++__calls; }, TagFilter().none(TagID::TAG_PHYSICS_DYNAMIC));
+        Test::testAssert(__calls == 1, "each with a tag filter");
+
+        ecs.destroy(a);
+        Test::testAssert(!ecs.isValid(a) && ecs.get<Health>(a) == nullptr && ecs.gather().size() == 1u, "destroy");
+        EntityID c = ecs.create();
+        Test::testAssert(c.index == a.index && c.generation != a.generation && !ecs.has<Health>(c) && !ecs.isValid(a), "slot reuse with a new generation");
+        // The swap-remove kept b's data
+        Test::testAssert(ecs.get<Health>(b)->hp == 20, "data after removing another entity");
+        Test::testAssert(ecs.remove<Health>(b) && !ecs.has<Health>(b) && ecs.has<Name>(b), "remove one component");
+        ecs.clear();
+        Test::testAssert(ecs.count() == 0u && !ecs.isValid(b), "clear");
+    }
+
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "Events"
+
+
+    SVKFW_ADD_TEST(EventQueue, "Event queue, payload, subscriptions") {
+        struct Payload { int a; float b; };
+        Event::EventHandler events;
+        std::vector<int> __got;
+        const uint32_t EV_A = Event::EV_TYPE_USER, EV_B = Event::EV_TYPE_USER + 1u;
+        Event::SubscriptionID __sa = events.subscribe(EV_A, [&](Event::EventHandler &_h, const Event::Event &_e) {
+            __got.push_back(_e.get<Payload>().a);
+            _h.write(EV_B); // written during dispatching: handled in the next round
+        });
+        events.subscribe(EV_B, [&](Event::EventHandler &, const Event::Event &) { __got.push_back(-1); }, 1u); // once
+        events.write(Event::Event::make(EV_A, Payload{7, 1.f}));
+        events.write(Event::Event::make(EV_A, Payload{8, 2.f}));
+        // Writes from another thread
+        std::thread __t([&]() { for (int i = 0; i < 100; ++i) events.write(Event::EV_TYPE_USER + 5u); });
+        __t.join();
+        const uint32_t __n = events.poll();
+        Test::testAssert(__got.size() == 3u && __got[0] == 7 && __got[1] == 8 && __got[2] == -1, "dispatch order and one-shot subscription");
+        Test::testAssert(__n == 104u, "dispatched count " + std::to_string(__n));
+        Test::testAssert(events.unsubscribe(__sa) && !events.unsubscribe(__sa), "unsubscribe");
+        events.write(Event::Event::make(EV_A, Payload{9, 0.f}));
+        events.poll();
+        Test::testAssert(__got.size() == 3u, "no calls after unsubscribe");
+        events.stopWriting();
+        Test::testAssert(!events.write(EV_A), "stopped writing");
+    }
+
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "Physics"
+
+
+    SVKFW_ADD_TEST(PhysicsShapes, "Physics: resting shapes, stacking, Euler angles") {
+        using namespace Physics;
+        const vec3 __angles{0.3f, -0.7f, 1.1f}, __back = eulerXYZ(fromEulerXYZ(__angles));
+        Test::testAssert((__back - __angles).norm() < 1e-4f, "Euler XYZ round trip");
+
+        ComponentStorage ecs;
+        World world(ecs);
+        world.settings.gravity = {0.f, -9.8f, 0.f};
+        world.createBody(Body(), Collider::plane(), TagID::TAG_PHYSICS_STATIC);
+        EntityID sphere  = world.createBody(Body::at({0.f, 3.f, 0.f}), Collider::sphere(0.5f), TagID::TAG_PHYSICS_DYNAMIC);
+        EntityID capsule = world.createBody(Body::at({-5.f, 2.f, 0.f}, Quat(vec3{0.f, 0.f, 1.f}, 1.2f)), Collider::capsule(0.3f, 2.f), TagID::TAG_PHYSICS_DYNAMIC);
+        EntityID boxes[3];
+        for (int i = 0; i < 3; ++i)
+            boxes[i] = world.createBody(Body::at({5.f + 0.05f * i, 0.5f + 1.01f * i, 0.f}, Quat(vec3{0.f, 1.f, 0.f}, 0.3f * i)),
+                                        Collider::box({0.5f, 0.5f, 0.5f}), TagID::TAG_PHYSICS_DYNAMIC);
+        for (int f = 0; f < 300; ++f) world.update(1.f / 60.f);
+        Test::testAssert(std::fabs(ecs.get<Body>(sphere)->position.y - 0.5f) < 0.01f, "sphere rests on the ground");
+        Test::testAssert(std::fabs(ecs.get<Body>(capsule)->position.y - 0.3f) < 0.01f, "capsule lies on the ground");
+        for (int i = 0; i < 3; ++i) {
+            const vec3 p = ecs.get<Body>(boxes[i])->position;
+            Test::testAssert(std::fabs(p.y - (0.5f + i)) < 0.02f && std::fabs(p.x - 5.f) < 0.3f, "box stack, box " + std::to_string(i) +
+                             " at " + std::to_string(p.x) + " " + std::to_string(p.y));
+        }
+    }
+
+    SVKFW_ADD_TEST(PhysicsJoints, "Physics: joints, kinematic bodies, contact events") {
+        using namespace Physics;
+        ComponentStorage ecs;
+        Event::EventHandler events;
+        World world(ecs);
+        world.events = &events;
+        world.settings.gravity = {0.f, -9.8f, 0.f};
+        // A pendulum: a locked point joint at the kinematic pivot
+        EntityID pivot = world.createBody(Body::at({0.f, 10.f, 0.f}), Collider::sphere(0.1f), TagID::TAG_PHYSICS_KINEMATIC);
+        EntityID bob   = world.createBody(Body::at({1.f, 10.f, 0.f}), Collider::box({1.f, 0.1f, 0.1f}), TagID::TAG_PHYSICS_DYNAMIC); // a rod
+        Joint j;
+        j.body_a = pivot; j.body_b = bob;
+        j.anchor_b = {-1.f, 0.f, 0.f};
+        j.angular_min = {1.f, 1.f, 1.f}; j.angular_max = {-1.f, -1.f, -1.f}; // free rotation
+        world.createJoint(j);
+        float __max_err = 0.f, __min_y = 10.f;
+        for (int f = 0; f < 240; ++f) {
+            world.update(1.f / 60.f);
+            const Body &__b = *ecs.get<Body>(bob);
+            const vec3 p = __b.position;
+            // The joint point of the bob stays at the pivot
+            __max_err = std::max(__max_err, (p + __b.rotation.rotateByUnit(j.anchor_b) - vec3{0.f, 10.f, 0.f}).norm());
+            __min_y = std::min(__min_y, p.y);
+        }
+        Test::testAssert(__max_err < 0.02f, "pendulum joint kept, error " + std::to_string(__max_err));
+        Test::testAssert(__min_y < 9.1f, "pendulum swings down, lowest y " + std::to_string(__min_y));
+
+        // A kinematic box moving into a resting sphere pushes it; contact events
+        world.createBody(Body(), Collider::plane(), TagID::TAG_PHYSICS_STATIC);
+        EntityID pusher = world.createBody(Body::at({-3.f, 0.5f, 5.f}), Collider::box({0.5f, 0.5f, 0.5f}), TagID::TAG_PHYSICS_KINEMATIC);
+        EntityID ball   = world.createBody(Body::at({0.f, 0.5f, 5.f}), Collider::sphere(0.5f), TagID::TAG_PHYSICS_DYNAMIC);
+        ecs.addTag(ball, TagID::TAG_PHYSICS_REPORT_CONTACTS);
+        uint32_t __begins = 0u;
+        events.subscribe(Event::EV_TYPE_PHYSICS_CONTACT_BEGIN, [&](Event::EventHandler &, const Event::Event &_e) {
+            const ContactEvent c = _e.get<ContactEvent>();
+            if (c.body_a == pusher || c.body_b == pusher) ++__begins;
+        });
+        for (int f = 0; f < 60; ++f) {
+            world.setKinematicTarget(pusher, {-3.f + 0.05f * (f + 1), 0.5f, 5.f}, Quat());
+            world.update(1.f / 60.f);
+            events.poll();
+        }
+        Test::testAssert(ecs.get<Body>(ball)->position.x > 0.5f, "the kinematic box pushed the ball");
+        Test::testAssert(__begins >= 1u, "contact begin event");
+    }
+
+    SVKFW_ADD_TEST(PhysicsMMD, "Physics: MMD bodies drive bones") {
+        using namespace SceneGraph;
+        // A root bone with a kinematic body and a 3-link hair chain (dynamic capsules along +X in the bind pose)
+        Scene scene;
+        Skeleton sk;
+        Bone root; root.name = "root"; root.rest.translation = {0.f, 10.f, 0.f};
+        sk.addBone(root);
+        for (uint32_t i = 1u; i <= 3u; ++i) {
+            Bone b; b.name = "hair" + std::to_string(i); b.parent = i - 1u; b.rest.translation = {1.f, 0.f, 0.f};
+            sk.addBone(b);
+        }
+        RigidBodyDesc rb;
+        rb.bone = 0u; rb.shape = SCENE_RIGID_SPHERE; rb.size = {0.5f, 0.f, 0.f}; rb.position = {0.f, 10.f, 0.f};
+        rb.group = 0u; rb.collision_mask = 0xFFFEu; rb.mode = SCENE_RIGID_FOLLOW_BONE;
+        sk.rigid_bodies.push_back(rb);
+        for (uint32_t i = 1u; i <= 3u; ++i) {
+            RigidBodyDesc h;
+            h.bone = i; h.shape = SCENE_RIGID_CAPSULE; h.size = {0.2f, 0.6f, 0.f};
+            h.position = {i - 0.5f, 10.f, 0.f}; h.rotation = Quat(vec3{0.f, 0.f, 1.f}, 1.5707963f);
+            h.group = 1u; h.collision_mask = 0xFFFCu; h.mode = SCENE_RIGID_PHYSICS; h.linear_damping = h.angular_damping = 0.5f;
+            sk.rigid_bodies.push_back(h);
+            JointDesc jd;
+            jd.body_a = i - 1u; jd.body_b = i; jd.position = {i - 1.f, 10.f, 0.f};
+            jd.angular_min = {-1.f, -1.f, -1.f}; jd.angular_max = {1.f, 1.f, 1.f};
+            sk.joints.push_back(jd);
+        }
+        sk.finalize();
+        const uint32_t node = scene.addNode("model");
+        const uint32_t skin = scene.addSkin(scene.addSkeleton(sk), node);
+        scene.nodes[node].skin = skin;
+
+        MMDPhysics physics;
+        physics.addModel(scene, skin);
+        physics.reset(scene);
+        for (int f = 0; f < 180; ++f) physics.update(scene, 1.f / 60.f);
+        const Pose &pose = scene.skins[skin].pose;
+        const vec3 tip = { pose.model[3].M[3][0], pose.model[3].M[3][1], pose.model[3].M[3][2] };
+        Test::testAssert(tip.y < 8.f, "the hair chain falls under gravity, tip y " + std::to_string(tip.y));
+        // The bone chain stays connected: bone 1 at 1 unit from the root
+        const vec3 b1 = { pose.model[1].M[3][0], pose.model[1].M[3][1], pose.model[1].M[3][2] };
+        Test::testAssert(std::fabs((b1 - vec3{0.f, 10.f, 0.f}).norm() - 1.f) < 0.05f, "hair1 stays at the root, distance " +
+                         std::to_string((b1 - vec3{0.f, 10.f, 0.f}).norm()));
+        // Moving the model node moves the kinematic body with it
+        scene.setLocal(node, translation({5.f, 0.f, 0.f}));
+        for (int f = 0; f < 60; ++f) physics.update(scene, 1.f / 60.f);
+        const vec3 b1m = { pose.model[1].M[3][0], pose.model[1].M[3][1], pose.model[1].M[3][2] };
+        Test::testAssert(std::fabs((b1m - vec3{0.f, 10.f, 0.f}).norm() - 1.f) < 0.05f, "bones stay in the skeleton space after moving the model");
     }
 }; // Simple END
 

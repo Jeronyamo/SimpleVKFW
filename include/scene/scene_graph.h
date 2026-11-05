@@ -266,11 +266,50 @@ namespace Simple {
             std::vector<MorphGroupEntry> group;
         }; // Morph END
 
+        enum RigidShape { SCENE_RIGID_SPHERE = 0, SCENE_RIGID_BOX, SCENE_RIGID_CAPSULE };
+
+        enum RigidMode {
+            SCENE_RIGID_FOLLOW_BONE = 0,       // kinematic: placed by its bone (or the skeleton space without a bone)
+            SCENE_RIGID_PHYSICS,               // dynamic: drives its bone
+            SCENE_RIGID_PHYSICS_BONE_POSITION  // dynamic: drives the rotation of its bone, the bone keeps its animated position
+        };
+
+        // Note: a rigid body of the skeleton (MMD physics), in the skeleton space and the bind pose. Shapes: sphere
+        //       (size.x radius), box (size = half extents), capsule along the local Y (size.x radius, size.y length of the
+        //       cylinder part). 'collision_mask' bit i: collides with the bodies of group i. Simulated by 'scene/scene_physics.h'
+        struct RigidBodyDesc {
+            std::string name;
+            uint32_t    bone  = SCENE_NONE;
+            uint32_t    group = 0u;
+            uint32_t    collision_mask = 0xFFFFu;
+            RigidShape  shape = SCENE_RIGID_SPHERE;
+            vec3        size  = {1.f, 1.f, 1.f};
+            vec3        position = {0.f, 0.f, 0.f};
+            Quat        rotation;
+            float       mass = 1.f, linear_damping = 0.f, angular_damping = 0.f, restitution = 0.f, friction = 0.5f;
+            RigidMode   mode = SCENE_RIGID_FOLLOW_BONE;
+        }; // RigidBodyDesc END
+
+        // Note: a 6DOF spring joint between two rigid bodies of the skeleton; the frame is in the skeleton space (bind pose).
+        //       Limits in the joint frame (angles: Euler XYZ, radians): min > max frees an axis, min == max locks it;
+        //       springs: stiffness per axis, 0: none
+        struct JointDesc {
+            std::string name;
+            uint32_t    body_a = SCENE_NONE, body_b = SCENE_NONE;
+            vec3        position = {0.f, 0.f, 0.f};
+            Quat        rotation;
+            vec3        linear_min  = {0.f, 0.f, 0.f}, linear_max  = {0.f, 0.f, 0.f};
+            vec3        angular_min = {0.f, 0.f, 0.f}, angular_max = {0.f, 0.f, 0.f};
+            vec3        linear_spring = {0.f, 0.f, 0.f}, angular_spring = {0.f, 0.f, 0.f};
+        }; // JointDesc END
+
         struct Skeleton {
             std::string          name;
             std::vector<Bone>    bones;
             std::vector<IKChain> iks;
             std::vector<Morph>   morphs;
+            std::vector<RigidBodyDesc> rigid_bodies; // physics (MMD), see 'scene/scene_physics.h'
+            std::vector<JointDesc>     joints;
 
             // Computed by 'finalize'
             std::vector<uint32_t>              order;    // the deform order
@@ -302,6 +341,11 @@ namespace Simple {
             std::vector<float>   morph_weights;            // per morph of the skeleton (input)
             std::vector<float>   morph_final;              // computed: the weights with the groups resolved (the renderer reads them)
             std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
+            // Physics ('scene/scene_physics.h'): with 'use_physics' the bones with 'physics_override' take 'physics_model'
+            // (their model matrix) instead of their local transform; their descendants follow them
+            std::vector<uint8_t> physics_override;
+            std::vector<mat4>    physics_model;
+            bool              use_physics = false;
             bool              dirty = true;
             bool              solve_ik = true;
             uint64_t          revision = 0u; // counts 'computeFK' calls (e.g. culling notices a changed pose)

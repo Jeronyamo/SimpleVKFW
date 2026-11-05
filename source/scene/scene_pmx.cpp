@@ -133,8 +133,54 @@ namespace Simple {
                         if (!__ik.links.empty()) __skeleton.addIK(__ik);
                     }
                     morphs(__skeleton);
+                    physics(__skeleton);
                     __skeleton.finalize();
                     return scene.addSkeleton(__skeleton);
+                }
+
+                // PMX Euler angles (radians): q = qY * qX * qZ (Z first)
+                static Quat eulerPMX(const vec3f &_r) {
+                    return Quat(vec3{0.f, 1.f, 0.f}, _r.y) * Quat(vec3{1.f, 0.f, 0.f}, _r.x) * Quat(vec3{0.f, 0.f, 1.f}, _r.z);
+                }
+
+                // Rigid bodies and joints keep the PMX order (joints refer to it); bones are remapped
+                void physics(Skeleton &_skeleton) {
+                    _skeleton.rigid_bodies.reserve(pmx.rigid_bodies.size());
+                    for (size_t i = 0u; i < pmx.rigid_bodies.size(); ++i) {
+                        const PMX::RigidBody &__b = pmx.rigid_bodies[i];
+                        RigidBodyDesc __d;
+                        __d.name   = __b.name;
+                        __d.bone   = __b.bone >= 0 && (size_t)__b.bone < pmx.bones.size() ? bone_map[__b.bone] : SCENE_NONE;
+                        __d.group  = std::min<uint32_t>(__b.group, 15u);
+                        __d.collision_mask = __b.collision_mask;
+                        __d.shape  = (RigidShape)__b.shape;
+                        __d.size   = toVec3(__b.size);
+                        __d.position = toVec3(__b.position);
+                        __d.rotation = eulerPMX(__b.rotation);
+                        __d.mass            = __b.mass;
+                        __d.linear_damping  = __b.linear_damping;
+                        __d.angular_damping = __b.angular_damping;
+                        __d.restitution     = __b.restitution;
+                        __d.friction        = __b.friction;
+                        __d.mode   = (RigidMode)__b.mode;
+                        _skeleton.rigid_bodies.push_back(__d);
+                    }
+                    const int32_t __count = (int32_t)pmx.rigid_bodies.size();
+                    for (size_t i = 0u; i < pmx.joints.size(); ++i) {
+                        const PMX::Joint &__j = pmx.joints[i];
+                        if (__j.body_a < 0 || __j.body_a >= __count || __j.body_b < 0 || __j.body_b >= __count || __j.body_a == __j.body_b) continue;
+                        JointDesc __d;
+                        __d.name     = __j.name;
+                        __d.body_a   = (uint32_t)__j.body_a;
+                        __d.body_b   = (uint32_t)__j.body_b;
+                        __d.position = toVec3(__j.position);
+                        __d.rotation = eulerPMX(__j.rotation);
+                        __d.linear_min  = toVec3(__j.linear_min);  __d.linear_max  = toVec3(__j.linear_max);
+                        __d.angular_min = toVec3(__j.angular_min); __d.angular_max = toVec3(__j.angular_max);
+                        __d.linear_spring  = toVec3(__j.linear_spring);
+                        __d.angular_spring = toVec3(__j.angular_spring);
+                        _skeleton.joints.push_back(__d);
+                    }
                 }
 
                 // Morphs keep the PMX order (group entries refer to it); vertex and UV offsets go to the meshes ('mesh')

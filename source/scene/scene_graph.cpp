@@ -299,6 +299,8 @@ namespace Simple {
         }
 
         mat4 Pose::localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const {
+            if (use_physics && _bone < physics_override.size() && physics_override[_bone] && _bone < physics_model.size())
+                return physics_model[_bone];
             TRS __trs = morphed[_bone];
             __trs.rotation    = ik_rotation[_bone] * morphed[_bone].rotation * grant_rotation[_bone];
             __trs.translation = __trs.translation + grant_translation[_bone];
