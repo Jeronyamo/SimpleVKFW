@@ -8,6 +8,7 @@
 #include "interface/vkfw.h"
 #include "interface/vkfw_graph.h"
 #include "scene/scene_graph.h"
+#include "scene/scene_culling.h"
 
 
 namespace Simple {
@@ -40,6 +41,7 @@ namespace Simple {
         //       morph weight of each skin, then the morph weights ('Pose::morph_final').
         //       Morphs: the vertex / UV offsets of all skinned meshes in one storage buffer (static), grouped by vertex; each
         //       vertex adds its offsets times the weights of their morphs before skinning.
+        //       Culling: with 'culling' set, only the instances inside the camera frustum are drawn (see 'scene_culling.h').
         //       Draw order: opaque and masked meshes first, then blended ones back to front by their node (the meshes of one
         //       node keep their order, like MMD draws the materials of a model in the file order).
         //
@@ -127,6 +129,8 @@ namespace Simple {
             // Note: with the engine camera (left-handed world, see 'scene_graph.h') front faces end up clockwise on the screen
             VkFrontFace front_face = VK_FRONT_FACE_CLOCKWISE;
             bool        backface_culling = true; // for materials that aren't two-sided
+            // Frustum culling: if set (built for the uploaded scene), 'update' updates it and draws only the instances it sees
+            SceneCulling *culling = nullptr;
 
             // GPU data
             Graph::Buffer               vertex_buffer, index_buffer, material_buffer;
@@ -157,6 +161,8 @@ namespace Simple {
             // Per frame ('update')
             uint32_t          frame = 0u;
             std::vector<Draw> opaque_draws, blend_draws;
+            std::vector<Draw> candidates;      // 'update' scratch
+            std::vector<uint32_t> visible;     // the instances 'culling' found visible in the last 'update'
             uint32_t          draw_count = 0u; // drawn in the last 'record'
 
             explicit SceneRenderer(VulkanContext &_cxt);

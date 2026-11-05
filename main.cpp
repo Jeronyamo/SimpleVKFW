@@ -11,6 +11,7 @@
 #include "scene/scene_graph.h"
 #include "scene/scene_pmx.h"
 #include "scene/scene_animation.h"
+#include "scene/scene_culling.h"
 #include "scene/scene_renderer.h"
 
 #include <cmath>
@@ -487,8 +488,11 @@ int main(int argc, char **argv) {
     graphics_pip.graphics_create_info_wrap.rendering_wrap.setFormats(vk.cxt_swapchain.format(), depth_stencil_format, depth_stencil_format);
     vk.cxt_pipeline.createPipeline(ci_graphics_pip, graph.renderPass(scene_pass), 0u, ci_pip_layout);
 
-    // Scene renderer: copies the scene to the device and makes its pipelines for the scene pass
+    // Scene renderer: copies the scene to the device and makes its pipelines for the scene pass; draws what the culling sees
     SG::SceneRenderer scene_renderer(vk);
+    SG::SceneCulling  scene_culling;
+    scene_culling.build(scene);
+    scene_renderer.culling = &scene_culling;
     {
         SG::SceneRenderer::UploadInfo __info;
         __info.queue  = ci_queue_graphics;

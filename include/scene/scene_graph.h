@@ -304,6 +304,7 @@ namespace Simple {
             std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
             bool              dirty = true;
             bool              solve_ik = true;
+            uint64_t          revision = 0u; // counts 'computeFK' calls (e.g. culling notices a changed pose)
 
             void reset(const Skeleton &_skeleton);  // back to the rest pose
             // Forward kinematics with grants and IK chains in the deform order

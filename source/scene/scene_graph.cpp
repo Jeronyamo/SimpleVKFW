@@ -512,6 +512,7 @@ namespace Simple {
             }
             for (size_t i = 0u; i < __count; ++i) skinning[i] = _skeleton.bones[i].inverse_bind & model[i];
             dirty = false;
+            ++revision;
         }
 
 

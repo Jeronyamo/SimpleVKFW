@@ -438,26 +438,47 @@ namespace Simple {
             blend_draws.clear();
             struct Sorted { float depth; uint32_t order; Draw draw; };
             std::vector<Sorted> __blended;
-            for (uint32_t n = 0u; n < (uint32_t)__scene.nodes.size(); ++n) {
-                const Node &__node = __scene.nodes[n];
-                if (__node.meshes.empty() || !__scene.world_visible[n]) continue;
-                // Note: blended meshes are sorted by the center of their node, so the meshes of one model keep the file order
-                AABB __bounds;
-                for (size_t m = 0u; m < __node.meshes.size(); ++m) __bounds.add(__scene.meshes[__node.meshes[m]].bounds);
-                const uint32_t __skin = __node.skin < joint_offsets.size() ? __node.skin : SCENE_NONE;
-                const mat4 &__world = __skin != SCENE_NONE && __scene.skins[__skin].node != SCENE_NONE ? __scene.world[__scene.skins[__skin].node]
-                                                                                                         : __scene.world[n];
-                const vec3 __center = transformPoint(_view, transformPoint(__world, __bounds.center()));
-                for (size_t m = 0u; m < __node.meshes.size(); ++m) {
-                    const uint32_t __mesh = __node.meshes[m];
-                    const Material *__mat = material_(__mesh);
-                    if ((__mat && !__mat->visible) || mesh_ranges[__mesh].index_count == 0u) continue;
-                    Draw __draw = { n, __mesh };
-                    if (__mat && __mat->alpha_mode == SCENE_ALPHA_BLEND) {
-                        Sorted __s = { __center.z, (uint32_t)__blended.size(), __draw };
-                        __blended.push_back(__s);
-                    } else opaque_draws.push_back(__draw);
+            // The candidates: the visible instances of the culling, or all meshes of all nodes (in node, then mesh order)
+            candidates.clear();
+            if (culling) {
+                culling->update(__scene);
+                culling->cull(Frustum::fromMatrix(_view & _proj), visible);
+                for (size_t i = 0u; i < visible.size(); ++i) {
+                    const SceneCulling::Instance &__inst = culling->instances[visible[i]];
+                    Draw __draw = { __inst.node, __inst.mesh };
+                    candidates.push_back(__draw);
                 }
+            } else {
+                for (uint32_t n = 0u; n < (uint32_t)__scene.nodes.size(); ++n)
+                    for (size_t m = 0u; m < __scene.nodes[n].meshes.size(); ++m) {
+                        Draw __draw = { n, __scene.nodes[n].meshes[m] };
+                        candidates.push_back(__draw);
+                    }
+            }
+            uint32_t __center_node = SCENE_NONE;
+            vec3     __center = {0.f, 0.f, 0.f};
+            for (size_t c = 0u; c < candidates.size(); ++c) {
+                const Draw &__draw = candidates[c];
+                const uint32_t n = __draw.node;
+                if (n >= __scene.nodes.size() || !__scene.world_visible[n]) continue;
+                const Node &__node = __scene.nodes[n];
+                const uint32_t __mesh = __draw.mesh;
+                const Material *__mat = material_(__mesh);
+                if ((__mat && !__mat->visible) || mesh_ranges[__mesh].index_count == 0u) continue;
+                if (__mat && __mat->alpha_mode == SCENE_ALPHA_BLEND) {
+                    // Note: blended meshes are sorted by the center of their node, so the meshes of one model keep the file order
+                    if (__center_node != n) {
+                        AABB __bounds;
+                        for (size_t m = 0u; m < __node.meshes.size(); ++m) __bounds.add(__scene.meshes[__node.meshes[m]].bounds);
+                        const uint32_t __skin = __node.skin < joint_offsets.size() ? __node.skin : SCENE_NONE;
+                        const mat4 &__world = __skin != SCENE_NONE && __scene.skins[__skin].node != SCENE_NONE ? __scene.world[__scene.skins[__skin].node]
+                                                                                                                 : __scene.world[n];
+                        __center = transformPoint(_view, transformPoint(__world, __bounds.center()));
+                        __center_node = n;
+                    }
+                    Sorted __s = { __center.z, (uint32_t)__blended.size(), __draw };
+                    __blended.push_back(__s);
+                } else opaque_draws.push_back(__draw);
             }
             // Note: the camera looks along -Z in the view space ('View::ViewMat'), so the farthest has the smallest z
             struct Order {
