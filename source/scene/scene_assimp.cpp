@@ -7,6 +7,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <set>
 #include <stdexcept>
 
 #include <assimp/Importer.hpp>
@@ -55,6 +56,20 @@ namespace Simple {
                 return __absolute ? _file : _dir + _file;
             }
 
+            // A png, jpg, bmp, tga... in memory -> RGBA8 texels
+            bool decodeImage(Texture &_tex, const unsigned char *_data, int _size) {
+                int __w = 0, __h = 0, __ch = 0;
+                unsigned char *__px = stbi_load_from_memory(_data, _size, &__w, &__h, &__ch, 4);
+                if (!__px) return false;
+                _tex.image.width  = __w;
+                _tex.image.height = __h;
+                _tex.image.img.resize((size_t)__w * __h);
+                std::memcpy(_tex.image.img.data(), __px, (size_t)__w * __h * 4u);
+                stbi_image_free(__px);
+                _tex.scanAlpha();
+                return true;
+            }
+
             struct Converter {
                 Scene                &scene;
                 const aiScene        &ai;
@@ -67,7 +82,15 @@ namespace Simple {
                 std::map<std::string, uint32_t> texture_cache; // source + color space -> texture index
                 std::vector<uint32_t> mesh_map;                // aiMesh index -> mesh index (SCENE_NONE: skipped)
                 std::vector<uint32_t> material_map;            // aiMaterial index -> material index
-                Assimp::DefaultIOSystem io;                    // reads UTF-8 paths on Windows too
+
+                // Skeleton (one per file): the nodes of the bones are not converted to scene nodes
+                const aiNode         *armature = nullptr;      // the skeleton space; nullptr: above the root of the file
+                std::set<const aiNode*> bone_nodes;            // the nodes that are bones (and their ancestors below 'armature')
+                std::map<std::string, uint32_t> bone_index;    // bone name -> bone of 'skeleton'
+                uint32_t              skeleton = SCENE_NONE;
+                std::vector<mat4>     mesh_to_skeleton;        // aiMesh index -> its space in the skeleton space (bind pose)
+                std::map<const aiNode*, uint32_t> node_map;    // aiNode -> scene node
+                std::vector<uint32_t> skinned_nodes;           // scene nodes with skinned meshes
 
                 Converter(Scene &_scene, const aiScene &_ai, const std::string &_dir, bool _left_handed, const ImportOptions &_options,
                           const std::string &_ext)
@@ -84,18 +107,128 @@ namespace Simple {
                     return __m;
                 }
 
-                bool decode(Texture &_tex, const unsigned char *_data, int _size) {
-                    int __w = 0, __h = 0, __ch = 0;
-                    unsigned char *__px = stbi_load_from_memory(_data, _size, &__w, &__h, &__ch, 4);
-                    if (!__px) return false;
-                    _tex.image.width  = __w;
-                    _tex.image.height = __h;
-                    _tex.image.img.resize((size_t)__w * __h);
-                    std::memcpy(_tex.image.img.data(), __px, (size_t)__w * __h * 4u);
-                    stbi_image_free(__px);
-                    _tex.scanAlpha();
-                    return true;
+                // The transform of '_node' to the space of the file root
+                mat4 global(const aiNode *_node) const {
+                    mat4 __m = Mat::Eye4;
+                    for (; _node; _node = _node->mParent) __m = __m & fixMat(_node->mTransformation);
+                    return __m;
                 }
+                mat4 toSkeleton(const aiNode *_node) const {
+                    return armature ? global(_node) & global(armature).inverse<float>() : global(_node);
+                }
+
+                void findMeshNodes(const aiNode *_node, std::vector<const aiNode*> &_owner) const {
+                    for (uint32_t m = 0u; m < _node->mNumMeshes; ++m)
+                        if (_node->mMeshes[m] < _owner.size() && !_owner[_node->mMeshes[m]]) _owner[_node->mMeshes[m]] = _node;
+                    for (uint32_t c = 0u; c < _node->mNumChildren; ++c) findMeshNodes(_node->mChildren[c], _owner);
+                }
+
+                void addBones(const aiNode *_node, uint32_t _parent, Skeleton &_skeleton, std::vector<mat4> &_bind) {
+                    uint32_t __bone = _parent;
+                    if (bone_nodes.count(_node)) {
+                        Bone __b;
+                        __b.name   = _node->mName.C_Str();
+                        __b.parent = _parent;
+                        __bone = _skeleton.addBone(__b);
+                        bone_index[__b.name] = __bone;
+                        _bind.push_back(toSkeleton(_node));
+                    }
+                    for (uint32_t c = 0u; c < _node->mNumChildren; ++c) addBones(_node->mChildren[c], __bone, _skeleton, _bind);
+                }
+
+                // Builds the skeleton from the bones of all meshes: the bind pose comes from the bone offset matrices
+                // (the node tree for the bones without one), the skeleton space is the lowest common ancestor of the bones
+                void prepareSkeleton() {
+                    mesh_to_skeleton.assign(ai.mNumMeshes, Mat::Eye4);
+                    std::vector<const aiNode*> __bones;
+                    for (uint32_t m = 0u; m < ai.mNumMeshes; ++m)
+                        for (uint32_t b = 0u; b < ai.mMeshes[m]->mNumBones; ++b) {
+                            const aiNode *__node = ai.mRootNode->FindNode(ai.mMeshes[m]->mBones[b]->mName);
+                            if (!__node) fprintf(svkfwwarn, "%s'%s'\n", SVKFW_WRAPWARN("SceneGraph :: loadAssimp", "no node for the bone "),
+                                                 ai.mMeshes[m]->mBones[b]->mName.C_Str());
+                            else if (std::find(__bones.begin(), __bones.end(), __node) == __bones.end()) __bones.push_back(__node);
+                        }
+                    if (__bones.empty()) return;
+
+                    // The lowest common ancestor; if it is a bone itself, its parent
+                    std::vector<const aiNode*> __path;
+                    for (const aiNode *n = __bones[0]; n; n = n->mParent) __path.insert(__path.begin(), n);
+                    size_t __common = __path.size();
+                    for (size_t b = 1u; b < __bones.size(); ++b) {
+                        std::vector<const aiNode*> __other;
+                        for (const aiNode *n = __bones[b]; n; n = n->mParent) __other.insert(__other.begin(), n);
+                        size_t i = 0u;
+                        while (i < __common && i < __other.size() && __other[i] == __path[i]) ++i;
+                        __common = i;
+                    }
+                    armature = __common > 0u ? __path[__common - 1u] : nullptr;
+                    if (armature && std::find(__bones.begin(), __bones.end(), armature) != __bones.end()) armature = armature->mParent;
+
+                    // The bones and the nodes between them and the skeleton space
+                    for (size_t b = 0u; b < __bones.size(); ++b)
+                        for (const aiNode *n = __bones[b]; n && n != armature; n = n->mParent) bone_nodes.insert(n);
+                    Skeleton __skeleton;
+                    __skeleton.name = armature ? armature->mName.C_Str() : ai.mRootNode->mName.C_Str();
+                    std::vector<mat4> __bind;
+                    if (armature)
+                        for (uint32_t c = 0u; c < armature->mNumChildren; ++c) addBones(armature->mChildren[c], SCENE_NONE, __skeleton, __bind);
+                    else addBones(ai.mRootNode, SCENE_NONE, __skeleton, __bind);
+
+                    // The meshes in the skeleton space; the bind pose from the offsets (mesh space -> bone space)
+                    std::vector<const aiNode*> __owner(ai.mNumMeshes, nullptr);
+                    findMeshNodes(ai.mRootNode, __owner);
+                    std::vector<uint8_t> __from_offset(__bind.size(), 0u);
+                    for (uint32_t m = 0u; m < ai.mNumMeshes; ++m) {
+                        const aiMesh &__mesh = *ai.mMeshes[m];
+                        if (__mesh.mNumBones == 0u) continue;
+                        if (__owner[m]) mesh_to_skeleton[m] = toSkeleton(__owner[m]);
+                        for (uint32_t b = 0u; b < __mesh.mNumBones; ++b) {
+                            std::map<std::string, uint32_t>::const_iterator it = bone_index.find(__mesh.mBones[b]->mName.C_Str());
+                            if (it == bone_index.end() || __from_offset[it->second]) continue;
+                            __bind[it->second] = fixMat(__mesh.mBones[b]->mOffsetMatrix).inverse<float>() & mesh_to_skeleton[m];
+                            __from_offset[it->second] = 1u;
+                        }
+                    }
+                    for (size_t i = 0u; i < __bind.size(); ++i) {
+                        const uint32_t __parent = __skeleton.bones[i].parent;
+                        __skeleton.bones[i].rest = TRS::fromMatrix(__parent == SCENE_NONE ? __bind[i] : __bind[i] & __bind[__parent].inverse<float>());
+                    }
+                    __skeleton.finalize();
+                    skeleton = scene.addSkeleton(__skeleton);
+                }
+
+                // Up to 4 influences per vertex (the largest), normalized
+                void skinWeights(const aiMesh &_ai_mesh, Mesh &_mesh) const {
+                    SkinVertex __empty;
+                    __empty.bones[0] = __empty.bones[1] = __empty.bones[2] = __empty.bones[3] = 0u;
+                    __empty.weights = {0.f, 0.f, 0.f, 0.f};
+                    __empty.mode    = SCENE_SKIN_LINEAR;
+                    _mesh.skin.assign(_mesh.vertices.size(), __empty);
+                    for (uint32_t b = 0u; b < _ai_mesh.mNumBones; ++b) {
+                        const aiBone &__ai_bone = *_ai_mesh.mBones[b];
+                        std::map<std::string, uint32_t>::const_iterator it = bone_index.find(__ai_bone.mName.C_Str());
+                        if (it == bone_index.end()) continue;
+                        for (uint32_t w = 0u; w < __ai_bone.mNumWeights; ++w) {
+                            const aiVertexWeight &__w = __ai_bone.mWeights[w];
+                            if (__w.mVertexId >= _mesh.skin.size() || __w.mWeight <= 0.f) continue;
+                            SkinVertex &__v = _mesh.skin[__w.mVertexId];
+                            float *__weights = &__v.weights.x;
+                            int __min = 0;
+                            for (int s = 1; s < 4; ++s) if (__weights[s] < __weights[__min]) __min = s;
+                            if (__weights[__min] >= __w.mWeight) continue;
+                            __weights[__min]  = __w.mWeight;
+                            __v.bones[__min] = (uint16_t)it->second;
+                        }
+                    }
+                    for (size_t i = 0u; i < _mesh.skin.size(); ++i) {
+                        vec4 &__w = _mesh.skin[i].weights;
+                        const float __sum = __w.x + __w.y + __w.z + __w.w;
+                        if (__sum > 0.f) __w = __w * (1.f / __sum);
+                        else __w = {1.f, 0.f, 0.f, 0.f}; // unweighted: follows bone 0
+                    }
+                }
+
+                bool decode(Texture &_tex, const unsigned char *_data, int _size) { return decodeImage(_tex, _data, _size); }
 
                 bool loadEmbedded(Texture &_tex, const aiTexture &_ai_tex) {
                     if (_ai_tex.mHeight == 0u) // compressed (png, jpg...) in memory
@@ -111,13 +244,7 @@ namespace Simple {
                     return true;
                 }
 
-                bool loadFile(Texture &_tex, const std::string &_path) {
-                    std::unique_ptr<Assimp::IOStream> __file(io.Exists(_path.c_str()) ? io.Open(_path.c_str(), "rb") : nullptr);
-                    if (!__file) return false;
-                    std::vector<unsigned char> __bytes(__file->FileSize());
-                    if (__bytes.empty() || __file->Read(__bytes.data(), 1u, __bytes.size()) != __bytes.size()) return false;
-                    return decode(_tex, __bytes.data(), (int)__bytes.size());
-                }
+                bool loadFile(Texture &_tex, const std::string &_path) { return loadTextureFile(_tex, _path); }
 
                 uint32_t texture(const aiMaterial &_mat, aiTextureType _type, bool _srgb) {
                     if (_mat.GetTextureCount(_type) == 0u) return SCENE_NONE;
@@ -203,7 +330,7 @@ namespace Simple {
                     return scene.addMaterial(__mat);
                 }
 
-                uint32_t mesh(const aiMesh &_ai_mesh) {
+                uint32_t mesh(const aiMesh &_ai_mesh, uint32_t _index) {
                     if (!(_ai_mesh.mPrimitiveTypes & aiPrimitiveType_TRIANGLE) || _ai_mesh.mNumVertices == 0u) return SCENE_NONE;
                     Mesh __mesh;
                     __mesh.name = _ai_mesh.mName.C_Str();
@@ -232,19 +359,55 @@ namespace Simple {
                         __mesh.indices.push_back(__face.mIndices[2]);
                     }
                     if (__mesh.indices.empty()) return SCENE_NONE;
+                    if (_ai_mesh.HasBones() && skeleton != SCENE_NONE) {
+                        skinWeights(_ai_mesh, __mesh);
+                        // The vertices go to the skeleton space (the skin is drawn there)
+                        const mat4 &__m = mesh_to_skeleton[_index];
+                        bool __identity = true;
+                        for (int r = 0; r < 4; ++r)
+                            for (int c = 0; c < 4; ++c)
+                                if (std::fabs(__m.M[r][c] - (r == c ? 1.f : 0.f)) > 1e-6f) __identity = false;
+                        if (!__identity) {
+                            const mat4 __normal = __m.inverse<float>().T();
+                            for (size_t i = 0u; i < __mesh.vertices.size(); ++i) {
+                                Vertex &__v = __mesh.vertices[i];
+                                __v.position = transformPoint(__m, __v.position);
+                                __v.normal   = transformDir(__normal, __v.normal).normalize();
+                                vec3 __t = transformDir(__m, vec3{__v.tangent.x, __v.tangent.y, __v.tangent.z});
+                                if (__t.norm() > 1e-12f) __t = __t.normalize();
+                                __v.tangent = { __t.x, __t.y, __t.z, __v.tangent.w };
+                            }
+                        }
+                    }
                     __mesh.computeBounds();
                     return scene.addMesh(__mesh);
                 }
 
-                uint32_t node(const aiNode &_ai_node, uint32_t _parent, const mat4 &_extra) {
-                    uint32_t __index = scene.addNode(_ai_node.mName.C_Str(), _parent, fixMat(_ai_node.mTransformation) & _extra);
+                // '_local': the local transform of the new node
+                uint32_t node(const aiNode &_ai_node, uint32_t _parent, const mat4 &_local) {
+                    uint32_t __index = scene.addNode(_ai_node.mName.C_Str(), _parent, _local);
+                    node_map[&_ai_node] = __index;
                     for (uint32_t m = 0u; m < _ai_node.mNumMeshes; ++m) {
                         uint32_t __mesh = _ai_node.mMeshes[m] < mesh_map.size() ? mesh_map[_ai_node.mMeshes[m]] : SCENE_NONE;
-                        if (__mesh != SCENE_NONE) scene.nodes[__index].meshes.push_back(__mesh);
+                        if (__mesh == SCENE_NONE) continue;
+                        scene.nodes[__index].meshes.push_back(__mesh);
+                        if (!scene.meshes[__mesh].skin.empty() &&
+                            (skinned_nodes.empty() || skinned_nodes.back() != __index)) skinned_nodes.push_back(__index);
                     }
-                    for (uint32_t c = 0u; c < _ai_node.mNumChildren; ++c)
-                        node(*_ai_node.mChildren[c], __index, Mat::Eye4);
+                    for (uint32_t c = 0u; c < _ai_node.mNumChildren; ++c) children(*_ai_node.mChildren[c], __index);
                     return __index;
+                }
+                // Note: bone nodes are skipped; what hangs on them (not bones) goes under the skeleton space node in the bind pose
+                void children(const aiNode &_ai_node, uint32_t _parent) {
+                    if (!bone_nodes.count(&_ai_node)) {
+                        const bool __on_bone = _ai_node.mParent && bone_nodes.count(_ai_node.mParent);
+                        node(_ai_node, _parent, __on_bone ? toSkeleton(&_ai_node) : fixMat(_ai_node.mTransformation));
+                        return;
+                    }
+                    if (_ai_node.mNumMeshes > 0u)
+                        fprintf(svkfwwarn, "%s'%s'\n", SVKFW_WRAPWARN("SceneGraph :: loadAssimp", "meshes on a bone node are skipped: "),
+                                _ai_node.mName.C_Str());
+                    for (uint32_t c = 0u; c < _ai_node.mNumChildren; ++c) children(*_ai_node.mChildren[c], _parent);
                 }
 
                 void light(const aiLight &_ai_light, uint32_t _first_node) {
@@ -293,14 +456,32 @@ namespace Simple {
             uint32_t convert(Converter &_conv, uint32_t _parent) {
                 const aiScene &__ai = _conv.ai;
                 for (uint32_t i = 0u; i < __ai.mNumMaterials; ++i) _conv.material_map.push_back(_conv.material(*__ai.mMaterials[i]));
-                for (uint32_t i = 0u; i < __ai.mNumMeshes;    ++i) _conv.mesh_map.push_back(_conv.mesh(*__ai.mMeshes[i]));
+                _conv.prepareSkeleton();
+                for (uint32_t i = 0u; i < __ai.mNumMeshes;    ++i) _conv.mesh_map.push_back(_conv.mesh(*__ai.mMeshes[i], i));
                 // Note: the scale goes into the root transform, the vertices stay as in the file
                 const float __s = _conv.options.scale;
-                uint32_t __root = _conv.node(*__ai.mRootNode, _parent, scaling({__s, __s, __s}));
+                uint32_t __root = _conv.node(*__ai.mRootNode, _parent, _conv.fixMat(__ai.mRootNode->mTransformation) & scaling({__s, __s, __s}));
+                // The skin: in the skeleton space node (the model root if the skeleton space is above the file root)
+                if (_conv.skeleton != SCENE_NONE) {
+                    // Note: the armature is never a bone, so it has a scene node (nullptr only when the file root is a bone)
+                    uint32_t __space = __root;
+                    if (_conv.armature && _conv.node_map.count(_conv.armature)) __space = _conv.node_map[_conv.armature];
+                    uint32_t __skin = _conv.scene.addSkin(_conv.skeleton, __space);
+                    for (size_t i = 0u; i < _conv.skinned_nodes.size(); ++i) _conv.scene.nodes[_conv.skinned_nodes[i]].skin = __skin;
+                }
                 for (uint32_t i = 0u; i < __ai.mNumLights; ++i) _conv.light(*__ai.mLights[i], __root);
                 return __root;
             }
         } // anonymous namespace END
+
+        bool loadTextureFile(Texture &_texture, const std::string &_path) {
+            Assimp::DefaultIOSystem __io; // reads UTF-8 paths on Windows too
+            std::unique_ptr<Assimp::IOStream> __file(__io.Exists(_path.c_str()) ? __io.Open(_path.c_str(), "rb") : nullptr);
+            if (!__file) return false;
+            std::vector<unsigned char> __bytes(__file->FileSize());
+            if (__bytes.empty() || __file->Read(__bytes.data(), 1u, __bytes.size()) != __bytes.size()) return false;
+            return decodeImage(_texture, __bytes.data(), (int)__bytes.size());
+        }
 
         uint32_t convertAssimp(Scene &_scene, const aiScene &_ai_scene, const std::string &_dir, bool _left_handed,
                                const ImportOptions &_options, uint32_t _parent) {
@@ -310,9 +491,9 @@ namespace Simple {
 
         uint32_t loadAssimp(Scene &_scene, const std::string &_path, const ImportOptions &_options, uint32_t _parent) {
             const std::string __ext = extension(_path);
-            const bool __mmd = __ext == "pmx" || __ext == "pmd";
-            const bool __left_handed = _options.handedness == ImportOptions::HANDEDNESS_AUTO ? __mmd
-                                     : _options.handedness == ImportOptions::HANDEDNESS_LEFT;
+            // Note: the MMD importer mirrors the left-handed PMX data to the right-handed space too ('MakeLeftHandedProcess'
+            //       flips Z whatever the source is), so AUTO is right-handed for all formats
+            const bool __left_handed = _options.handedness == ImportOptions::HANDEDNESS_LEFT;
 
             Assimp::Importer __importer;
             // Note: only triangles are kept (points and lines are split off by SortByPType and skipped);
@@ -324,7 +505,7 @@ namespace Simple {
                 __importer.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, _options.smoothing_angle);
             }
             if (_options.optimize) __flags |= aiProcess_JoinIdenticalVertices | aiProcess_ImproveCacheLocality;
-            // Note: bones are not used yet; without this the MMD importer still gives the meshes in the bind pose
+            __flags |= aiProcess_LimitBoneWeights; // 4 per vertex
             __importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_POINT | aiPrimitiveType_LINE);
             __flags |= aiProcess_FindDegenerates;
 

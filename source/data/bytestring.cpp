@@ -2,6 +2,28 @@
 
 namespace Simple {
     namespace Enc {
+        namespace {
+            uint16_t readUnit16(const unsigned char *_bytes, bool _big_endian) {
+                uint16_t __unit;
+                memcpy(&__unit, _bytes, sizeof(__unit));
+                return _big_endian ? Bytes::Endianness.bigEndianToCurrent(__unit) : Bytes::Endianness.littleEndianToCurrent(__unit);
+            }
+
+            void writeUnit16(unsigned char *_bytes, uint16_t _unit, bool _big_endian) {
+                // the conversion is symmetric: swapping 'current' order to the requested one
+                _unit = _big_endian ? Bytes::Endianness.bigEndianToCurrent(_unit) : Bytes::Endianness.littleEndianToCurrent(_unit);
+                memcpy(_bytes, &_unit, sizeof(_unit));
+            }
+
+            // Returns the number of bytes taken by a byte order mark (0 or 2) and updates the byte order
+            uint32_t checkBOM16(const std::vector<unsigned char> &_bytes, bool &_big_endian) {
+                if (_bytes.size() < 2u) return 0u;
+                if (_bytes[0] == 0xFF && _bytes[1] == 0xFE) { _big_endian = false; return 2u; }
+                if (_bytes[0] == 0xFE && _bytes[1] == 0xFF) { _big_endian = true;  return 2u; }
+                return 0u;
+            }
+        } // anonymous
+
 
         Unicode::Unicode() {}
 
@@ -118,32 +140,30 @@ namespace Simple {
             return true;
         }
 
-        bool Unicode::isUTF16(uint32_t *_len_char) {
+        bool Unicode::isUTF16(uint32_t *_len_char, bool _big_endian) {
             if ((bytestring.size() & 1) != 0)
                 return false;
 
             bool __prev_high_surrogate = false;
-            for (uint32_t i = 0u; i < bytestring.size(); i += 2) {
-                uint16_t __val = (bytestring[i] << 8) + (bytestring[i + 1]);
+            for (uint32_t i = checkBOM16(bytestring, _big_endian); i < bytestring.size(); i += 2) {
+                uint16_t __val = readUnit16(bytestring.data() + i, _big_endian);
                 bool  __high_surrogate = __val >= 0xD800 && __val <= 0xDBFF;
                 bool   __low_surrogate = __val >= 0xDC00 && __val <= 0xDFFF;
 
-                if      ( __prev_high_surrogate &&  __low_surrogate) {
-                    __prev_high_surrogate = false;
-                    if (_len_char) ++*_len_char;
+                if (__prev_high_surrogate && !__low_surrogate) {
+                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Enc :: Unicode :: isUTF16", "unpaired high surrogate on byte %d\n"), i - 2);
+                    return false;
                 }
-                else if ( __prev_high_surrogate && __high_surrogate) {
-                    fprintf(svkfwwarn, SVKFW_WRAPWARN("Enc :: Unicode :: isUTF16", "unpaired high surrogate on byte %d\n"), i);
-                    if (_len_char) ++*_len_char;
-                }
-                else if (!__prev_high_surrogate &&  __low_surrogate) {
+                if (!__prev_high_surrogate && __low_surrogate) {
                     fprintf(svkfwwarn, SVKFW_WRAPWARN("Enc :: Unicode :: isUTF16", "unpaired low surrogate on byte %d\n"), i);
-                    __prev_high_surrogate = false;
-                    if (_len_char) ++*_len_char;
+                    return false;
                 }
-                else if (!__prev_high_surrogate && __high_surrogate) {
-                    __prev_high_surrogate = true;
-                }
+                __prev_high_surrogate = __high_surrogate;
+                if (!__high_surrogate && _len_char) ++*_len_char;
+            }
+            if (__prev_high_surrogate) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: Unicode :: isUTF16", "unpaired high surrogate at the end\n"));
+                return false;
             }
             return true;
         }
@@ -253,37 +273,83 @@ namespace Simple {
             return true;
         }
 
-        bool Unicode::decodeUTF16() {
-            return false;
+        // Note: unpaired surrogates become U+FFFD
+        bool Unicode::decodeUTF16(bool _big_endian) {
+            if ((bytestring.size() & 1u) != 0u) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: Unicode :: decodeUTF16", "odd number of bytes\n"));
+                return false;
+            }
+            std::vector<unsigned char> __bytestring{bytestring};
+            const uint32_t __bom = checkBOM16(__bytestring, _big_endian);
+            bytestring.clear();
+            bytestring.reserve(2u * __bytestring.size());
+            for (size_t i = __bom; i < __bytestring.size(); i += 2u) {
+                uint32_t __ch = readUnit16(__bytestring.data() + i, _big_endian);
+                if (__ch >= 0xD800u && __ch <= 0xDBFFu && i + 2u < __bytestring.size()) {
+                    const uint32_t __low = readUnit16(__bytestring.data() + i + 2u, _big_endian);
+                    if (__low >= 0xDC00u && __low <= 0xDFFFu) { __ch = 0x10000u + ((__ch - 0xD800u) << 10u) + (__low - 0xDC00u); i += 2u; }
+                    else __ch = 0xFFFDu;
+                } else if (__ch >= 0xD800u && __ch <= 0xDFFFu) __ch = 0xFFFDu;
+                bytestring.push_back((unsigned char)( __ch >> 24));
+                bytestring.push_back((unsigned char)((__ch >> 16) & 0xFFu));
+                bytestring.push_back((unsigned char)((__ch >>  8) & 0xFFu));
+                bytestring.push_back((unsigned char)( __ch        & 0xFFu));
+            }
+            curr_encoding = ENC_UTF32;
+            return true;
         }
 
-        bool Unicode::encodeUTF16() {
+        bool Unicode::encodeUTF8() {
+            if (curr_encoding != ENC_UTF32) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: Unicode :: encodeUTF8", "the string is not decoded\n"));
+                return false;
+            }
+            std::vector<unsigned char> __bytestring{bytestring};
+            bytestring.clear();
+            bytestring.reserve(__bytestring.size());
+            for (size_t i = 0u; i + 3u < __bytestring.size(); i += 4u) {
+                const uint32_t __ch = (uint32_t(__bytestring[i]) << 24) | (uint32_t(__bytestring[i + 1u]) << 16) |
+                                      (uint32_t(__bytestring[i + 2u]) << 8) | __bytestring[i + 3u];
+                if (__ch < 0x80u) bytestring.push_back((unsigned char)__ch);
+                else if (__ch < 0x800u) {
+                    bytestring.push_back((unsigned char)(0xC0u | (__ch >> 6)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                } else if (__ch < 0x10000u) {
+                    bytestring.push_back((unsigned char)(0xE0u | (__ch >> 12)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 6) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                } else {
+                    bytestring.push_back((unsigned char)(0xF0u | (__ch >> 18)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 12) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 6) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                }
+            }
+            curr_encoding = ENC_UTF8;
+            return true;
+        }
+
+        bool Unicode::encodeUTF16(bool _big_endian) {
             if (curr_encoding != ENC_UTF32) {
                 fprintf(svkfwwarn, SVKFW_WRAPWARN("Enc :: Unicode :: encodeUTF16", "the string is not decoded\n"));
                 return false;
             }
 
-            // printf("Before encoding: size = %d\n", bytestring.size());
-
+            // In place: a UTF-16 character never takes more bytes than its UTF-32 form
             uint32_t __utf16_i = 0u;
-            for (uint32_t i = 0u; i < bytestring.size(); i += 4u) {
-                uint32_t __char32 = (bytestring[i  ] << 24) + (bytestring[i+1] << 16) +
-                                    (bytestring[i+2] <<  8) +  bytestring[i+3];
+            for (uint32_t i = 0u; i + 3u < bytestring.size(); i += 4u) {
+                uint32_t __char32 = (uint32_t(bytestring[i  ]) << 24) + (uint32_t(bytestring[i+1]) << 16) +
+                                    (uint32_t(bytestring[i+2]) <<  8) +  uint32_t(bytestring[i+3]);
 
-                if (bytestring[i+1]) {
-                    __char32 -= (1u << 16);
-                    uint16_t __high_surrogate = 0xD800 + ((__char32 >> 10) & 0x3FF);
-                    uint16_t  __low_surrogate = 0xDC00 + ((__char32      ) & 0x3FF);
-                    bytestring[__utf16_i+1  ] = __high_surrogate >>   8;
-                    bytestring[__utf16_i] = __high_surrogate & 0xFF;
-                    bytestring[__utf16_i+3] =  __low_surrogate >>   8;
-                    bytestring[__utf16_i+2] =  __low_surrogate & 0xFF;
-                    __utf16_i += 4;
+                if (__char32 >= 0x10000u) {
+                    __char32 -= 0x10000u;
+                    writeUnit16(bytestring.data() + __utf16_i     , uint16_t(0xD800u + ((__char32 >> 10) & 0x3FFu)), _big_endian);
+                    writeUnit16(bytestring.data() + __utf16_i + 2u, uint16_t(0xDC00u + ( __char32        & 0x3FFu)), _big_endian);
+                    __utf16_i += 4u;
                 }
                 else {
-                    bytestring[__utf16_i+1  ] = bytestring[i+2];
-                    bytestring[__utf16_i] = bytestring[i+3];
-                    __utf16_i += 2;
+                    writeUnit16(bytestring.data() + __utf16_i, uint16_t(__char32), _big_endian);
+                    __utf16_i += 2u;
                 }
             }
             bytestring.resize(__utf16_i);

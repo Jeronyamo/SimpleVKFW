@@ -291,6 +291,11 @@ add_library(svkfw_lib STATIC ${SVKFW_LIB_SOURCES})
 svkfw_set_definitions(svkfw_lib PUBLIC)
 target_include_directories(svkfw_lib PUBLIC ${SVKFW_ALL_INCULDES})
 target_link_libraries(svkfw_lib PUBLIC volk_headers glfw imgui rtaudio opus assimp)
+if (NOT WIN32)
+    # Shift-JIS names in MMD files (platform_dependent/pd_encoding.cpp); part of the C library on Linux
+    find_package(Iconv REQUIRED)
+    target_link_libraries(svkfw_lib PUBLIC Iconv::Iconv)
+endif()
 
 
 ## SVKFW Executables

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "math/vectors.h"
+#include "math/linalg.h"
 #include "main/image.h"
 
 
@@ -31,11 +32,13 @@ namespace Simple {
         //       Scene scene;
         //       uint32_t stage = loadAssimp(scene, "resources/assets/stage.pmx");                 // see 'scene_assimp.h'
         //       uint32_t chara = loadAssimp(scene, "resources/assets/chara.pmx", ImportOptions(), scene.addNode("chara"));
-        //       scene.node(chara).local = translation({0.f, 0.f, 5.f});
+        //       scene.setLocal(chara, translation({0.f, 0.f, 5.f}));
         //       scene.addLight(Light::directional({1.f, 0.95f, 0.9f}, 2.f), scene.addNode("sun", SCENE_NONE, lookAlong(...)));
-        //       scene.updateTransforms();                                                         // after changing 'local'
+        //       scene.updateTransforms();                       // recomputes only the changed nodes and their descendants
 
         const uint32_t SCENE_NONE = UINT32_MAX;
+
+        typedef Affine::Rotation::Quaternion Quat;
 
         mat4 translation(const vec3 &_offset);
         mat4 scaling(const vec3 &_scale);
@@ -44,6 +47,21 @@ namespace Simple {
         // Transforms a point (w = 1) or a direction (w = 0) with a row-vector style matrix
         vec3 transformPoint(const mat4 &_m, const vec3 &_p);
         vec3 transformDir  (const mat4 &_m, const vec3 &_d);
+        // Row-vector style rotation matrix of a quaternion ('rotation(q1 * q2) == rotation(q2) & rotation(q1)': q2 goes first)
+        mat4 rotation(const Quat &_q);
+        // The rotation of the upper 3x3 part (the scale is removed first); the inverse of 'rotation'
+        Quat rotationOf(const mat4 &_m);
+
+        // Note: translation, rotation, scale; the matrix is 'scale & rotation & translation' (scale first)
+        struct TRS {
+            vec3 translation = {0.f, 0.f, 0.f};
+            Quat rotation;
+            vec3 scale       = {1.f, 1.f, 1.f};
+
+            mat4 matrix() const;
+            // Splits a matrix without shear (with shear the result is approximate)
+            static TRS fromMatrix(const mat4 &_m);
+        }; // TRS END
 
         struct AABB {
             vec3 min = { 1e30f,  1e30f,  1e30f};
@@ -67,13 +85,46 @@ namespace Simple {
             vec4 tangent;
         }; // Vertex END
 
+        enum SkinMode : uint32_t {
+            SCENE_SKIN_LINEAR = 0,   // linear blend skinning (LBS): the bone matrices are blended (MMD BDEF1/2/4)
+            SCENE_SKIN_DUAL_QUATERNION // dual quaternion skinning (DQS): no collapse at bent joints (MMD SDEF and QDEF)
+        };
+
+        // Note: the bones (indices in the skeleton of the skin) and their weights of one vertex; unused slots have zero weight
+        struct SkinVertex {
+            uint16_t bones[4];
+            vec4     weights;
+            uint32_t mode;           // SkinMode
+        }; // SkinVertex END
+
+        // Note: spherical deform (MMD SDEF) of a vertex with two bones (the first two of its 'SkinVertex'): the rotations of the
+        //       bones are blended around 'center' instead of the matrices, so joints don't collapse. 'center.w' = 1 marks an SDEF
+        //       vertex; 'r0', 'r1' are the corrected PMX R0/R1 points (see 'loadPMX'). Kept for a later SDEF mode, the renderer
+        //       draws these vertices with DQS for now
+        struct SdefVertex {
+            vec4 center;
+            vec3 r0, r1;
+        }; // SdefVertex END
+
+        // Note: the offset of one vertex in one morph of the skeleton ('Skeleton::morphs'); a vertex morph moves the position,
+        //       a UV morph the texture coordinates (MMD keeps the normals). Applied on the GPU with the weights of the pose
+        struct MorphTarget {
+            uint32_t morph  = SCENE_NONE; // in the skeleton of the skin
+            uint32_t vertex = 0u;         // in the mesh
+            vec3     position = {0.f, 0.f, 0.f};
+            vec2     uv       = {0.f, 0.f};
+        }; // MorphTarget END
+
         // Note: triangles only (indexed); one material per mesh
         struct Mesh {
-            std::string           name;
-            std::vector<Vertex>   vertices;
-            std::vector<uint32_t> indices;
-            uint32_t              material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
-            AABB                  bounds;                // in the mesh space
+            std::string             name;
+            std::vector<Vertex>     vertices;
+            std::vector<uint32_t>   indices;
+            std::vector<SkinVertex> skin;                  // empty or one per vertex: a skinned mesh (see 'Skin')
+            std::vector<SdefVertex> sdef;                  // empty or one per vertex (skinned meshes with SDEF vertices)
+            std::vector<MorphTarget> morphs;               // skinned meshes: the vertex / UV morph offsets, sorted by vertex
+            uint32_t                material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
+            AABB                    bounds;                // in the mesh space (the bind pose for skinned meshes)
 
             void computeBounds();
         }; // Mesh END
@@ -142,14 +193,156 @@ namespace Simple {
             static Light spot(const vec3 &_color, float _intensity, float _inner, float _outer, float _range = 0.f);
         }; // Light END
 
+        // Note: the bones of a skeleton are not scene nodes: a skeleton is posed as a whole (animation, IK) and has many bones.
+        //       Bones are stored parents first; a bone's 'rest' is its local transform in the bind pose (relative to the parent
+        //       bone, or to the skeleton space for root bones). 'inverse_bind' maps the skeleton space to the bone space in
+        //       the bind pose; skinned vertices are in the skeleton space
+        //       Grant (MMD 付与): the bone adds 'grant_ratio' of the rotation / translation of 'grant_parent' to its own.
+        //       Deform order (MMD): bones after physics last, then by 'layer', then by index; grants and IK follow it
+        struct Bone {
+            std::string name;
+            uint32_t    parent = SCENE_NONE;
+            TRS         rest;
+            mat4        inverse_bind = Mat::Eye4;
+
+            int32_t     layer = 0;
+            bool        after_physics = false;
+            uint32_t    grant_parent  = SCENE_NONE;
+            float       grant_ratio   = 0.f;
+            bool        grant_rotation = false, grant_translation = false;
+            uint32_t    ik = SCENE_NONE;   // the IK chain solved when this bone is reached in the deform order
+        }; // Bone END
+
+        enum IKSolver {
+            SCENE_IK_CCD = 0,  // iterative, any chain length, joint limits (MMD)
+            SCENE_IK_TWO_BONE  // analytic, for two links (arms, legs); the bend direction comes from the current pose
+        };
+
+        // Note: a link with limits keeps its rotation (Euler XYZ, radians) in [limit_min, limit_max]; a link limited around one
+        //       axis only (knees) is solved in that plane
+        struct IKLink {
+            uint32_t bone = SCENE_NONE;
+            bool     limited = false;
+            vec3     limit_min = {0.f, 0.f, 0.f}, limit_max = {0.f, 0.f, 0.f};
+        }; // IKLink END
+
+        // Note: rotates 'links' (from the effector side up, MMD order) so that 'effector' reaches 'goal'
+        struct IKChain {
+            std::string         name;
+            IKSolver            solver = SCENE_IK_CCD;
+            uint32_t            goal = SCENE_NONE;     // the IK bone: the position to reach
+            uint32_t            effector = SCENE_NONE; // the bone that has to reach it
+            uint32_t            iterations = 10u;
+            float               limit_angle = 3.14159265f; // radians per link and iteration (CCD)
+            std::vector<IKLink> links;
+            bool                enabled = true;
+        }; // IKChain END
+
+        enum MorphType {
+            SCENE_MORPH_VERTEX = 0, // moves vertices ('Mesh::morphs')
+            SCENE_MORPH_UV,         // moves texture coordinates ('Mesh::morphs')
+            SCENE_MORPH_BONE,       // offsets bones ('bones')
+            SCENE_MORPH_GROUP,      // drives other morphs ('group'), e.g. a blink made of the eyes and the eyebrows
+            SCENE_MORPH_MATERIAL,   // material colors: kept by name, not applied yet
+            SCENE_MORPH_OTHER       // not supported (MMD flip, impulse, additional UVs)
+        };
+
+        struct MorphBoneOffset {
+            uint32_t bone = SCENE_NONE;
+            vec3     translation = {0.f, 0.f, 0.f};
+            Quat     rotation;
+        }; // MorphBoneOffset END
+
+        struct MorphGroupEntry {
+            uint32_t morph  = SCENE_NONE;
+            float    weight = 1.f;
+        }; // MorphGroupEntry END
+
+        // Note: a named shape of the model (MMD 表情): the weights are in the pose ('Pose::morph_weights', usually 0..1)
+        struct Morph {
+            std::string                  name;
+            MorphType                    type = SCENE_MORPH_VERTEX;
+            std::vector<MorphBoneOffset> bones;
+            std::vector<MorphGroupEntry> group;
+        }; // Morph END
+
+        struct Skeleton {
+            std::string          name;
+            std::vector<Bone>    bones;
+            std::vector<IKChain> iks;
+            std::vector<Morph>   morphs;
+
+            // Computed by 'finalize'
+            std::vector<uint32_t>              order;    // the deform order
+            std::vector<std::vector<uint32_t>> children;
+
+            // The parent must already be in the skeleton; returns the index of the bone
+            uint32_t addBone(const Bone &_bone);
+            // Attaches the chain to its goal bone; returns its index
+            uint32_t addIK(const IKChain &_ik);
+            uint32_t findBone (const std::string &_name) const; // SCENE_NONE if there is none
+            uint32_t findMorph(const std::string &_name) const; // SCENE_NONE if there is none
+            // Sets 'inverse_bind' of all bones from the rest transforms
+            void computeInverseBind();
+            // Inverse bind matrices, deform order, children (after adding bones and IK chains)
+            void finalize();
+        }; // Skeleton END
+
+        // Note: the state of one posed skeleton. 'local' is the animated pose (starts at the rest transforms); after changing it
+        //       call 'Scene::updateSkins' (or 'computeFK') to get 'model' (bone -> skeleton space) and 'skinning'
+        //       ('inverse_bind & model', for the vertices). The final local rotation is 'ik * local * morph * grant' (grant
+        //       first); 'morph_weights' drive the morphs of the skeleton (bone morphs here, vertex and UV ones in the renderer)
+        struct Pose {
+            std::vector<TRS>  local;
+            std::vector<mat4> model;
+            std::vector<mat4> skinning;
+            std::vector<Quat> ik_rotation, grant_rotation; // computed
+            std::vector<vec3> grant_translation;           // computed
+            std::vector<uint8_t> ik_enabled;               // per IK chain of the skeleton (animations switch them); from 'IKChain::enabled'
+            std::vector<float>   morph_weights;            // per morph of the skeleton (input)
+            std::vector<float>   morph_final;              // computed: the weights with the groups resolved (the renderer reads them)
+            std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
+            bool              dirty = true;
+            bool              solve_ik = true;
+            uint64_t          revision = 0u; // counts 'computeFK' calls (e.g. culling notices a changed pose)
+
+            void reset(const Skeleton &_skeleton);  // back to the rest pose
+            // Forward kinematics with grants and IK chains in the deform order
+            void computeFK(const Skeleton &_skeleton);
+
+        private:
+            // Resolves the groups into 'morph_final' and applies the bone morphs to 'morphed'
+            void applyMorphs_(const Skeleton &_skeleton);
+            void addMorph_(const Skeleton &_skeleton, uint32_t _morph, float _weight, uint32_t _depth);
+            mat4 localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const;
+            void updateModel_(const Skeleton &_skeleton, uint32_t _bone);    // the bone and its descendants
+            void applyGrant_(const Skeleton &_skeleton, uint32_t _bone);
+            void solveCCD_(const Skeleton &_skeleton, const IKChain &_ik);
+            void solveTwoBone_(const Skeleton &_skeleton, const IKChain &_ik);
+            // Rotates '_bone' by '_angle' around '_axis' (in its own space, after its current rotation) through its IK rotation
+            void rotateLink_(const Skeleton &_skeleton, uint32_t _bone, const vec3 &_axis, float _angle);
+            // Keeps the IK rotation of a limited link inside its limits (Euler XYZ); '_previous' is the angle of the last step
+            void limitLink_(const Skeleton &_skeleton, const IKLink &_link, float _limit_angle, vec3 &_previous);
+        }; // Pose END
+
+        // Note: a skeleton instance placed in the scene: the skeleton space is the space of 'node'. The skinned meshes of the
+        //       nodes that refer to the skin are drawn in that space (their own node gives only the visibility, like in glTF)
+        struct Skin {
+            std::string name;
+            uint32_t    skeleton = SCENE_NONE;
+            uint32_t    node     = SCENE_NONE;
+            Pose        pose;
+        }; // Skin END
+
         struct Node {
             std::string           name;
             uint32_t              parent = SCENE_NONE;
             std::vector<uint32_t> children;
-            mat4                  local = Mat::Eye4;
+            mat4                  local = Mat::Eye4;  // after a direct change call 'Scene::markDirty' (or use 'Scene::setLocal')
             std::vector<uint32_t> meshes;
             uint32_t              light = SCENE_NONE;
-            bool                  visible = true; // hides the meshes of the node and all its descendants
+            uint32_t              skin  = SCENE_NONE; // the skin of the skinned meshes of this node
+            bool                  visible = true; // hides the meshes of the node and all its descendants ('Scene::setVisible')
         }; // Node END
 
         struct Scene {
@@ -158,11 +351,15 @@ namespace Simple {
             std::vector<Material> materials;
             std::vector<Texture>  textures;
             std::vector<Light>    lights;
+            std::vector<Skeleton> skeletons;
+            std::vector<Skin>     skins;
             vec3                  ambient = {0.03f, 0.03f, 0.03f}; // constant light everywhere
 
             // Computed by 'updateTransforms': the world matrix and the world visibility of each node
             std::vector<mat4>     world;
             std::vector<uint8_t>  world_visible;
+            // The nodes recomputed by the last 'updateTransforms' (parents before children), e.g. for refitting the bounds
+            std::vector<uint32_t> changed;
 
             uint32_t addNode(const std::string &_name, uint32_t _parent = SCENE_NONE, const mat4 &_local = Mat::Eye4);
             uint32_t addMesh(const Mesh &_mesh);
@@ -170,6 +367,13 @@ namespace Simple {
             uint32_t addTexture(const Texture &_texture);
             // Attaches the light to '_node' (a node holds one light)
             uint32_t addLight(const Light &_light, uint32_t _node);
+            uint32_t addSkeleton(const Skeleton &_skeleton);
+            // Places an instance of '_skeleton' in the space of '_node' (in the rest pose)
+            uint32_t addSkin(uint32_t _skeleton, uint32_t _node, const std::string &_name = std::string());
+
+            Pose &pose(uint32_t _skin); // marks the pose as changed
+            // Recomputes the changed poses (forward kinematics)
+            void updateSkins();
 
             Node &node(uint32_t _index);
             const Node &node(uint32_t _index) const;
@@ -178,7 +382,16 @@ namespace Simple {
             // Moves '_node' under '_new_parent' (SCENE_NONE: makes it a root), keeping its local transform
             void reparent(uint32_t _node, uint32_t _new_parent);
 
-            // Recomputes 'world' and 'world_visible' from the local transforms (parents are not required to come first)
+            // Change the local transform / the visibility of a node and mark it for 'updateTransforms'
+            void setLocal(uint32_t _node, const mat4 &_local);
+            void setVisible(uint32_t _node, bool _visible);
+            // Marks a node whose 'local' or 'visible' was changed directly; its descendants are recomputed with it
+            void markDirty(uint32_t _node);
+            // Makes the next 'updateTransforms' recompute the whole tree (e.g. after editing 'nodes' by hand)
+            void markAllDirty();
+
+            // Recomputes 'world' and 'world_visible' of the marked nodes and their descendants (the whole tree after
+            // 'append', 'clear' or 'markAllDirty'); fills 'changed'. Parents are not required to come before children in 'nodes'
             void updateTransforms();
 
             // Bounds of the visible meshes in the world (after 'updateTransforms')
@@ -190,7 +403,13 @@ namespace Simple {
             void clear();
 
         private:
-            void updateNode_(uint32_t _index, std::vector<uint8_t> &_done);
+            // Note: 'depth_' is the number of ancestors; 'stamp_' marks the nodes done by the current update
+            std::vector<uint32_t> depth_, dirty_, stamp_;
+            uint32_t              stamp_count_ = 0u;
+            bool                  full_update_ = true;
+
+            void updateSubtree_(uint32_t _index);
+            void updateDepth_(uint32_t _index);
         }; // Scene END
 
     }; // SceneGraph END
