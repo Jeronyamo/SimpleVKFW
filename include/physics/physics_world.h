@@ -126,6 +126,13 @@ namespace Simple {
             uint32_t contacts = 0u;      // contacts of the last substep
         }; // WorldStats END
 
+        // A contact point of two shapes (see 'collideShapes'); the normal points from B to A
+        struct ShapeContact {
+            vec3  normal;
+            vec3  point_a, point_b; // world points on the surfaces
+            float depth;
+        }; // ShapeContact END
+
         class World {
         public:
             ComponentStorage    &ecs;
@@ -158,6 +165,19 @@ namespace Simple {
             // bodies to drop the joints that referred to them
             void     removeBrokenJoints();
 
+            // The solver's dense copy of a body state (internal)
+            struct Qf { float s, i, j, k; };
+            struct SolverState {
+                vec3  x, px, v, w;   // position, previous position, velocities
+                Qf    q, pq;         // rotation, previous rotation
+                float im;            // inverse mass (0: not dynamic)
+                vec3  ii;            // local inverse inertia
+                float iw[9];         // world inverse inertia (row-major), updated once per substep
+                vec3  fx, tx;        // kinematic: the pose at the start of the update and the target
+                Qf    fq, tq;
+                bool  has_target;
+            };
+
         private:
             struct SolverBody {
                 EntityID  entity;
@@ -185,6 +205,9 @@ namespace Simple {
             float accumulator_ = 0.f;
             std::pair<uint32_t, uint32_t> stepFraction_ = std::make_pair(0u, 1u); // step index, steps of the current 'update'
             std::vector<SolverBody>  bodies_;
+            std::vector<SolverState> states_;
+            std::vector<ShapeContact> found_;
+            std::vector<float>       damping_;
             std::vector<SolverJoint> joints_;
             std::vector<uint32_t>    slot_;          // entity index -> solver body
             std::vector<std::pair<uint32_t, uint32_t>> pairs_;
@@ -204,11 +227,6 @@ namespace Simple {
     // Shape helpers (used by the world, exposed for tests)
 
         // Fills '_out' with the contacts of two colliders at the given poses (the normal points from B to A)
-        struct ShapeContact {
-            vec3  normal;
-            vec3  point_a, point_b; // world points on the surfaces
-            float depth;
-        }; // ShapeContact END
         void collideShapes(const Collider &_ca, const vec3 &_pa, const Quat &_qa,
                            const Collider &_cb, const vec3 &_pb, const Quat &_qb, std::vector<ShapeContact> &_out);
 

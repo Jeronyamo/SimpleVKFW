@@ -406,9 +406,131 @@ namespace Simple {
 //  == === ==== >  World
 
         namespace {
+            // Note: the solver works on a dense copy of the body states with an inlined quaternion (the engine's
+            //       'Quaternion' methods are out of line): the joint loop runs thousands of times per step for MMD models
+            typedef World::Qf Qf;
+
+            inline Qf   toQf  (const Quat &_q) { Qf r = { _q.s, _q.i, _q.j, _q.k }; return r; }
+            inline Quat toQuat(const Qf &_q)   { return Quat(_q.s, _q.i, _q.j, _q.k); }
+            inline Qf   qmul  (const Qf &a, const Qf &b) {
+                Qf r = { a.s * b.s - a.i * b.i - a.j * b.j - a.k * b.k,
+                         a.s * b.i + a.i * b.s + a.j * b.k - a.k * b.j,
+                         a.s * b.j - a.i * b.k + a.j * b.s + a.k * b.i,
+                         a.s * b.k + a.i * b.j - a.j * b.i + a.k * b.s };
+                return r;
+            }
+            inline Qf   qconj (const Qf &a) { Qf r = { a.s, -a.i, -a.j, -a.k }; return r; }
+            inline Qf   qnorm (const Qf &a) {
+                const float n2 = a.s * a.s + a.i * a.i + a.j * a.j + a.k * a.k;
+                if (n2 <= EPS * EPS) { Qf r = { 1.f, 0.f, 0.f, 0.f }; return r; }
+                const float inv = 1.f / std::sqrt(n2);
+                Qf r = { a.s * inv, a.i * inv, a.j * inv, a.k * inv };
+                return r;
+            }
+            // v' = q v q* (unit q)
+            inline vec3 qrot(const Qf &q, const vec3 &v) {
+                const float tx = 2.f * (q.j * v.z - q.k * v.y), ty = 2.f * (q.k * v.x - q.i * v.z), tz = 2.f * (q.i * v.y - q.j * v.x);
+                return { v.x + q.s * tx + (q.j * tz - q.k * ty), v.y + q.s * ty + (q.k * tx - q.i * tz), v.z + q.s * tz + (q.i * ty - q.j * tx) };
+            }
+            inline vec3 qinvrot(const Qf &q, const vec3 &v) { return qrot(qconj(q), v); }
+            // q += 0.5 * [w, 0] * q
+            inline void qaddRotation(Qf &q, const vec3 &w) {
+                const Qf wq = { 0.f, w.x, w.y, w.z };
+                const Qf d = qmul(wq, q);
+                Qf r = { q.s + 0.5f * d.s, q.i + 0.5f * d.i, q.j + 0.5f * d.j, q.k + 0.5f * d.k };
+                q = qnorm(r);
+            }
+            inline Qf qnlerp(const Qf &a, const Qf &b, float t) {
+                const float d = a.s * b.s + a.i * b.i + a.j * b.j + a.k * b.k;
+                const float sb = d < 0.f ? -t : t, sa = 1.f - t;
+                Qf r = { a.s * sa + b.s * sb, a.i * sa + b.i * sb, a.j * sa + b.j * sb, a.k * sa + b.k * sb };
+                return qnorm(r);
+            }
+            // Rotation vector (axis * angle) from '_from' to '_to'
+            inline vec3 qdelta(const Qf &_to, const Qf &_from) {
+                Qf d = qmul(_to, qconj(_from));
+                if (d.s < 0.f) { d.s = -d.s; d.i = -d.i; d.j = -d.j; d.k = -d.k; }
+                const float sn = std::sqrt(d.i * d.i + d.j * d.j + d.k * d.k);
+                if (sn < 1e-4f) return { 2.f * d.i, 2.f * d.j, 2.f * d.k };
+                const float k = 2.f * std::atan2(sn, d.s) / sn;
+                return { d.i * k, d.j * k, d.k * k };
+            }
+            inline vec3 qeulerXYZ(const Qf &q) {
+                const float m00 = 1.f - 2.f * (q.j * q.j + q.k * q.k), m01 = 2.f * (q.i * q.j - q.s * q.k), m02 = 2.f * (q.i * q.k + q.s * q.j);
+                const float m10 = 2.f * (q.i * q.j + q.s * q.k), m11 = 1.f - 2.f * (q.i * q.i + q.k * q.k), m12 = 2.f * (q.j * q.k - q.s * q.i);
+                const float m22 = 1.f - 2.f * (q.i * q.i + q.j * q.j);
+                if (m02 < 1.f) {
+                    if (m02 > -1.f) return { std::atan2(-m12, m22), std::asin(m02), std::atan2(-m01, m00) };
+                    return { -std::atan2(m10, m11), -1.5707963f, 0.f };
+                }
+                return { std::atan2(m10, m11), 1.5707963f, 0.f };
+            }
+            inline Qf qfromEulerXYZ(const vec3 &a) {
+                const float cx = std::cos(0.5f * a.x), sx = std::sin(0.5f * a.x), cy = std::cos(0.5f * a.y), sy = std::sin(0.5f * a.y);
+                const float cz = std::cos(0.5f * a.z), sz = std::sin(0.5f * a.z);
+                const Qf qx = { cx, sx, 0.f, 0.f }, qy = { cy, 0.f, sy, 0.f }, qz = { cz, 0.f, 0.f, sz };
+                return qmul(qmul(qx, qy), qz);
+            }
+
             vec3 mulInvI(const Body &_b, const vec3 &_v) {
                 return rot(_b.rotation, mul3(_b.inv_inertia, invRot(_b.rotation, _v)));
             }
+        } // anonymous namespace END
+
+        namespace {
+            typedef World::SolverState SS;
+
+            // World inverse inertia R * diag(ii) * R^T; the solver keeps it for a substep (the rotation changes little in one)
+            inline void updateInvInertia(SS &_s) {
+                const vec3 c0 = qrot(_s.q, vec3{1.f, 0.f, 0.f}), c1 = qrot(_s.q, vec3{0.f, 1.f, 0.f}), c2 = qrot(_s.q, vec3{0.f, 0.f, 1.f});
+                const float R[3][3] = { { c0.x, c1.x, c2.x }, { c0.y, c1.y, c2.y }, { c0.z, c1.z, c2.z } };
+                const float d[3] = { _s.ii.x, _s.ii.y, _s.ii.z };
+                for (int r = 0; r < 3; ++r)
+                    for (int c = 0; c < 3; ++c)
+                        _s.iw[r * 3 + c] = R[r][0] * d[0] * R[c][0] + R[r][1] * d[1] * R[c][1] + R[r][2] * d[2] * R[c][2];
+            }
+            inline vec3 invI(const SS &_s, const vec3 &_v) {
+                const float *m = _s.iw;
+                return { m[0] * _v.x + m[1] * _v.y + m[2] * _v.z, m[3] * _v.x + m[4] * _v.y + m[5] * _v.z, m[6] * _v.x + m[7] * _v.y + m[8] * _v.z };
+            }
+
+            inline float genInvMass(const SS &_s, const vec3 &_r, const vec3 &_n) {
+                if (_s.im <= 0.f) return 0.f;
+                const vec3 rn = cross3(_r, _n);
+                return _s.im + dot3(rn, invI(_s, rn));
+            }
+
+            inline void applyPositional(SS &_s, const vec3 &_p, const vec3 &_r, float _sign) {
+                if (_s.im <= 0.f) return;
+                _s.x += _p * (_s.im * _sign);
+                qaddRotation(_s.q, invI(_s, cross3(_r, _p)) * _sign);
+            }
+
+            // XPBD positional constraint: moves the point '_r1' of body 1 by -C along '_dir' (shared with body 2 by the
+            // inverse masses); returns the Lagrange multiplier change
+            float positional(SS &_b1, const vec3 &_r1, SS &_b2, const vec3 &_r2, const vec3 &_dir, float _c, float _alpha) {
+                const float w = genInvMass(_b1, _r1, _dir) + genInvMass(_b2, _r2, _dir);
+                if (w + _alpha <= EPS) return 0.f;
+                const float dl = -_c / (w + _alpha);
+                const vec3 p = _dir * dl;
+                applyPositional(_b1, p, _r1,  1.f);
+                applyPositional(_b2, p, _r2, -1.f);
+                return dl;
+            }
+
+            // XPBD angular constraint: rotates body 1 by -C around '_axis' (unit)
+            float angular(SS &_b1, SS &_b2, const vec3 &_axis, float _c, float _alpha) {
+                const float w = (_b1.im > 0.f ? dot3(_axis, invI(_b1, _axis)) : 0.f) + (_b2.im > 0.f ? dot3(_axis, invI(_b2, _axis)) : 0.f);
+                if (w + _alpha <= EPS) return 0.f;
+                const float dl = -_c / (w + _alpha);
+                const vec3 p = _axis * dl;
+                if (_b1.im > 0.f) qaddRotation(_b1.q, invI(_b1, p));
+                if (_b2.im > 0.f) qaddRotation(_b2.q, invI(_b2, p) * -1.f);
+                return dl;
+            }
+
+            // Per axis: min > max: free; else clamped
+            inline float limitAxis(float _v, float _min, float _max) { return _min > _max ? _v : clampf(_v, _min, _max); }
         } // anonymous namespace END
 
         World::World(ComponentStorage &_ecs) : ecs(_ecs) {}
@@ -489,28 +611,43 @@ namespace Simple {
 
         void World::gather_() {
             bodies_.clear();
+            states_.clear();
             joints_.clear();
             jointed_.clear();
             std::fill(slot_.begin(), slot_.end(), UINT32_MAX);
             const TagFilter __active = TagFilter().none(TagID::TAG_PHYSICS_DISABLED);
             ecs.each<Body, Collider>([&](EntityID _e, Body &_b, Collider &_c) {
+                const TagMask __tags = ecs.tags(_e);
                 SolverBody s;
                 s.entity    = _e;
                 s.body      = &_b;
                 s.collider  = &_c;
-                s.dynamic   = ecs.hasTag(_e, TagID::TAG_PHYSICS_DYNAMIC);
-                s.kinematic = ecs.hasTag(_e, TagID::TAG_PHYSICS_KINEMATIC);
-                s.report    = ecs.hasTag(_e, TagID::TAG_PHYSICS_REPORT_CONTACTS);
+                s.dynamic   = (__tags & tagMask(TagID::TAG_PHYSICS_DYNAMIC)) != 0u;
+                s.kinematic = (__tags & tagMask(TagID::TAG_PHYSICS_KINEMATIC)) != 0u;
+                s.report    = (__tags & tagMask(TagID::TAG_PHYSICS_REPORT_CONTACTS)) != 0u;
                 s.radius    = boundingRadius(_c);
+                SolverState st;
+                st.x = st.px = _b.position;
+                st.q = st.pq = toQf(_b.rotation);
+                st.v = _b.velocity;
+                st.w = _b.angular_velocity;
+                st.im = s.dynamic ? _b.inv_mass : 0.f;
+                st.ii = s.dynamic ? _b.inv_inertia : vec3{0.f, 0.f, 0.f};
+                st.fx = _b.frame_position;   st.tx = _b.target_position;
+                st.fq = toQf(_b.frame_rotation); st.tq = toQf(_b.target_rotation);
+                st.has_target = s.kinematic && _b.has_target;
+                updateInvInertia(st);
                 if (slot_.size() <= _e.index) slot_.resize(_e.index + 1u, UINT32_MAX);
                 slot_[_e.index] = (uint32_t)bodies_.size();
                 bodies_.push_back(s);
+                states_.push_back(st);
             }, __active);
             ecs.each<Joint>([&](EntityID _e, Joint &_j) {
                 if (!ecs.isValid(_j.body_a) || !ecs.isValid(_j.body_b)) return;
                 const uint32_t a = _j.body_a.index < slot_.size() ? slot_[_j.body_a.index] : UINT32_MAX;
                 const uint32_t b = _j.body_b.index < slot_.size() ? slot_[_j.body_b.index] : UINT32_MAX;
                 if (a == UINT32_MAX || b == UINT32_MAX || a == b) return;
+                if (!bodies_[a].dynamic && !bodies_[b].dynamic) return;
                 SolverJoint j;
                 j.joint = &_j; j.a = a; j.b = b;
                 joints_.push_back(j);
@@ -532,11 +669,11 @@ namespace Simple {
             __items.reserve(bodies_.size());
             for (uint32_t i = 0u; i < (uint32_t)bodies_.size(); ++i) {
                 const SolverBody &s = bodies_[i];
+                const SolverState &st = states_[i];
                 if (s.collider->shape == SHAPE_PLANE) { __planes.push_back(i); continue; }
-                const float r = s.radius + len3(s.body->velocity) * _h + settings.contact_margin +
-                                (s.kinematic && s.body->has_target ? len3(s.body->target_position - s.body->position) : 0.f);
+                const float r = s.radius + len3(st.v) * _h + settings.contact_margin + (st.has_target ? len3(st.tx - st.x) : 0.f);
                 Item it;
-                it.lo = s.body->position.x - r; it.hi = s.body->position.x + r; it.body = i;
+                it.lo = st.x.x - r; it.hi = st.x.x + r; it.body = i;
                 __items.push_back(it);
             }
             std::sort(__items.begin(), __items.end(), [](const Item &_a, const Item &_b) { return _a.lo < _b.lo; });
@@ -547,12 +684,10 @@ namespace Simple {
                 return jointed_.find(std::make_pair(std::min(_a, _b) * 1ull, std::max(_a, _b) * 1ull)) == jointed_.end();
             };
             for (size_t i = 0u; i < __items.size(); ++i) {
-                const SolverBody &a = bodies_[__items[i].body];
                 for (size_t j = i + 1u; j < __items.size() && __items[j].lo <= __items[i].hi; ++j) {
-                    const SolverBody &b = bodies_[__items[j].body];
                     // Full bounding sphere test
                     const float ra = 0.5f * (__items[i].hi - __items[i].lo), rb = 0.5f * (__items[j].hi - __items[j].lo);
-                    const vec3 d = a.body->position - b.body->position;
+                    const vec3 d = states_[__items[i].body].x - states_[__items[j].body].x;
                     if (dot3(d, d) > (ra + rb) * (ra + rb)) continue;
                     if (accept(__items[i].body, __items[j].body)) pairs_.push_back(std::make_pair(__items[i].body, __items[j].body));
                 }
@@ -565,24 +700,31 @@ namespace Simple {
 
         void World::collide_() {
             contacts_.clear();
-            std::vector<ShapeContact> __found;
+            std::vector<ShapeContact> &__found = found_;
             for (const std::pair<uint32_t, uint32_t> &pair : pairs_) {
-                SolverBody &A = bodies_[pair.first], &B = bodies_[pair.second];
+                const SolverBody &A = bodies_[pair.first], &B = bodies_[pair.second];
+                const SolverState &a = states_[pair.first], &b = states_[pair.second];
+                // Cheap bounding sphere test with the current positions
+                const float __reach = A.radius + B.radius + settings.contact_margin;
+                if (A.collider->shape != SHAPE_PLANE && B.collider->shape != SHAPE_PLANE) {
+                    const vec3 d = a.x - b.x;
+                    if (dot3(d, d) > __reach * __reach) continue;
+                }
                 __found.clear();
-                collideShapes(*A.collider, A.body->position, A.body->rotation, *B.collider, B.body->position, B.body->rotation, __found);
+                collideShapes(*A.collider, a.x, toQuat(a.q), *B.collider, b.x, toQuat(b.q), __found);
                 for (const ShapeContact &f : __found) {
                     Contact c;
                     c.a = pair.first; c.b = pair.second;
                     c.normal = f.normal;
                     // Body-local points: the solver follows them while the bodies move
-                    c.ra = invRot(A.body->rotation, f.point_a - A.body->position);
-                    c.rb = invRot(B.body->rotation, f.point_b - B.body->position);
+                    c.ra = qinvrot(a.q, f.point_a - a.x);
+                    c.rb = qinvrot(b.q, f.point_b - b.x);
                     c.depth = f.depth;
                     c.lambda_n = 0.f;
                     c.friction    = A.collider->friction * B.collider->friction;
                     c.restitution = A.collider->restitution * B.collider->restitution;
-                    const vec3 __ra = f.point_a - A.body->position, __rb = f.point_b - B.body->position;
-                    const vec3 __v = (A.body->velocity + cross3(A.body->angular_velocity, __ra)) - (B.body->velocity + cross3(B.body->angular_velocity, __rb));
+                    const vec3 __ra = f.point_a - a.x, __rb = f.point_b - b.x;
+                    const vec3 __v = (a.v + cross3(a.w, __ra)) - (b.v + cross3(b.w, __rb));
                     c.vn = dot3(c.normal, __v);
                     contacts_.push_back(c);
                 }
@@ -590,97 +732,57 @@ namespace Simple {
             stats.contacts = (uint32_t)contacts_.size();
         }
 
-        namespace {
-            struct SB { Body *b; bool dyn; };
-
-            float genInvMass(const SB &_s, const vec3 &_r, const vec3 &_n) {
-                if (!_s.dyn) return 0.f;
-                const vec3 rn = cross3(_r, _n);
-                return _s.b->inv_mass + dot3(rn, mulInvI(*_s.b, rn));
-            }
-
-            void applyPositional(SB &_s, const vec3 &_p, const vec3 &_r, float _sign) {
-                if (!_s.dyn) return;
-                _s.b->position += _p * (_s.b->inv_mass * _sign);
-                addRotation(_s.b->rotation, mulInvI(*_s.b, cross3(_r, _p)) * _sign);
-            }
-
-            // XPBD positional constraint: moves the point '_r1' of body 1 by -C along '_dir' (shared with body 2 by the
-            // inverse masses); returns the Lagrange multiplier change
-            float positional(SB &_b1, const vec3 &_r1, SB &_b2, const vec3 &_r2, const vec3 &_dir, float _c, float _alpha) {
-                const float w = genInvMass(_b1, _r1, _dir) + genInvMass(_b2, _r2, _dir);
-                if (w + _alpha <= EPS) return 0.f;
-                const float dl = -_c / (w + _alpha);
-                const vec3 p = _dir * dl;
-                applyPositional(_b1, p, _r1,  1.f);
-                applyPositional(_b2, p, _r2, -1.f);
-                return dl;
-            }
-
-            // XPBD angular constraint: rotates body 1 by -C around '_axis' (unit)
-            float angular(SB &_b1, SB &_b2, const vec3 &_axis, float _c, float _alpha) {
-                const float w = (_b1.dyn ? dot3(_axis, mulInvI(*_b1.b, _axis)) : 0.f) + (_b2.dyn ? dot3(_axis, mulInvI(*_b2.b, _axis)) : 0.f);
-                if (w + _alpha <= EPS) return 0.f;
-                const float dl = -_c / (w + _alpha);
-                const vec3 p = _axis * dl;
-                if (_b1.dyn) addRotation(_b1.b->rotation, mulInvI(*_b1.b, p));
-                if (_b2.dyn) addRotation(_b2.b->rotation, mulInvI(*_b2.b, p) * -1.f);
-                return dl;
-            }
-
-            // Per axis: min > max: free; else clamped
-            float limitAxis(float _v, float _min, float _max) { return _min > _max ? _v : clampf(_v, _min, _max); }
-        } // anonymous namespace END
-
         void World::solveJoint_(const SolverJoint &_sj, float _h) {
             const Joint &J = *_sj.joint;
-            SB A = { bodies_[_sj.a].body, bodies_[_sj.a].dynamic }, B = { bodies_[_sj.b].body, bodies_[_sj.b].dynamic };
-            if (!A.dyn && !B.dyn) return;
+            SS &A = states_[_sj.a], &B = states_[_sj.b];
             const float __h2 = _h * _h;
+            const Qf __frame_a = toQf(J.frame_a), __frame_b = toQf(J.frame_b);
+            const bool __angular_springs = J.angular_spring.x > 0.f || J.angular_spring.y > 0.f || J.angular_spring.z > 0.f;
+            const bool __linear_springs  = J.linear_spring.x  > 0.f || J.linear_spring.y  > 0.f || J.linear_spring.z  > 0.f;
 
             // Rotation limits: clamp the Euler angles of B's frame in A's frame, rotate B's frame towards the clamped rotation
             {
-                const Quat FA = A.b->rotation * J.frame_a, FB = B.b->rotation * J.frame_b;
-                const vec3 e = eulerXYZ(FA.conjugate() * FB);
+                const Qf FA = qmul(A.q, __frame_a), FB = qmul(B.q, __frame_b);
+                const vec3 e = qeulerXYZ(qmul(qconj(FA), FB));
                 const vec3 t = { limitAxis(e.x, J.angular_min.x, J.angular_max.x),
                                  limitAxis(e.y, J.angular_min.y, J.angular_max.y),
                                  limitAxis(e.z, J.angular_min.z, J.angular_max.z) };
                 if (std::fabs(e.x - t.x) + std::fabs(e.y - t.y) + std::fabs(e.z - t.z) > EPS) {
-                    const vec3 dphi = rotationDelta(FB, FA * fromEulerXYZ(t));
+                    const vec3 dphi = qdelta(FB, qmul(FA, qfromEulerXYZ(t)));
                     const float angle = len3(dphi);
                     if (angle > EPS) angular(B, A, dphi * (1.f / angle), angle, 0.f);
                 }
-            }
-            // Angular springs (towards zero angles), per axis of A's frame
-            if (J.angular_spring.x > 0.f || J.angular_spring.y > 0.f || J.angular_spring.z > 0.f) {
-                const Quat FA = A.b->rotation * J.frame_a, FB = B.b->rotation * J.frame_b;
-                const vec3 e = eulerXYZ(FA.conjugate() * FB);
-                for (uint32_t i = 0u; i < 3u; ++i) {
-                    const float k = comp(J.angular_spring, i);
-                    if (k <= 0.f || std::fabs(comp(e, i)) < EPS) continue;
-                    angular(B, A, rot(FA, axisOf(i)), comp(e, i), 1.f / (k * __h2));
+                // Angular springs (towards zero angles), per axis of A's frame
+                if (__angular_springs) {
+                    const Qf FA2 = qmul(A.q, __frame_a), FB2 = qmul(B.q, __frame_b);
+                    const vec3 e2 = qeulerXYZ(qmul(qconj(FA2), FB2));
+                    for (uint32_t i = 0u; i < 3u; ++i) {
+                        const float k = comp(J.angular_spring, i);
+                        if (k <= 0.f || std::fabs(comp(e2, i)) < EPS) continue;
+                        angular(B, A, qrot(FA2, axisOf(i)), comp(e2, i), 1.f / (k * __h2));
+                    }
                 }
             }
             // Translation limits: B's anchor in A's frame
             {
-                const Quat FA = A.b->rotation * J.frame_a;
-                const vec3 rA = rot(A.b->rotation, J.anchor_a), rB = rot(B.b->rotation, J.anchor_b);
-                const vec3 d = invRot(FA, (B.b->position + rB) - (A.b->position + rA));
+                const Qf FA = qmul(A.q, __frame_a);
+                const vec3 rA = qrot(A.q, J.anchor_a), rB = qrot(B.q, J.anchor_b);
+                const vec3 d = qinvrot(FA, (B.x + rB) - (A.x + rA));
                 const vec3 t = { limitAxis(d.x, J.linear_min.x, J.linear_max.x),
                                  limitAxis(d.y, J.linear_min.y, J.linear_max.y),
                                  limitAxis(d.z, J.linear_min.z, J.linear_max.z) };
-                const vec3 err = rot(FA, d - t);
+                const vec3 err = qrot(FA, d - t);
                 const float c = len3(err);
                 if (c > EPS) positional(B, rB, A, rA, err * (1.f / c), c, 0.f);
             }
-            if (J.linear_spring.x > 0.f || J.linear_spring.y > 0.f || J.linear_spring.z > 0.f) {
-                const Quat FA = A.b->rotation * J.frame_a;
-                const vec3 rA = rot(A.b->rotation, J.anchor_a), rB = rot(B.b->rotation, J.anchor_b);
-                const vec3 d = invRot(FA, (B.b->position + rB) - (A.b->position + rA));
+            if (__linear_springs) {
+                const Qf FA = qmul(A.q, __frame_a);
+                const vec3 rA = qrot(A.q, J.anchor_a), rB = qrot(B.q, J.anchor_b);
+                const vec3 d = qinvrot(FA, (B.x + rB) - (A.x + rA));
                 for (uint32_t i = 0u; i < 3u; ++i) {
                     const float k = comp(J.linear_spring, i);
                     if (k <= 0.f || std::fabs(comp(d, i)) < EPS) continue;
-                    positional(B, rB, A, rA, rot(FA, axisOf(i)), comp(d, i), 1.f / (k * __h2));
+                    positional(B, rB, A, rA, qrot(FA, axisOf(i)), comp(d, i), 1.f / (k * __h2));
                 }
             }
         }
@@ -688,10 +790,10 @@ namespace Simple {
         void World::solveContacts_(float _h) {
             (void)_h;
             for (Contact &c : contacts_) {
-                SolverBody &SA = bodies_[c.a], &SB_ = bodies_[c.b];
-                SB A = { SA.body, SA.dynamic }, B = { SB_.body, SB_.dynamic };
-                vec3 ra = rot(A.b->rotation, c.ra), rb = rot(B.b->rotation, c.rb);
-                const float d = dot3((B.b->position + rb) - (A.b->position + ra), c.normal);
+                const SolverBody &SA = bodies_[c.a], &SB_ = bodies_[c.b];
+                SS &A = states_[c.a], &B = states_[c.b];
+                vec3 ra = qrot(A.q, c.ra), rb = qrot(B.q, c.rb);
+                const float d = dot3((B.x + rb) - (A.x + ra), c.normal);
                 if (d <= 0.f) continue;
                 // Normal: push A along the normal
                 c.lambda_n = -positional(A, ra, B, rb, c.normal * -1.f, d, 0.f);
@@ -700,10 +802,10 @@ namespace Simple {
                     touching_.insert(std::make_pair(std::min(ha, hb), std::max(ha, hb)));
                 }
                 // Static friction: undo the tangential sliding of the contact points during this substep
-                ra = rot(A.b->rotation, c.ra); rb = rot(B.b->rotation, c.rb);
-                const vec3 p1 = A.b->position + ra, p2 = B.b->position + rb;
-                const vec3 p1_prev = A.b->prev_position + rot(A.b->prev_rotation, c.ra);
-                const vec3 p2_prev = B.b->prev_position + rot(B.b->prev_rotation, c.rb);
+                ra = qrot(A.q, c.ra); rb = qrot(B.q, c.rb);
+                const vec3 p1 = A.x + ra, p2 = B.x + rb;
+                const vec3 p1_prev = A.px + qrot(A.pq, c.ra);
+                const vec3 p2_prev = B.px + qrot(B.pq, c.rb);
                 const vec3 dp = (p1 - p1_prev) - (p2 - p2_prev);
                 const vec3 dpt = dp - c.normal * dot3(dp, c.normal);
                 const float lt = len3(dpt);
@@ -719,10 +821,9 @@ namespace Simple {
             const float __g = len3(settings.gravity);
             for (const Contact &c : contacts_) {
                 if (c.lambda_n <= 0.f) continue;
-                SolverBody &SA = bodies_[c.a], &SB_ = bodies_[c.b];
-                Body &A = *SA.body, &B = *SB_.body;
-                const vec3 ra = rot(A.rotation, c.ra), rb = rot(B.rotation, c.rb);
-                const vec3 v = (A.velocity + cross3(A.angular_velocity, ra)) - (B.velocity + cross3(B.angular_velocity, rb));
+                SS &A = states_[c.a], &B = states_[c.b];
+                const vec3 ra = qrot(A.q, c.ra), rb = qrot(B.q, c.rb);
+                const vec3 v = (A.v + cross3(A.w, ra)) - (B.v + cross3(B.w, rb));
                 const float vn = dot3(c.normal, v);
                 const vec3 vt = v - c.normal * vn;
                 const float lvt = len3(vt);
@@ -738,12 +839,11 @@ namespace Simple {
                 const float ldv = len3(dv);
                 if (ldv <= EPS) continue;
                 const vec3 dir = dv * (1.f / ldv);
-                const SB a = { &A, SA.dynamic }, b = { &B, SB_.dynamic };
-                const float w = genInvMass(a, ra, dir) + genInvMass(b, rb, dir);
+                const float w = genInvMass(A, ra, dir) + genInvMass(B, rb, dir);
                 if (w <= EPS) continue;
                 const vec3 p = dv * (1.f / w);
-                if (SA.dynamic)  { A.velocity += p * A.inv_mass; A.angular_velocity += mulInvI(A, cross3(ra, p)); }
-                if (SB_.dynamic) { B.velocity -= p * B.inv_mass; B.angular_velocity -= mulInvI(B, cross3(rb, p)); }
+                if (A.im > 0.f) { A.v += p * A.im; A.w += invI(A, cross3(ra, p)); }
+                if (B.im > 0.f) { B.v -= p * B.im; B.w -= invI(B, cross3(rb, p)); }
             }
         }
 
@@ -760,7 +860,7 @@ namespace Simple {
                             const uint64_t ha = bodies_[c.a].entity.hash(), hb = bodies_[c.b].entity.hash();
                             if (std::make_pair(std::min(ha, hb), std::max(ha, hb)) != pair || c.depth <= __best) continue;
                             __best = c.depth;
-                            const vec3 p = bodies_[c.a].body->position + rot(bodies_[c.a].body->rotation, c.ra);
+                            const vec3 p = states_[c.a].x + qrot(states_[c.a].q, c.ra);
                             const vec3 n = ha == pair.first ? c.normal : c.normal * -1.f;
                             ev.point[0] = p.x; ev.point[1] = p.y; ev.point[2] = p.z;
                             ev.normal[0] = n.x; ev.normal[1] = n.y; ev.normal[2] = n.z;
@@ -800,29 +900,39 @@ namespace Simple {
         }
 
         void World::step(float _step) {
-            gather_();
             if (stepFraction_.first == 0u && stepFraction_.second == 1u)
-                for (SolverBody &s : bodies_) { s.body->frame_position = s.body->position; s.body->frame_rotation = s.body->rotation; }
+                ecs.each<Body>([](EntityID, Body &_b) { _b.frame_position = _b.position; _b.frame_rotation = _b.rotation; });
+            gather_();
             broadPhase_(_step);
             const uint32_t __n = std::max(settings.substeps, 1u);
             const float h = _step / (float)__n;
+            // Damping per substep (Bullet style: the fraction lost per second)
+            std::vector<float> &__ld = damping_;
+            __ld.resize(bodies_.size() * 2u);
+            for (size_t i = 0u; i < bodies_.size(); ++i) {
+                __ld[2u * i]      = std::pow(clampf(1.f - bodies_[i].body->linear_damping,  0.f, 1.f), h);
+                __ld[2u * i + 1u] = std::pow(clampf(1.f - bodies_[i].body->angular_damping, 0.f, 1.f), h);
+            }
             for (uint32_t sub = 0u; sub < __n; ++sub) {
                 const float __f = ((float)stepFraction_.first + (float)(sub + 1u) / (float)__n) / (float)stepFraction_.second;
                 // Integrate
-                for (SolverBody &s : bodies_) {
-                    Body &b = *s.body;
-                    b.prev_position = b.position;
-                    b.prev_rotation = b.rotation;
+                for (size_t i = 0u; i < bodies_.size(); ++i) {
+                    const SolverBody &s = bodies_[i];
+                    SolverState &st = states_[i];
+                    st.px = st.x;
+                    st.pq = st.q;
                     if (s.dynamic) {
-                        b.velocity += (settings.gravity * b.gravity_scale + b.force * b.inv_mass) * h;
-                        b.angular_velocity += mulInvI(b, b.torque) * h;
-                        if (b.linear_damping  > 0.f) b.velocity         *= std::pow(clampf(1.f - b.linear_damping,  0.f, 1.f), h);
-                        if (b.angular_damping > 0.f) b.angular_velocity *= std::pow(clampf(1.f - b.angular_damping, 0.f, 1.f), h);
-                        b.position += b.velocity * h;
-                        addRotation(b.rotation, b.angular_velocity * h);
-                    } else if (s.kinematic && b.has_target) {
-                        b.position = lerp3(b.frame_position, b.target_position, __f);
-                        b.rotation = nlerp(b.frame_rotation, b.target_rotation, __f);
+                        const Body &b = *s.body;
+                        st.v += (settings.gravity * b.gravity_scale + b.force * st.im) * h;
+                        st.w += invI(st, b.torque) * h;
+                        st.v *= __ld[2u * i];
+                        st.w *= __ld[2u * i + 1u];
+                        st.x += st.v * h;
+                        qaddRotation(st.q, st.w * h);
+                        updateInvInertia(st);
+                    } else if (st.has_target) {
+                        st.x = lerp3(st.fx, st.tx, __f);
+                        st.q = qnlerp(st.fq, st.tq, __f);
                     }
                 }
                 collide_();
@@ -830,20 +940,31 @@ namespace Simple {
                 for (const SolverJoint &j : joints_) solveJoint_(j, h);
                 solveContacts_(h);
                 // Velocities from the positions
-                for (SolverBody &s : bodies_) {
-                    Body &b = *s.body;
-                    if (!s.dynamic && !s.kinematic) { b.velocity = {0.f, 0.f, 0.f}; b.angular_velocity = {0.f, 0.f, 0.f}; continue; }
-                    b.velocity = (b.position - b.prev_position) * (1.f / h);
-                    b.angular_velocity = rotationDelta(b.rotation, b.prev_rotation) * (1.f / h);
+                const float __inv_h = 1.f / h;
+                for (size_t i = 0u; i < bodies_.size(); ++i) {
+                    const SolverBody &s = bodies_[i];
+                    SolverState &st = states_[i];
+                    if (!s.dynamic && !s.kinematic) { st.v = {0.f, 0.f, 0.f}; st.w = {0.f, 0.f, 0.f}; continue; }
+                    st.v = (st.x - st.px) * __inv_h;
+                    st.w = qdelta(st.q, st.pq) * __inv_h;
                     if (s.dynamic) {
-                        const float lv = len3(b.velocity), lw = len3(b.angular_velocity);
-                        if (lv > settings.max_velocity) b.velocity *= settings.max_velocity / lv;
-                        if (lw > settings.max_angular_velocity) b.angular_velocity *= settings.max_angular_velocity / lw;
+                        const float lv = len3(st.v), lw = len3(st.w);
+                        if (lv > settings.max_velocity) st.v *= settings.max_velocity / lv;
+                        if (lw > settings.max_angular_velocity) st.w *= settings.max_angular_velocity / lw;
                     }
                 }
                 solveVelocities_(h);
             }
-            for (SolverBody &s : bodies_) { s.body->force = {0.f, 0.f, 0.f}; s.body->torque = {0.f, 0.f, 0.f}; }
+            // Back to the components
+            for (size_t i = 0u; i < bodies_.size(); ++i) {
+                Body &b = *bodies_[i].body;
+                const SolverState &st = states_[i];
+                b.position = st.x;           b.rotation = toQuat(st.q);
+                b.prev_position = st.px;     b.prev_rotation = toQuat(st.pq);
+                b.velocity = st.v;           b.angular_velocity = st.w;
+                b.force  = {0.f, 0.f, 0.f};
+                b.torque = {0.f, 0.f, 0.f};
+            }
             reportContacts_();
         }
     }; // Physics END
