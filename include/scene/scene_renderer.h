@@ -34,9 +34,12 @@ namespace Simple {
         //       GPU data: all meshes in one vertex and one index buffer, all textures in one memory chunk (with mip levels),
         //       one descriptor set per material (parameters + base color, normal and emissive textures), one uniform buffer per
         //       frame in flight (camera and lights); the node matrix goes in push constants.
-        //       Skinned meshes: the bones, weights and skin mode in a second vertex buffer, the joints of all skins (matrix for
-        //       LBS, dual quaternion for DQS) in one storage buffer per frame in flight; a draw finds the joints of its skin by
-        //       'gl_InstanceIndex' (the first instance).
+        //       Skinned meshes: the bones, weights, skin mode and morph range in a second vertex buffer, the joints of all skins
+        //       (matrix for LBS, dual quaternion for DQS) in one storage buffer per frame in flight. A draw passes its skin as
+        //       'gl_InstanceIndex' (the first instance); the skin data buffer (per frame) gives the first joint and the first
+        //       morph weight of each skin, then the morph weights ('Pose::morph_final').
+        //       Morphs: the vertex / UV offsets of all skinned meshes in one storage buffer (static), grouped by vertex; each
+        //       vertex adds its offsets times the weights of their morphs before skinning.
         //       Draw order: opaque and masked meshes first, then blended ones back to front by their node (the meshes of one
         //       node keep their order, like MMD draws the materials of a model in the file order).
         //
@@ -89,6 +92,20 @@ namespace Simple {
                 mat4 matrix;
                 vec4 real, dual;
             };
+            // Note: the vertex attributes of skinned meshes (binding 1)
+            struct SkinVertexGPU {
+                uint16_t bones[4];
+                vec4     weights;
+                uint32_t mode;
+                uint32_t morph_first, morph_count; // in the morph buffer
+            };
+            // Note: matches 'MorphDelta' in 'shaders/scene.vert' (std430): a position offset, or a UV offset (xy) if the top bit
+            //       of 'morph' is set; 'morph' is the index of the morph in the skeleton
+            struct MorphDeltaGPU {
+                float    offset[3];
+                uint32_t morph;
+            };
+            static const uint32_t MORPH_UV_BIT = 0x80000000u;
             struct PushConstants {
                 mat4 model;
                 mat4 normal; // inverse transpose of 'model' (upper 3x3 used)
@@ -114,10 +131,15 @@ namespace Simple {
             // GPU data
             Graph::Buffer               vertex_buffer, index_buffer, material_buffer;
             std::vector<Graph::Buffer>  frame_buffers;  // per frame in flight, HOST_VISIBLE
-            Graph::Buffer               skin_buffer;    // 'SkinVertex' of the skinned meshes
+            Graph::Buffer               skin_buffer;    // 'SkinVertexGPU' of the skinned meshes
+            Graph::Buffer               morph_buffer;   // 'MorphDeltaGPU' of the skinned meshes
             std::vector<Graph::Buffer>  joint_buffers;  // per frame in flight, HOST_VISIBLE: the skinning matrices of all skins
             std::vector<uint32_t>       joint_offsets;  // per skin: its first joint in the joint buffers
             std::vector<JointGPU>       joint_data;     // 'update' scratch
+            std::vector<Graph::Buffer>  skin_data_buffers; // per frame in flight, HOST_VISIBLE: per skin (first joint, first morph
+                                                           // weight, 0, 0) as uint, then the morph weights as float
+            std::vector<uint32_t>       morph_offsets;  // per skin: its first morph weight in the skin data buffers
+            std::vector<uint32_t>       skin_data;      // 'update' scratch
             VkDeviceSize                material_stride = 0u;
             MemoryId                    texture_memory;
             std::vector<Graph::Texture> textures;       // per scene texture, then the defaults: white, flat normal

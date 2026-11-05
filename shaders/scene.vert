@@ -2,8 +2,9 @@
 
 // Scene renderer (see 'include/scene/scene_renderer.h'): set 0 = frame, set 1 = material, push constants = node matrices.
 // Note: the matrices are written row-vector style on the CPU, GLSL reads them transposed, so 'M * v' here is 'v & M' there
-// Note: compiled twice: as is (rigid meshes) and with -DSKINNED (scene_skin_vert.spv): the joints of the skin start at
-//       'gl_InstanceIndex' (the first instance of the draw); each vertex is skinned linearly (LBS) or with dual quaternions (DQS)
+// Note: compiled twice: as is (rigid meshes) and with -DSKINNED (scene_skin_vert.spv): 'gl_InstanceIndex' (the first instance
+//       of the draw) is the skin; its first joint and first morph weight are in 'skin_data'. Each vertex adds its morph offsets,
+//       then it is skinned linearly (LBS) or with dual quaternions (DQS)
 
 struct Light {
     vec4 position_range;
@@ -30,6 +31,17 @@ struct Joint {
 layout(set = 0, binding = 1, std430) readonly buffer Joints {
     Joint joints[];
 };
+// Per skin: (first joint, first morph weight, 0, 0); then the morph weights (float bits)
+layout(set = 0, binding = 2, std430) readonly buffer SkinData {
+    uint skin_data[];
+};
+struct MorphDelta {
+    vec3 offset; // position, or UV (xy) if the top bit of 'morph' is set
+    uint morph;  // the morph in the skeleton
+};
+layout(set = 0, binding = 3, std430) readonly buffer MorphDeltas {
+    MorphDelta morph_deltas[];
+};
 #endif
 
 layout(push_constant) uniform Node {
@@ -45,6 +57,7 @@ layout(location = 3) in vec4 in_tangent;
 layout(location = 4) in uvec4 in_bones;
 layout(location = 5) in vec4  in_weights;
 layout(location = 6) in uint  in_mode;  // 0: LBS, 1: DQS
+layout(location = 7) in uvec2 in_morphs; // first offset in 'morph_deltas', count
 #endif
 
 layout(location = 0) out vec3 out_world_pos;
@@ -57,9 +70,20 @@ vec3 rotate(vec4 q, vec3 v) {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 }
 
+// The morph offsets of the vertex times the weights of their morphs (MMD keeps the normals)
+void morph(inout vec3 position, inout vec2 uv) {
+    uint weights = skin_data[4u * uint(gl_InstanceIndex) + 1u];
+    for (uint i = 0u; i < in_morphs.y; ++i) {
+        MorphDelta d = morph_deltas[in_morphs.x + i];
+        float w = uintBitsToFloat(skin_data[weights + (d.morph & 0x7FFFFFFFu)]);
+        if ((d.morph & 0x80000000u) != 0u) uv += w * d.offset.xy;
+        else position += w * d.offset;
+    }
+}
+
 // The skinned position, normal and tangent (in the skin space)
 void skin(inout vec3 position, inout vec3 normal, inout vec3 tangent) {
-    uint base = uint(gl_InstanceIndex);
+    uint base = skin_data[4u * uint(gl_InstanceIndex)];
     uvec4 b = in_bones + uvec4(base);
     if (in_mode == 0u) {
         // Linear blend skinning; the bones are assumed without non-uniform scale, so normals use the same matrix
@@ -87,16 +111,19 @@ void skin(inout vec3 position, inout vec3 normal, inout vec3 tangent) {
     tangent  = rotate(real, tangent);
 }
 #else
+void morph(inout vec3 position, inout vec2 uv) {}
 void skin(inout vec3 position, inout vec3 normal, inout vec3 tangent) {}
 #endif
 
 void main() {
     vec3 position = in_position, normal = in_normal, tangent = in_tangent.xyz;
+    vec2 uv = in_uv;
+    morph(position, uv);
     skin(position, normal, tangent);
     vec4 world = node.model * vec4(position, 1.0);
     out_world_pos = world.xyz;
     out_normal    = mat3(node.normal) * normal;
     out_tangent   = vec4(mat3(node.model) * tangent, in_tangent.w);
-    out_uv        = in_uv;
+    out_uv        = uv;
     gl_Position   = frame.proj * frame.view * world;
 }

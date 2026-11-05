@@ -106,6 +106,15 @@ namespace Simple {
             vec3 r0, r1;
         }; // SdefVertex END
 
+        // Note: the offset of one vertex in one morph of the skeleton ('Skeleton::morphs'); a vertex morph moves the position,
+        //       a UV morph the texture coordinates (MMD keeps the normals). Applied on the GPU with the weights of the pose
+        struct MorphTarget {
+            uint32_t morph  = SCENE_NONE; // in the skeleton of the skin
+            uint32_t vertex = 0u;         // in the mesh
+            vec3     position = {0.f, 0.f, 0.f};
+            vec2     uv       = {0.f, 0.f};
+        }; // MorphTarget END
+
         // Note: triangles only (indexed); one material per mesh
         struct Mesh {
             std::string             name;
@@ -113,6 +122,7 @@ namespace Simple {
             std::vector<uint32_t>   indices;
             std::vector<SkinVertex> skin;                  // empty or one per vertex: a skinned mesh (see 'Skin')
             std::vector<SdefVertex> sdef;                  // empty or one per vertex (skinned meshes with SDEF vertices)
+            std::vector<MorphTarget> morphs;               // skinned meshes: the vertex / UV morph offsets, sorted by vertex
             uint32_t                material = SCENE_NONE; // SCENE_NONE: the default material (white, opaque)
             AABB                    bounds;                // in the mesh space (the bind pose for skinned meshes)
 
@@ -228,10 +238,39 @@ namespace Simple {
             bool                enabled = true;
         }; // IKChain END
 
+        enum MorphType {
+            SCENE_MORPH_VERTEX = 0, // moves vertices ('Mesh::morphs')
+            SCENE_MORPH_UV,         // moves texture coordinates ('Mesh::morphs')
+            SCENE_MORPH_BONE,       // offsets bones ('bones')
+            SCENE_MORPH_GROUP,      // drives other morphs ('group'), e.g. a blink made of the eyes and the eyebrows
+            SCENE_MORPH_MATERIAL,   // material colors: kept by name, not applied yet
+            SCENE_MORPH_OTHER       // not supported (MMD flip, impulse, additional UVs)
+        };
+
+        struct MorphBoneOffset {
+            uint32_t bone = SCENE_NONE;
+            vec3     translation = {0.f, 0.f, 0.f};
+            Quat     rotation;
+        }; // MorphBoneOffset END
+
+        struct MorphGroupEntry {
+            uint32_t morph  = SCENE_NONE;
+            float    weight = 1.f;
+        }; // MorphGroupEntry END
+
+        // Note: a named shape of the model (MMD 表情): the weights are in the pose ('Pose::morph_weights', usually 0..1)
+        struct Morph {
+            std::string                  name;
+            MorphType                    type = SCENE_MORPH_VERTEX;
+            std::vector<MorphBoneOffset> bones;
+            std::vector<MorphGroupEntry> group;
+        }; // Morph END
+
         struct Skeleton {
             std::string          name;
             std::vector<Bone>    bones;
             std::vector<IKChain> iks;
+            std::vector<Morph>   morphs;
 
             // Computed by 'finalize'
             std::vector<uint32_t>              order;    // the deform order
@@ -241,7 +280,8 @@ namespace Simple {
             uint32_t addBone(const Bone &_bone);
             // Attaches the chain to its goal bone; returns its index
             uint32_t addIK(const IKChain &_ik);
-            uint32_t findBone(const std::string &_name) const; // SCENE_NONE if there is none
+            uint32_t findBone (const std::string &_name) const; // SCENE_NONE if there is none
+            uint32_t findMorph(const std::string &_name) const; // SCENE_NONE if there is none
             // Sets 'inverse_bind' of all bones from the rest transforms
             void computeInverseBind();
             // Inverse bind matrices, deform order, children (after adding bones and IK chains)
@@ -250,7 +290,8 @@ namespace Simple {
 
         // Note: the state of one posed skeleton. 'local' is the animated pose (starts at the rest transforms); after changing it
         //       call 'Scene::updateSkins' (or 'computeFK') to get 'model' (bone -> skeleton space) and 'skinning'
-        //       ('inverse_bind & model', for the vertices). The final local rotation is 'ik * local * grant' (grant first)
+        //       ('inverse_bind & model', for the vertices). The final local rotation is 'ik * local * morph * grant' (grant
+        //       first); 'morph_weights' drive the morphs of the skeleton (bone morphs here, vertex and UV ones in the renderer)
         struct Pose {
             std::vector<TRS>  local;
             std::vector<mat4> model;
@@ -258,6 +299,9 @@ namespace Simple {
             std::vector<Quat> ik_rotation, grant_rotation; // computed
             std::vector<vec3> grant_translation;           // computed
             std::vector<uint8_t> ik_enabled;               // per IK chain of the skeleton (animations switch them); from 'IKChain::enabled'
+            std::vector<float>   morph_weights;            // per morph of the skeleton (input)
+            std::vector<float>   morph_final;              // computed: the weights with the groups resolved (the renderer reads them)
+            std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
             bool              dirty = true;
             bool              solve_ik = true;
 
@@ -266,6 +310,9 @@ namespace Simple {
             void computeFK(const Skeleton &_skeleton);
 
         private:
+            // Resolves the groups into 'morph_final' and applies the bone morphs to 'morphed'
+            void applyMorphs_(const Skeleton &_skeleton);
+            void addMorph_(const Skeleton &_skeleton, uint32_t _morph, float _weight, uint32_t _depth);
             mat4 localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const;
             void updateModel_(const Skeleton &_skeleton, uint32_t _bone);    // the bone and its descendants
             void applyGrant_(const Skeleton &_skeleton, uint32_t _bone);

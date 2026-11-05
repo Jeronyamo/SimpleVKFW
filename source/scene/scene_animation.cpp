@@ -72,6 +72,10 @@ namespace Simple {
                 sortKeys(__track.keys);
                 if (!__track.keys.empty()) length = std::max(length, __track.keys.back().frame);
             }
+            for (MorphTrack &__track : morphs) {
+                sortKeys(__track.keys);
+                if (!__track.keys.empty()) length = std::max(length, __track.keys.back().frame);
+            }
         }
 
 
@@ -104,12 +108,25 @@ namespace Simple {
             if (_warn && __binding.missing_iks > 0u)
                 fprintf(svkfwwarn, SVKFW_WRAPWARN("SceneGraph :: bindAnimation", "'%s' -> '%s': %u IK chains are missing, skipped: %s\n"),
                         _clip.name.c_str(), _skeleton.name.c_str(), __binding.missing_iks, __missing.c_str());
+
+            __missing.clear();
+            __binding.morphs.resize(_clip.morphs.size());
+            for (size_t i = 0u; i < _clip.morphs.size(); ++i) {
+                __binding.morphs[i] = _skeleton.findMorph(_clip.morphs[i].morph);
+                if (__binding.morphs[i] != SCENE_NONE) continue;
+                ++__binding.missing_morphs;
+                __missing += (__missing.empty() ? "" : ", ") + _clip.morphs[i].morph;
+            }
+            if (_warn && __binding.missing_morphs > 0u)
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("SceneGraph :: bindAnimation", "'%s' -> '%s': %u morphs are missing, skipped: %s\n"),
+                        _clip.name.c_str(), _skeleton.name.c_str(), __binding.missing_morphs, __missing.c_str());
             return __binding;
         }
 
         void applyAnimation(const AnimationClip &_clip, const AnimationBinding &_binding, const Skeleton &_skeleton,
                             float _frame, Pose &_pose) {
-            if (_pose.local.size() != _skeleton.bones.size() || _pose.ik_enabled.size() != _skeleton.iks.size())
+            if (_pose.local.size() != _skeleton.bones.size() || _pose.ik_enabled.size() != _skeleton.iks.size() ||
+                _pose.morph_weights.size() != _skeleton.morphs.size())
                 _pose.reset(_skeleton);
             _frame = std::min(std::max(_frame, 0.f), _clip.length);
 
@@ -149,6 +166,20 @@ namespace Simple {
                 if (__c == SCENE_NONE || __c >= _pose.ik_enabled.size() || __keys.empty()) continue;
                 const size_t __next = size_t(std::upper_bound(__keys.begin(), __keys.end(), _frame, frameBeforeKey<IKKey>) - __keys.begin());
                 _pose.ik_enabled[__c] = __keys[__next == 0u ? 0u : __next - 1u].enabled ? 1u : 0u;
+            }
+
+            const size_t __morph_tracks = std::min(_clip.morphs.size(), _binding.morphs.size());
+            for (size_t t = 0u; t < __morph_tracks; ++t) {
+                const uint32_t __m = _binding.morphs[t];
+                const std::vector<MorphKey> &__keys = _clip.morphs[t].keys;
+                if (__m == SCENE_NONE || __m >= _pose.morph_weights.size() || __keys.empty()) continue;
+                const size_t __next = size_t(std::upper_bound(__keys.begin(), __keys.end(), _frame, frameBeforeKey<MorphKey>) - __keys.begin());
+                if (__next == 0u || __next == __keys.size()) {
+                    _pose.morph_weights[__m] = __keys[__next == 0u ? 0u : __keys.size() - 1u].weight;
+                    continue;
+                }
+                const MorphKey &__a = __keys[__next - 1u], &__b = __keys[__next];
+                _pose.morph_weights[__m] = __a.weight + (__b.weight - __a.weight) * (_frame - __a.frame) / (__b.frame - __a.frame);
             }
             _pose.dirty = true;
         }
@@ -193,6 +224,23 @@ namespace Simple {
                     __key.curves[c].y2 = __channels[c]->w;
                 }
                 __clip.bones[__found->second].keys.push_back(__key);
+            }
+
+            // Morph keys: one track per name
+            const size_t __morph_name_len = 15u;
+            std::map<std::string, size_t> __morph_tracks;
+            for (const File::ContentVMD::MorphKeyframe &__kf : __vmd.keyframes_morph) {
+                const std::string __raw(__kf.morph_name, strnlen(__kf.morph_name, __morph_name_len));
+                std::map<std::string, size_t>::iterator __found = __morph_tracks.find(__raw);
+                if (__found == __morph_tracks.end()) {
+                    __found = __morph_tracks.insert(std::make_pair(__raw, __clip.morphs.size())).first;
+                    __clip.morphs.push_back(MorphTrack());
+                    __clip.morphs.back().morph = Enc::shiftJISToUTF8(__raw);
+                }
+                MorphKey __key;
+                __key.frame  = float(__kf.frame_id);
+                __key.weight = __kf.weight;
+                __clip.morphs[__found->second].keys.push_back(__key);
             }
 
             // IK switches: a key per IK keyframe of each listed chain

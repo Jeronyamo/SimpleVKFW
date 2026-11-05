@@ -389,7 +389,7 @@ namespace Simple {
     // PMX
 
         // Note: MMD model (PMX 2.0/2.1). Read now: the header, vertices (with the deform data, SDEF included), faces, textures,
-        //       materials and bones (IK and grant included); morphs, display frames, rigid bodies and joints are not read yet.
+        //       materials, bones (IK and grant included) and morphs; display frames, rigid bodies and joints are not read yet.
         //       Texts are converted to UTF-8. The data stays in the MMD space: left-handed, Y up, the model faces -Z
         struct ContentPMX : FiletypeContentItf {
             enum DeformType : uint8_t { DEFORM_BDEF1 = 0, DEFORM_BDEF2, DEFORM_BDEF4, DEFORM_SDEF, DEFORM_QDEF };
@@ -471,6 +471,43 @@ namespace Simple {
                 std::vector<IKLink> ik_links;
             };
 
+            enum MorphType : uint8_t {
+                MORPH_GROUP = 0, MORPH_VERTEX, MORPH_BONE, MORPH_UV, MORPH_UV1, MORPH_UV2, MORPH_UV3, MORPH_UV4, MORPH_MATERIAL,
+                MORPH_FLIP, MORPH_IMPULSE // PMX 2.1
+            };
+
+            // Note: one list per morph type is filled (the one of 'type'); UV morphs keep the offset in 'uv' (UV1-4: the
+            //       additional UV sets)
+            struct Morph {
+                struct VertexOffset   { uint32_t vertex = 0u; vec3f position; };
+                struct UVOffset       { uint32_t vertex = 0u; vec4f uv; };
+                struct BoneOffset     { int32_t  bone = -1;   vec3f translation; Affine::Rotation::Quaternion rotation; };
+                struct GroupOffset    { int32_t  morph = -1;  float weight = 0.f; };  // also flip morphs
+                struct MaterialOffset {
+                    int32_t material = -1;   // -1: all materials
+                    uint8_t operation = 0u;  // 0: multiply, 1: add
+                    vec4f   diffuse;
+                    vec3f   specular;
+                    float   specular_power = 0.f;
+                    vec3f   ambient;
+                    vec4f   edge_color;
+                    float   edge_size = 0.f;
+                    vec4f   texture_tint, sphere_tint, toon_tint;
+                };
+                struct ImpulseOffset  { int32_t rigid_body = -1; bool local = false; vec3f velocity, torque; };
+
+                std::string name, name_en;
+                uint8_t     panel = 0u;     // 0: system, 1: eyebrow, 2: eye, 3: mouth, 4: other
+                MorphType   type  = MORPH_VERTEX;
+
+                std::vector<VertexOffset>   vertices;
+                std::vector<UVOffset>       uvs;
+                std::vector<BoneOffset>     bones;
+                std::vector<GroupOffset>    group;
+                std::vector<MaterialOffset> materials;
+                std::vector<ImpulseOffset>  impulses;
+            };
+
             float       version = 2.f;
             uint8_t     encoding = 0u;          // 0: UTF-16LE, 1: UTF-8 (in the file)
             uint8_t     additional_uvs = 0u;
@@ -481,8 +518,10 @@ namespace Simple {
             std::vector<std::string> textures;  // paths relative to the model file, as written (Windows separators possible)
             std::vector<Material>    materials;
             std::vector<Bone>        bones;
+            std::vector<Morph>       morphs;
 
-            int32_t findBone(const std::string &_name) const; // -1 if there is none
+            int32_t findBone (const std::string &_name) const; // -1 if there is none
+            int32_t findMorph(const std::string &_name) const; // -1 if there is none
         }; // ContentPMX END
 
         struct ReaderWriterPMX : FiletypeReaderWriterItf {

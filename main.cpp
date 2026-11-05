@@ -134,8 +134,8 @@ int main(int argc, char **argv) {
         try {
             chara_motion  = SG::loadVMD("resources/assets/anim/IA_Conqueror_full_key_version.vmd");
             chara_binding = SG::bindAnimation(chara_motion, scene.skeletons[scene.skins[chara_skin].skeleton]);
-            printf("main: motion '%s': %u bone tracks, %u frames\n", chara_motion.name.c_str(), (uint32_t)chara_motion.bones.size(),
-                   (uint32_t)chara_motion.length);
+            printf("main: motion '%s': %u bone tracks, %u morph tracks, %u frames\n", chara_motion.name.c_str(), (uint32_t)chara_motion.bones.size(),
+                   (uint32_t)chara_motion.morphs.size(), (uint32_t)chara_motion.length);
         } catch (const std::exception &_e) {
             printf("main: motion: %s\n", _e.what());
         }

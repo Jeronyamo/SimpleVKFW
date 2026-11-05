@@ -21,8 +21,8 @@ namespace Simple {
         //       engine's one (left-handed, Y up; models face -Z).
         //       Result: one root node (with the model name) that holds one mesh per material and the skin; the skeleton keeps
         //       all PMX bones with their names (parents first, so the indices may differ from the file: see 'findBone').
-        //       Used options: scale, detect_alpha, hide_zero_opacity. Not converted yet: morphs, edges, sphere and toon
-        //       textures, rigid bodies and joints (physics)
+        //       Used options: scale, detect_alpha, hide_zero_opacity. Morphs: vertex, UV, bone and group ones (material morphs
+        //       are kept by name only). Not converted yet: edges, sphere and toon textures, rigid bodies and joints (physics)
 
         // Loads a PMX file and appends it to '_scene' under '_parent'; returns the root node of the model.
         // Asserts (std::runtime_error) if the file can't be read

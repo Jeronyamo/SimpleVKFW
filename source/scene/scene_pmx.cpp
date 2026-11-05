@@ -36,6 +36,9 @@ namespace Simple {
                 std::vector<uint32_t> textures;  // PMX texture -> scene texture (SCENE_NONE: not loaded yet or failed)
                 std::vector<uint8_t>  texture_tried;
                 std::vector<uint32_t> bone_map;  // PMX bone -> skeleton bone
+                // Vertex and UV morph offsets per PMX vertex (CSR: the offsets of vertex v are [morph_first[v], morph_first[v + 1]))
+                std::vector<uint32_t>    morph_first;
+                std::vector<MorphTarget> morph_targets; // 'vertex' is the PMX vertex here
 
                 PMXConverter(Scene &_scene, const PMX &_pmx, const std::string &_dir, const ImportOptions &_options)
                     : scene(_scene), pmx(_pmx), dir(_dir), options(_options),
@@ -129,8 +132,73 @@ namespace Simple {
                         }
                         if (!__ik.links.empty()) __skeleton.addIK(__ik);
                     }
+                    morphs(__skeleton);
                     __skeleton.finalize();
                     return scene.addSkeleton(__skeleton);
+                }
+
+                // Morphs keep the PMX order (group entries refer to it); vertex and UV offsets go to the meshes ('mesh')
+                void morphs(Skeleton &_skeleton) {
+                    const size_t __vertices = pmx.vertices.size();
+                    std::vector<uint32_t> __counts(__vertices + 1u, 0u);
+                    for (size_t i = 0u; i < pmx.morphs.size(); ++i) {
+                        const PMX::Morph &__m = pmx.morphs[i];
+                        for (size_t o = 0u; o < __m.vertices.size(); ++o) if (__m.vertices[o].vertex < __vertices) ++__counts[__m.vertices[o].vertex];
+                        if (__m.type == PMX::MORPH_UV)
+                            for (size_t o = 0u; o < __m.uvs.size(); ++o) if (__m.uvs[o].vertex < __vertices) ++__counts[__m.uvs[o].vertex];
+                    }
+                    morph_first.assign(__vertices + 1u, 0u);
+                    for (size_t v = 0u; v < __vertices; ++v) morph_first[v + 1u] = morph_first[v] + __counts[v];
+                    morph_targets.resize(morph_first[__vertices]);
+                    std::vector<uint32_t> __fill(morph_first.begin(), morph_first.end() - 1);
+
+                    for (size_t i = 0u; i < pmx.morphs.size(); ++i) {
+                        const PMX::Morph &__m = pmx.morphs[i];
+                        Morph __morph;
+                        __morph.name = __m.name;
+                        switch (__m.type) {
+                            case PMX::MORPH_VERTEX:   __morph.type = SCENE_MORPH_VERTEX;   break;
+                            case PMX::MORPH_UV:       __morph.type = SCENE_MORPH_UV;       break;
+                            case PMX::MORPH_BONE:     __morph.type = SCENE_MORPH_BONE;     break;
+                            case PMX::MORPH_GROUP:    __morph.type = SCENE_MORPH_GROUP;    break;
+                            case PMX::MORPH_MATERIAL: __morph.type = SCENE_MORPH_MATERIAL; break;
+                            default:                  __morph.type = SCENE_MORPH_OTHER;
+                        }
+                        for (size_t o = 0u; o < __m.vertices.size(); ++o) {
+                            const uint32_t __v = __m.vertices[o].vertex;
+                            if (__v >= __vertices) continue;
+                            MorphTarget &__t = morph_targets[__fill[__v]++];
+                            __t.morph    = (uint32_t)i;
+                            __t.vertex   = __v;
+                            __t.position = toVec3(__m.vertices[o].position);
+                        }
+                        if (__m.type == PMX::MORPH_UV)
+                            for (size_t o = 0u; o < __m.uvs.size(); ++o) {
+                                const uint32_t __v = __m.uvs[o].vertex;
+                                if (__v >= __vertices) continue;
+                                MorphTarget &__t = morph_targets[__fill[__v]++];
+                                __t.morph  = (uint32_t)i;
+                                __t.vertex = __v;
+                                __t.uv     = { __m.uvs[o].uv.x, __m.uvs[o].uv.y };
+                            }
+                        for (size_t o = 0u; o < __m.bones.size(); ++o) {
+                            if (__m.bones[o].bone < 0 || (size_t)__m.bones[o].bone >= pmx.bones.size()) continue;
+                            MorphBoneOffset __offset;
+                            __offset.bone        = bone_map[__m.bones[o].bone];
+                            __offset.translation = toVec3(__m.bones[o].translation);
+                            __offset.rotation    = __m.bones[o].rotation;
+                            __morph.bones.push_back(__offset);
+                        }
+                        if (__m.type == PMX::MORPH_GROUP)
+                            for (size_t o = 0u; o < __m.group.size(); ++o) {
+                                if (__m.group[o].morph < 0 || (size_t)__m.group[o].morph >= pmx.morphs.size()) continue;
+                                MorphGroupEntry __entry;
+                                __entry.morph  = (uint32_t)__m.group[o].morph;
+                                __entry.weight = __m.group[o].weight;
+                                __morph.group.push_back(__entry);
+                            }
+                        _skeleton.morphs.push_back(__morph);
+                    }
                 }
 
                 // The vertices of one material (only the ones its faces use)
@@ -181,6 +249,12 @@ namespace Simple {
                                 __has_sdef = true;
                             }
                             __mesh.sdef.push_back(__sdef);
+
+                            for (uint32_t t = morph_first[__v]; t < morph_first[__v + 1u]; ++t) {
+                                MorphTarget __target = morph_targets[t];
+                                __target.vertex = _remap[__v];
+                                __mesh.morphs.push_back(__target);
+                            }
                         }
                         __mesh.indices.push_back(_remap[__v]);
                     }

@@ -2241,7 +2241,7 @@ namespace Simple {
             // Sequential reading of the PMX fields; any failure (a cut file) leaves 'ok' false
             struct PMXStream {
                 FileReader &file;
-                uint8_t     encoding = 0u, vertex_index = 4u, texture_index = 4u, material_index = 4u, bone_index = 4u;
+                uint8_t     encoding = 0u, vertex_index = 4u, texture_index = 4u, material_index = 4u, bone_index = 4u, morph_index = 4u, rigid_index = 4u;
                 bool        ok = true;
 
                 explicit PMXStream(FileReader &_file) : file(_file) {}
@@ -2289,6 +2289,12 @@ namespace Simple {
             return -1;
         }
 
+        int32_t ContentPMX::findMorph(const std::string &_name) const {
+            for (size_t i = 0u; i < morphs.size(); ++i)
+                if (morphs[i].name == _name) return (int32_t)i;
+            return -1;
+        }
+
         ReaderWriterPMX::ReaderWriterPMX(const std::string &_fpath) { if (!_fpath.empty()) read(_fpath); }
 
         bool ReaderWriterPMX::tryHeaders(ReaderItf &_ftype_file) {
@@ -2325,6 +2331,8 @@ namespace Simple {
             __in.texture_index = __globals[3];
             __in.material_index = __globals[4];
             __in.bone_index    = __globals[5];
+            __in.morph_index   = __globals[6];
+            __in.rigid_index   = __globals[7];
             __c.name       = __in.text();
             __c.name_en    = __in.text();
             __c.comment    = __in.text();
@@ -2441,6 +2449,84 @@ namespace Simple {
                 }
             }
             SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "' is cut off\n", return false);
+
+        // Morphs
+            __count = __in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad morph count\n", return false);
+            __c.morphs.resize((size_t)__count);
+            for (size_t i = 0u; i < __c.morphs.size() && __in.ok; ++i) {
+                ContentPMX::Morph &__m = __c.morphs[i];
+                __m.name    = __in.text();
+                __m.name_en = __in.text();
+                __m.panel   = __in.get<uint8_t>();
+                __m.type    = (ContentPMX::MorphType)__in.get<uint8_t>();
+                const int32_t __offsets = __in.get<int32_t>();
+                if (!__in.ok || __offsets < 0 || __offsets > (1 << 24)) { __in.ok = false; break; }
+                switch (__m.type) {
+                    case ContentPMX::MORPH_GROUP:
+                    case ContentPMX::MORPH_FLIP: {
+                        __m.group.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::GroupOffset &__o : __m.group) {
+                            __o.morph  = __in.index(__in.morph_index);
+                            __o.weight = __in.get<float>();
+                        }
+                    } break;
+                    case ContentPMX::MORPH_VERTEX: {
+                        __m.vertices.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::VertexOffset &__o : __m.vertices) {
+                            __o.vertex   = __in.vertexIndex();
+                            __o.position = __in.vec3();
+                        }
+                    } break;
+                    case ContentPMX::MORPH_BONE: {
+                        __m.bones.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::BoneOffset &__o : __m.bones) {
+                            __o.bone        = __in.index(__in.bone_index);
+                            __o.translation = __in.vec3();
+                            const vec4f __q = __in.vec4(); // x, y, z, w in the file
+                            __o.rotation    = Affine::Rotation::Quaternion(__q.w, __q.x, __q.y, __q.z);
+                        }
+                    } break;
+                    case ContentPMX::MORPH_UV:
+                    case ContentPMX::MORPH_UV1:
+                    case ContentPMX::MORPH_UV2:
+                    case ContentPMX::MORPH_UV3:
+                    case ContentPMX::MORPH_UV4: {
+                        __m.uvs.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::UVOffset &__o : __m.uvs) {
+                            __o.vertex = __in.vertexIndex();
+                            __o.uv     = __in.vec4();
+                        }
+                    } break;
+                    case ContentPMX::MORPH_MATERIAL: {
+                        __m.materials.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::MaterialOffset &__o : __m.materials) {
+                            __o.material       = __in.index(__in.material_index);
+                            __o.operation      = __in.get<uint8_t>();
+                            __o.diffuse        = __in.vec4();
+                            __o.specular       = __in.vec3();
+                            __o.specular_power = __in.get<float>();
+                            __o.ambient        = __in.vec3();
+                            __o.edge_color     = __in.vec4();
+                            __o.edge_size      = __in.get<float>();
+                            __o.texture_tint   = __in.vec4();
+                            __o.sphere_tint    = __in.vec4();
+                            __o.toon_tint      = __in.vec4();
+                        }
+                    } break;
+                    case ContentPMX::MORPH_IMPULSE: {
+                        __m.impulses.resize((size_t)__offsets);
+                        for (ContentPMX::Morph::ImpulseOffset &__o : __m.impulses) {
+                            __o.rigid_body = __in.index(__in.rigid_index);
+                            __o.local      = __in.get<uint8_t>() != 0u;
+                            __o.velocity   = __in.vec3();
+                            __o.torque     = __in.vec3();
+                        }
+                    } break;
+                    default: __in.ok = false; // unknown type: the size of its offsets is unknown
+                }
+            }
+            SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "': bad morphs\n", return false);
             return true;
         }
 

@@ -195,6 +195,12 @@ namespace Simple {
             return SCENE_NONE;
         }
 
+        uint32_t Skeleton::findMorph(const std::string &_name) const {
+            for (size_t i = 0u; i < morphs.size(); ++i)
+                if (morphs[i].name == _name) return (uint32_t)i;
+            return SCENE_NONE;
+        }
+
         uint32_t Skeleton::addIK(const IKChain &_ik) {
             SVKFW_ASSERT(_ik.goal < bones.size() && _ik.effector < bones.size(), std::out_of_range, "SceneGraph::Skeleton :: addIK",
                             "bad goal or effector bone in '" + _ik.name + "'");
@@ -284,14 +290,17 @@ namespace Simple {
             grant_translation.assign(__count, vec3{0.f, 0.f, 0.f});
             ik_enabled.resize(_skeleton.iks.size());
             for (size_t i = 0u; i < _skeleton.iks.size(); ++i) ik_enabled[i] = _skeleton.iks[i].enabled ? 1u : 0u;
+            morph_weights.assign(_skeleton.morphs.size(), 0.f);
+            morph_final.assign(_skeleton.morphs.size(), 0.f);
+            morphed = local;
             model.resize(__count, Mat::Eye4);
             skinning.resize(__count, Mat::Eye4);
             dirty = true;
         }
 
         mat4 Pose::localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const {
-            TRS __trs = local[_bone];
-            __trs.rotation    = ik_rotation[_bone] * local[_bone].rotation * grant_rotation[_bone];
+            TRS __trs = morphed[_bone];
+            __trs.rotation    = ik_rotation[_bone] * morphed[_bone].rotation * grant_rotation[_bone];
             __trs.translation = __trs.translation + grant_translation[_bone];
             const uint32_t __parent = _skeleton.bones[_bone].parent;
             return __parent == SCENE_NONE ? __trs.matrix() : __trs.matrix() & model[__parent];
@@ -314,25 +323,25 @@ namespace Simple {
             const Bone &__source = _skeleton.bones[g];
             // Note: a grant of a granted bone takes its grant only (MMD), otherwise the animated rotation with the IK
             if (__bone.grant_rotation) {
-                Quat __rotation = __source.grant_rotation ? grant_rotation[g] : local[g].rotation * __source.rest.rotation.inverse();
+                Quat __rotation = __source.grant_rotation ? grant_rotation[g] : morphed[g].rotation * __source.rest.rotation.inverse();
                 __rotation = ik_rotation[g] * __rotation;
                 grant_rotation[_bone] = scaleRotation(__rotation, __bone.grant_ratio);
             }
             if (__bone.grant_translation) {
-                const vec3 __translation = __source.grant_translation ? grant_translation[g] : local[g].translation - __source.rest.translation;
+                const vec3 __translation = __source.grant_translation ? grant_translation[g] : morphed[g].translation - __source.rest.translation;
                 grant_translation[_bone] = __translation * __bone.grant_ratio;
             }
         }
 
         void Pose::rotateLink_(const Skeleton &_skeleton, uint32_t _bone, const vec3 &_axis, float _angle) {
-            const Quat __animated = local[_bone].rotation;
+            const Quat __animated = morphed[_bone].rotation;
             const Quat __total = ik_rotation[_bone] * __animated * Quat(_axis, _angle);
             ik_rotation[_bone] = (__total * __animated.inverse()).normalize();
             updateModel_(_skeleton, _bone);
         }
 
         void Pose::limitLink_(const Skeleton &_skeleton, const IKLink &_link, float _limit_angle, vec3 &_previous) {
-            const Quat __animated = local[_link.bone].rotation;
+            const Quat __animated = morphed[_link.bone].rotation;
             const Quat __total = ik_rotation[_link.bone] * __animated;
             vec3 __angles = eulerXYZ(__total, _previous);
             __angles = { clampf(__angles.x, _link.limit_min.x, _link.limit_max.x),
@@ -390,7 +399,7 @@ namespace Simple {
                         }
                         __new = clampf(__new, __min, __max);
                         __plane_angle[l] = __new;
-                        ik_rotation[__link.bone] = (Quat(__a, __new) * local[__link.bone].rotation.inverse()).normalize();
+                        ik_rotation[__link.bone] = (Quat(__a, __new) * morphed[__link.bone].rotation.inverse()).normalize();
                         updateModel_(_skeleton, __link.bone);
                         continue;
                     }
@@ -448,9 +457,37 @@ namespace Simple {
             rotateLink_(_skeleton, __root, __axis.normalize(), std::acos(clampf(Math::dot(__to_effector, __to_goal), -1.f, 1.f)));
         }
 
+        void Pose::addMorph_(const Skeleton &_skeleton, uint32_t _morph, float _weight, uint32_t _depth) {
+            if (_morph >= _skeleton.morphs.size() || _weight == 0.f) return;
+            const Morph &__morph = _skeleton.morphs[_morph];
+            if (__morph.type != SCENE_MORPH_GROUP) { morph_final[_morph] += _weight; return; }
+            if (_depth >= 4u) return; // MMD has no nested groups; guards against loops
+            for (size_t i = 0u; i < __morph.group.size(); ++i)
+                addMorph_(_skeleton, __morph.group[i].morph, _weight * __morph.group[i].weight, _depth + 1u);
+        }
+
+        void Pose::applyMorphs_(const Skeleton &_skeleton) {
+            morph_final.assign(_skeleton.morphs.size(), 0.f);
+            for (uint32_t i = 0u; i < (uint32_t)morph_weights.size(); ++i) addMorph_(_skeleton, i, morph_weights[i], 0u);
+            morphed = local;
+            for (size_t i = 0u; i < morph_final.size(); ++i) {
+                const float __w = morph_final[i];
+                if (__w == 0.f || _skeleton.morphs[i].type != SCENE_MORPH_BONE) continue;
+                const std::vector<MorphBoneOffset> &__bones = _skeleton.morphs[i].bones;
+                for (size_t b = 0u; b < __bones.size(); ++b) {
+                    if (__bones[b].bone >= morphed.size()) continue;
+                    TRS &__trs = morphed[__bones[b].bone];
+                    __trs.translation = __trs.translation + __bones[b].translation * __w;
+                    __trs.rotation    = __trs.rotation * scaleRotation(__bones[b].rotation, __w);
+                }
+            }
+        }
+
         void Pose::computeFK(const Skeleton &_skeleton) {
             const size_t __count = _skeleton.bones.size();
-            if (local.size() != __count || ik_rotation.size() != __count || ik_enabled.size() != _skeleton.iks.size()) reset(_skeleton);
+            if (local.size() != __count || ik_rotation.size() != __count || ik_enabled.size() != _skeleton.iks.size() ||
+                morph_weights.size() != _skeleton.morphs.size()) reset(_skeleton);
+            applyMorphs_(_skeleton);
             model.resize(__count);
             skinning.resize(__count);
             ik_rotation.assign(__count, Quat());

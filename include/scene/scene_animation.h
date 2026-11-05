@@ -63,12 +63,24 @@ namespace Simple {
             std::vector<IKKey> keys;  // sorted by frame
         }; // IKTrack END
 
+        // Note: morph weights are interpolated linearly (MMD)
+        struct MorphKey {
+            float frame  = 0.f;
+            float weight = 0.f;
+        }; // MorphKey END
+
+        struct MorphTrack {
+            std::string           morph;
+            std::vector<MorphKey> keys;  // sorted by frame
+        }; // MorphTrack END
+
         struct AnimationClip {
             std::string            name;
             float                  frames_per_second = 30.f; // MMD
             float                  length = 0.f;             // the last key frame
             std::vector<BoneTrack> bones;
             std::vector<IKTrack>   iks;
+            std::vector<MorphTrack> morphs;
 
             // Sorts the keys of all tracks and updates 'length' (after filling the tracks by hand)
             void finalize();
@@ -78,19 +90,20 @@ namespace Simple {
         struct AnimationBinding {
             std::vector<uint32_t> bones;
             std::vector<uint32_t> iks;
-            uint32_t              missing_bones = 0u, missing_iks = 0u;
+            std::vector<uint32_t> morphs;
+            uint32_t              missing_bones = 0u, missing_iks = 0u, missing_morphs = 0u;
         }; // AnimationBinding END
 
-        // Resolves the tracks by name; with '_warn' prints the missing bones and IK chains (one warning each)
+        // Resolves the tracks by name; with '_warn' prints the missing bones, IK chains and morphs (one warning each)
         AnimationBinding bindAnimation(const AnimationClip &_clip, const Skeleton &_skeleton, bool _warn = true);
 
-        // Sets the local transforms of the bound bones and the IK switches at '_frame' (clamped to [0, length]);
-        // the other bones keep their pose. Marks the pose dirty
+        // Sets the local transforms of the bound bones, the IK switches and the morph weights at '_frame' (clamped to
+        // [0, length]); the other bones and morphs keep their pose. Marks the pose dirty
         void applyAnimation(const AnimationClip &_clip, const AnimationBinding &_binding, const Skeleton &_skeleton,
                             float _frame, Pose &_pose);
 
-        // Bone and IK tracks of an MMD motion (VMD); names are converted from Shift-JIS to UTF-8.
-        // Morph, camera and light keys are not converted yet. Asserts (std::runtime_error) if the file can't be read
+        // Bone, morph and IK tracks of an MMD motion (VMD); names are converted from Shift-JIS to UTF-8.
+        // Camera and light keys are not converted yet. Asserts (std::runtime_error) if the file can't be read
         AnimationClip loadVMD(const std::string &_path);
     }; // SceneGraph END
 }; // Simple END

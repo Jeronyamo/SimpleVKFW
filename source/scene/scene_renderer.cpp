@@ -37,6 +37,12 @@ namespace Simple {
         }
 
 
+        namespace {
+            bool hasPosition(const MorphTarget &_t) { return _t.position.x != 0.f || _t.position.y != 0.f || _t.position.z != 0.f; }
+            bool hasUV      (const MorphTarget &_t) { return _t.uv.x != 0.f || _t.uv.y != 0.f; }
+            uint32_t morphDeltaCount(const MorphTarget &_t) { return (hasPosition(_t) ? 1u : 0u) + (hasUV(_t) ? 1u : 0u); }
+        } // anonymous
+
 //  == === ==== >  Upload
 
         void SceneRenderer::upload(const Scene &_scene, const UploadInfo &_info) {
@@ -60,13 +66,60 @@ namespace Simple {
                     __skin_count += __mesh.skin.size();
                 }
             }
+            // Skin vertices with their morph ranges, the morph offsets grouped by vertex
+            std::vector<SkinVertexGPU> __skin_vertices(__skin_count);
+            std::vector<MorphDeltaGPU> __morph_deltas;
+            for (size_t i = 0u; i < _scene.meshes.size(); ++i) {
+                const Mesh &__mesh = _scene.meshes[i];
+                if (mesh_ranges[i].skin_offset == SCENE_NONE) continue;
+                SkinVertexGPU *__dst_vertices = &__skin_vertices[mesh_ranges[i].skin_offset];
+                for (size_t v = 0u; v < __mesh.skin.size(); ++v) {
+                    const SkinVertex &__src = __mesh.skin[v];
+                    SkinVertexGPU &__dst = __dst_vertices[v];
+                    for (int b = 0; b < 4; ++b) __dst.bones[b] = __src.bones[b];
+                    __dst.weights     = __src.weights;
+                    __dst.mode        = __src.mode;
+                    __dst.morph_first = 0u;
+                    __dst.morph_count = 0u;
+                }
+                for (size_t t = 0u; t < __mesh.morphs.size(); ++t)
+                    if (__mesh.morphs[t].vertex < __mesh.skin.size())
+                        __dst_vertices[__mesh.morphs[t].vertex].morph_count += morphDeltaCount(__mesh.morphs[t]);
+                std::vector<uint32_t> __fill(__mesh.skin.size());
+                for (size_t v = 0u; v < __mesh.skin.size(); ++v) {
+                    __dst_vertices[v].morph_first = (uint32_t)__morph_deltas.size();
+                    __fill[v] = __dst_vertices[v].morph_first;
+                    __morph_deltas.resize(__morph_deltas.size() + __dst_vertices[v].morph_count);
+                }
+                for (size_t t = 0u; t < __mesh.morphs.size(); ++t) {
+                    const MorphTarget &__target = __mesh.morphs[t];
+                    if (__target.vertex >= __mesh.skin.size()) continue;
+                    // A position offset and / or a UV offset
+                    if (hasPosition(__target)) {
+                        MorphDeltaGPU &__delta = __morph_deltas[__fill[__target.vertex]++];
+                        __delta.offset[0] = __target.position.x;
+                        __delta.offset[1] = __target.position.y;
+                        __delta.offset[2] = __target.position.z;
+                        __delta.morph     = __target.morph & ~MORPH_UV_BIT;
+                    }
+                    if (hasUV(__target)) {
+                        MorphDeltaGPU &__delta = __morph_deltas[__fill[__target.vertex]++];
+                        __delta.offset[0] = __target.uv.x;
+                        __delta.offset[1] = __target.uv.y;
+                        __delta.offset[2] = 0.f;
+                        __delta.morph     = (__target.morph & ~MORPH_UV_BIT) | MORPH_UV_BIT;
+                    }
+                }
+            }
             const VkBufferUsageFlags __dst = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             const QueueFamilyId __families[] = { _info.family };
             vertex_buffer = createBuffer(cxt, std::max<size_t>(__vertex_count, 1u) * sizeof(Vertex), __dst | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, __families);
             index_buffer  = createBuffer(cxt, std::max<size_t>(__index_count, 1u) * sizeof(uint32_t), __dst | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, __families);
-            skin_buffer   = createBuffer(cxt, std::max<size_t>(__skin_count, 1u) * sizeof(SkinVertex), __dst | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            skin_buffer   = createBuffer(cxt, std::max<size_t>(__skin_count, 1u) * sizeof(SkinVertexGPU), __dst | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, __families);
+            morph_buffer  = createBuffer(cxt, std::max<size_t>(__morph_deltas.size(), 1u) * sizeof(MorphDeltaGPU), __dst | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, __families);
 
         // Materials: one uniform block each (aligned for the descriptor offsets), the last one is the default material
@@ -96,11 +149,26 @@ namespace Simple {
                 __joint_count += (uint32_t)_scene.skeletons[_scene.skins[i].skeleton].bones.size();
             }
             const VkDeviceSize __joint_size = std::max<VkDeviceSize>(__joint_count, 1u) * sizeof(JointGPU);
+            uint32_t __skin_data_count = 4u * (uint32_t)_scene.skins.size();
+            morph_offsets.resize(_scene.skins.size());
+            for (size_t i = 0u; i < _scene.skins.size(); ++i) {
+                morph_offsets[i] = __skin_data_count;
+                __skin_data_count += (uint32_t)_scene.skeletons[_scene.skins[i].skeleton].morphs.size();
+            }
+            skin_data.assign(__skin_data_count, 0u);
+            for (size_t i = 0u; i < _scene.skins.size(); ++i) {
+                skin_data[4u * i]      = joint_offsets[i];
+                skin_data[4u * i + 1u] = morph_offsets[i];
+            }
+            const VkDeviceSize __skin_data_size = std::max<VkDeviceSize>(__skin_data_count, 1u) * sizeof(uint32_t);
             for (uint32_t i = 0u; i < _info.frames_in_flight; ++i) {
                 frame_buffers.push_back(createBuffer(cxt, sizeof(FrameGPU), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, __families));
                 joint_buffers.push_back(createBuffer(cxt, __joint_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, __families));
+                skin_data_buffers.push_back(createBuffer(cxt, __skin_data_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, __families));
+                if (!skin_data.empty()) skin_data_buffers.back().write(skin_data.data(), skin_data.size() * sizeof(uint32_t));
             }
 
         // Textures: one memory chunk, all mip levels; then the defaults
@@ -135,13 +203,15 @@ namespace Simple {
                     if (!__mesh.vertices.empty())
                         __upload.copyToBuffer(vertex_buffer.buffer_id, __mesh.vertices.data(), __mesh.vertices.size() * sizeof(Vertex),
                                               (VkDeviceSize)mesh_ranges[i].vertex_offset * sizeof(Vertex));
-                    if (mesh_ranges[i].skin_offset != SCENE_NONE)
-                        __upload.copyToBuffer(skin_buffer.buffer_id, __mesh.skin.data(), __mesh.skin.size() * sizeof(SkinVertex),
-                                              (VkDeviceSize)mesh_ranges[i].skin_offset * sizeof(SkinVertex));
+
                     if (!__mesh.indices.empty())
                         __upload.copyToBuffer(index_buffer.buffer_id, __mesh.indices.data(), __mesh.indices.size() * sizeof(uint32_t),
                                               (VkDeviceSize)mesh_ranges[i].first_index * sizeof(uint32_t));
                 }
+                if (!__skin_vertices.empty())
+                    __upload.copyToBuffer(skin_buffer.buffer_id, __skin_vertices.data(), __skin_vertices.size() * sizeof(SkinVertexGPU));
+                if (!__morph_deltas.empty())
+                    __upload.copyToBuffer(morph_buffer.buffer_id, __morph_deltas.data(), __morph_deltas.size() * sizeof(MorphDeltaGPU));
                 __upload.copyToBuffer(material_buffer.buffer_id, __material_data.data(), __material_data.size());
                 for (size_t i = 0u; i < _scene.textures.size(); ++i) {
                     const Img::Image4u &__img = _scene.textures[i].image;
@@ -178,12 +248,15 @@ namespace Simple {
             cxt.cxt_descriptor.sampler(sampler).create_info.setWholeStruct(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, _info.max_anisotropy);
             cxt.cxt_descriptor.createSampler(sampler);
 
-        // Descriptors: set 0 = frame (camera, lights; skinning matrices), set 1 = material (parameters, base color, normal, emissive)
+        // Descriptors: set 0 = frame (camera, lights; skinning matrices, skin data, morph offsets), set 1 = material (parameters, base color, normal, emissive)
             frame_layout = cxt.cxt_descriptor.addLayout();
             cxt.cxt_descriptor.layoutBinding(cxt.cxt_descriptor.addSctLayoutBinding(frame_layout))
                 .setWholeStruct(0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
             cxt.cxt_descriptor.layoutBinding(cxt.cxt_descriptor.addSctLayoutBinding(frame_layout))
                 .setWholeStruct(1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT);
+            for (uint32_t b = 2u; b <= 3u; ++b) // skin data, morph offsets
+                cxt.cxt_descriptor.layoutBinding(cxt.cxt_descriptor.addSctLayoutBinding(frame_layout))
+                    .setWholeStruct(b, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT);
             cxt.cxt_descriptor.createLayout(frame_layout);
 
             material_layout = cxt.cxt_descriptor.addLayout();
@@ -201,7 +274,7 @@ namespace Simple {
                 __pool_obj.create_info.edit().flags   = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT; // 'destroy' frees the sets
                 __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _info.frames_in_flight + __material_count);
                 __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3u * __material_count);
-                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _info.frames_in_flight);
+                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3u * _info.frames_in_flight);
             }
             cxt.cxt_descriptor.createPool(descriptor_pool);
 
@@ -220,6 +293,12 @@ namespace Simple {
                 __writes.push_back(Struct::StructWrap<VkWriteDescriptorSet>());
                 __writes.back().addBufferInfo(joint_buffers[i].handle(), 0u, __joint_size);
                 __writes.back().setScalars(cxt.get(DescriptorSetId(frame_sets, i)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u);
+                __writes.push_back(Struct::StructWrap<VkWriteDescriptorSet>());
+                __writes.back().addBufferInfo(skin_data_buffers[i].handle(), 0u, __skin_data_size);
+                __writes.back().setScalars(cxt.get(DescriptorSetId(frame_sets, i)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2u);
+                __writes.push_back(Struct::StructWrap<VkWriteDescriptorSet>());
+                __writes.back().addBufferInfo(morph_buffer.handle(), 0u, std::max<size_t>(__morph_deltas.size(), 1u) * sizeof(MorphDeltaGPU));
+                __writes.back().setScalars(cxt.get(DescriptorSetId(frame_sets, i)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3u);
             }
             const VkSampler __sampler = cxt.get(sampler);
             for (uint32_t i = 0u; i < __material_count; ++i) {
@@ -271,10 +350,11 @@ namespace Simple {
             Graph::GraphicsPipelineDesc __skinned_desc = __desc;
             __skinned_desc.stages.clear();
             __skinned_desc.shader(VK_SHADER_STAGE_VERTEX_BIT, skinned_vertex_shader).shader(VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader);
-            __skinned_desc.vertexBinding(1u, sizeof(SkinVertex))
-                          .vertexAttribute(4u, 1u, VK_FORMAT_R16G16B16A16_UINT,   offsetof(SkinVertex, bones))
-                          .vertexAttribute(5u, 1u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinVertex, weights))
-                          .vertexAttribute(6u, 1u, VK_FORMAT_R32_UINT,            offsetof(SkinVertex, mode));
+            __skinned_desc.vertexBinding(1u, sizeof(SkinVertexGPU))
+                          .vertexAttribute(4u, 1u, VK_FORMAT_R16G16B16A16_UINT,   offsetof(SkinVertexGPU, bones))
+                          .vertexAttribute(5u, 1u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinVertexGPU, weights))
+                          .vertexAttribute(6u, 1u, VK_FORMAT_R32_UINT,            offsetof(SkinVertexGPU, mode))
+                          .vertexAttribute(7u, 1u, VK_FORMAT_R32G32_UINT,         offsetof(SkinVertexGPU, morph_first));
             // All variants: opaque / blended, culled / two-sided, with / without depth writes (blended only), rigid / skinned
             for (uint32_t __key = 0u; __key < 16u; ++__key) {
                 const bool __blend = (__key & 1u) != 0u, __cull = (__key & 2u) != 0u, __depth_write = (__key & 4u) != 0u;
@@ -342,6 +422,16 @@ namespace Simple {
                 }
                 joint_buffers[_frame].write(joint_data.data(), __bones * sizeof(JointGPU), (VkDeviceSize)joint_offsets[i] * sizeof(JointGPU));
             }
+            // Morph weights (after the joint and morph offsets of the skins)
+            for (size_t i = 0u; i < morph_offsets.size() && i < __scene.skins.size(); ++i) {
+                const std::vector<float> &__weights = __scene.skins[i].pose.morph_final;
+                const size_t __morphs = __scene.skeletons[__scene.skins[i].skeleton].morphs.size();
+                for (size_t m = 0u; m < __morphs; ++m) {
+                    const float __w = m < __weights.size() ? __weights[m] : 0.f;
+                    std::memcpy(&skin_data[morph_offsets[i] + m], &__w, sizeof(float));
+                }
+            }
+            if (!skin_data.empty()) skin_data_buffers[_frame].write(skin_data.data(), skin_data.size() * sizeof(uint32_t));
 
         // Draw lists
             opaque_draws.clear();
@@ -403,13 +493,13 @@ namespace Simple {
             _rec.pushConstants(pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(__push), &__push);
             const MeshRange &__range = mesh_ranges[_draw.mesh];
             if (__skin != SCENE_NONE) {
-                // Both vertex buffers start at the mesh (one vertex offset can't serve both); the first instance selects the matrices
+                // Both vertex buffers start at the mesh (one vertex offset can't serve both); the first instance is the skin
                 const BufferId     __buffers[] = { vertex_buffer.buffer_id, skin_buffer.buffer_id };
                 const VkDeviceSize __offsets[] = { (VkDeviceSize)__range.vertex_offset * sizeof(Vertex),
-                                                   (VkDeviceSize)__range.skin_offset * sizeof(SkinVertex) };
+                                                   (VkDeviceSize)__range.skin_offset * sizeof(SkinVertexGPU) };
                 _rec.bindVertexBuffers(__buffers, __offsets);
                 _offset_bound = true;
-                _rec.drawIndexed(__range.index_count, 1u, 0, __range.first_index, joint_offsets[__skin]);
+                _rec.drawIndexed(__range.index_count, 1u, 0, __range.first_index, __skin);
             } else {
                 if (_offset_bound) {
                     const BufferId __vertex[] = { vertex_buffer.buffer_id };
@@ -460,7 +550,12 @@ namespace Simple {
             for (size_t i = 0u; i < joint_buffers.size(); ++i) joint_buffers[i].destroy();
             joint_buffers.clear();
             joint_offsets.clear();
+            for (size_t i = 0u; i < skin_data_buffers.size(); ++i) skin_data_buffers[i].destroy();
+            skin_data_buffers.clear();
+            morph_offsets.clear();
+            skin_data.clear();
             skin_buffer.destroy();
+            morph_buffer.destroy();
             vertex_buffer.destroy();
             index_buffer.destroy();
             material_buffer.destroy();
