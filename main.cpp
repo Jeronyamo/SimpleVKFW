@@ -133,6 +133,10 @@ int main(int argc, char **argv) {
     main_window_handler.insertLayer(0u, &music_studio.keys);
     main_window_handler.imgui_handler.widgets.push_back(&music_studio);
 
+    // Camera settings: "Controls" menu of the main menu bar (movement speed, fovy bounds of the scroll)
+    Simple::WindowInput::CameraSettingsWidget camera_settings{&main_view_centered_proj, &main_view_centered_proj.getClassProj()};
+    main_window_handler.imgui_handler.widgets.push_back(&camera_settings);
+
     // Callbacks
     main_window_handler.setGLFWCallbacks(main_window.window);
 

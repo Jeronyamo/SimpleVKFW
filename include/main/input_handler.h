@@ -139,6 +139,7 @@ namespace Simple {
                 CAMERA_MOVE_LEFT,
                 CAMERA_MOVE_RIGHT,
                 CAMERA_ROTATE, // held: the cursor rotates the camera
+                CAMERA_PAN,    // held: the cursor moves the camera in its screen plane; with CAMERA_ROTATE: along the view direction
                 CAMERA_COUNT
             };
             extern const char *const camera_names[CAMERA_COUNT];
@@ -356,14 +357,33 @@ namespace Simple {
     // Camera-related input handlers
 
         // Movement and rotation actions of the cameras: Actions::Camera
+        // Mouse movement (ViewCentered): 'pan' held - in the plane perpendicular to (look_at - cam_pos),
+        // 'pan' + 'rotate' held - along that vector (the cursor goes up - forward). The cursor offsets are divided by
+        // the framebuffer height, so a drag over the whole height moves the camera by 'move_speed' units
         struct CameraControlsBase : InputHandlerItf {
+            static const float MoveSpeedMin, MoveSpeedMax, MoveSpeedDefault;
+            static const float FovyLimitMin, FovyLimitMax, FovyMinDefault, FovyMaxDefault;
+
             const float rotate_speed = 0.4f; // degrees per pixel
+            float move_speed = MoveSpeedDefault; // units per second (keys) / per framebuffer height (mouse), [MoveSpeedMin, MoveSpeedMax]
+            float fovy_min = FovyMinDefault, fovy_max = FovyMaxDefault; // the scroll changes fovy (degrees) in these bounds
+            bool  invert_pan = false;        // false: the scene follows the cursor (grab), true: the camera does
 
             CameraControlsBase();
 
             // Forward/back and right/left in [-1, 1]
             float moveForward() const;
             float moveRight() const;
+
+            // The camera mode of the cursor: rotation, movement in the screen plane or along the view direction
+            bool cursorRotates() const;
+            bool cursorPans() const;
+            bool cursorDollies() const;
+
+            // fovy changed by a scroll offset and clamped to [fovy_min, fovy_max]
+            float scrollFovy(float _fovy, double _scroll_dy) const;
+            // Keeps 'move_speed' and the fovy bounds valid (after the settings are edited)
+            void clampSettings();
         }; // CameraControlsBase END
 
         template <class P, class V>
@@ -433,6 +453,22 @@ namespace Simple {
         using CameraControlsGeneral = CameraControls<ProjPerspective, ViewGeneral>;
         using CameraControlsOrthoCentered = CameraControls<ProjOrtho, ViewCentered>;
         using CameraControlsCentered = CameraControls<ProjPerspective, ViewCentered>;
+
+
+        // ImGui: the "Controls" menu of the main menu bar with the "Camera" settings window
+        // (movement speed, fovy bounds of the scroll; '_proj' is optional, it shows the current fovy)
+        struct CameraSettingsWidget : ImGUI::WidgetItf {
+            CameraControlsBase *controls = nullptr;
+            ProjPerspective    *proj     = nullptr;
+            bool show_window = false;
+
+            CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj = nullptr);
+
+            bool      begin() override;
+            void        end() override;
+            void     render() override;
+            void renderFull() override;
+        }; // CameraSettingsWidget END
     }; // WindowInput END
 }; // Simple END
 

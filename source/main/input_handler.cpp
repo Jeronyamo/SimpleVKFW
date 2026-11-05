@@ -189,7 +189,7 @@ namespace Simple {
 
         namespace Actions {
             const char *const window_names[WINDOW_COUNT] = { "quit", "toggle_fullscreen", "toggle_true_fullscreen" };
-            const char *const camera_names[CAMERA_COUNT] = { "move_forward", "move_back", "move_left", "move_right", "rotate" };
+            const char *const camera_names[CAMERA_COUNT] = { "move_forward", "move_back", "move_left", "move_right", "rotate", "pan" };
             const char *const screenshot_names[SCREENSHOT_COUNT] = { "screenshot_scene", "screenshot_frame", "screenshot_depth", "screenshot_stencil" };
         }; // Actions END
 
@@ -663,12 +663,35 @@ namespace Simple {
 
     // Cameras
 
+        const float CameraControlsBase::MoveSpeedMin     =   1.f;
+        const float CameraControlsBase::MoveSpeedMax     = 100.f;
+        const float CameraControlsBase::MoveSpeedDefault =  10.f;
+        // Note: fovy must stay in (0, 180), otherwise tan(fovy / 2) in the projection is 0 or infinite
+        const float CameraControlsBase::FovyLimitMin     =   1.f;
+        const float CameraControlsBase::FovyLimitMax     = 170.f;
+        const float CameraControlsBase::FovyMinDefault   =   1.f;
+        const float CameraControlsBase::FovyMaxDefault   =  75.f;
+
         CameraControlsBase::CameraControlsBase() {
             declareActions(Actions::camera_names, Actions::CAMERA_COUNT);
         }
 
         float CameraControlsBase::moveForward() const { return axis(Actions::CAMERA_MOVE_FORWARD, Actions::CAMERA_MOVE_BACK); }
         float CameraControlsBase::moveRight() const { return axis(Actions::CAMERA_MOVE_RIGHT, Actions::CAMERA_MOVE_LEFT); }
+
+        bool CameraControlsBase::cursorRotates() const { return  isDown(Actions::CAMERA_ROTATE) && !isDown(Actions::CAMERA_PAN); }
+        bool CameraControlsBase::cursorPans()    const { return !isDown(Actions::CAMERA_ROTATE) &&  isDown(Actions::CAMERA_PAN); }
+        bool CameraControlsBase::cursorDollies() const { return  isDown(Actions::CAMERA_ROTATE) &&  isDown(Actions::CAMERA_PAN); }
+
+        float CameraControlsBase::scrollFovy(float _fovy, double _scroll_dy) const {
+            return Math::clampCL(_fovy - (float) _scroll_dy, fovy_min, fovy_max);
+        }
+
+        void CameraControlsBase::clampSettings() {
+            move_speed = Math::clampCL(move_speed, MoveSpeedMin, MoveSpeedMax);
+            fovy_min   = Math::clampCL(fovy_min, FovyLimitMin, FovyLimitMax);
+            fovy_max   = Math::clampCL(fovy_max, fovy_min,     FovyLimitMax);
+        }
 
         CameraControls<ProjPerspective, ViewGeneral>::CameraControls(const ProjPerspective &_proj, const ViewGeneral &_view) : camera{_proj, _view} {}
 
@@ -681,7 +704,8 @@ namespace Simple {
             vec3 __front_vec = (camera.view_class.look_at - camera.view_class.cam_pos).normalize();
             vec3 __right_vec = Math::cross(__front_vec, camera.view_class.up_vect);
 
-            const vec3 __offset = (moveForward() * __front_vec * _frame_time + moveRight() * __right_vec * _frame_time).cast<float>();
+            const float __step = move_speed * (float) _frame_time;
+            const vec3 __offset = (moveForward() * __step * __front_vec + moveRight() * __step * __right_vec).cast<float>();
             camera.view_class.cam_pos += __offset;
             camera.view_class.look_at += __offset;
         }
@@ -689,7 +713,7 @@ namespace Simple {
         bool CameraControls<ProjPerspective, ViewGeneral>::onEvent(const InputEvent &_event) {
             switch (_event.type) {
                 case INPUT_EVENT_SCROLL:
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _event.dy, 20.f, 45.f);
+                    camera.proj_class.fovy = scrollFovy(camera.proj_class.fovy, _event.dy);
                     return true;
                 case INPUT_EVENT_FBUFFER_SIZE:
                     if (_event.width > 0 && _event.height > 0) // 0x0 when minimized, the aspect ratio would be NaN
@@ -711,20 +735,52 @@ namespace Simple {
         void CameraControls<ProjPerspective, ViewCentered>::manualFrameUpdate(double _frame_time) {
             vec3f __front_vec = (camera.view_class.look_at - camera.view_class.calcCamPos()).normalize();
             vec3f __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
+            const float __right_len = __right_vec.norm();
+            if (__right_len > 1e-6f) __right_vec = __right_vec / __right_len; // shorter when looking up or down
+            const float __step = move_speed * (float) _frame_time;
 
-            camera.view_class.look_at += moveForward() * __front_vec * _frame_time;
-            camera.view_class.look_at += moveRight()   * __right_vec * _frame_time;
+            camera.view_class.look_at += moveForward() * __step * __front_vec;
+            camera.view_class.look_at += moveRight()   * __step * __right_vec;
         }
 
         bool CameraControls<ProjPerspective, ViewCentered>::onEvent(const InputEvent &_event) {
             switch (_event.type) {
-                case INPUT_EVENT_CURSOR:
-                    if (!isDown(Actions::CAMERA_ROTATE)) return false;
-                    camera.view_class.yaw   += (float) _event.dx * rotate_speed;
-                    camera.view_class.pitch += (float) _event.dy * rotate_speed;
+                case INPUT_EVENT_CURSOR: {
+                    if (cursorRotates()) {
+                        camera.view_class.yaw   += (float) _event.dx * rotate_speed;
+                        camera.view_class.pitch += (float) _event.dy * rotate_speed;
+                        return true;
+                    }
+                    if (!cursorPans() && !cursorDollies()) return false;
+
+                    // Offsets in framebuffer heights, so the speed doesn't depend on the resolution
+                    ViewCentered &__view = camera.view_class;
+                    const float __height = camera.proj_class.fb_now.y > 0.f ? (float) camera.proj_class.fb_now.y : 1.f;
+                    const float __dx = (float) _event.dx / __height * move_speed;
+                    const float __dy = (float) _event.dy / __height * move_speed;
+                    const vec3f __front_vec = (__view.look_at - __view.calcCamPos()).normalize();
+
+                    // Along (look_at - cam_pos): the cursor goes up (dy < 0) - forward
+                    if (cursorDollies()) {
+                        __view.look_at += -__dy * __front_vec;
+                        return true;
+                    }
+
+                    // In the screen plane: right and up of the screen in world space (the up vector flips upside down, as in 'view')
+                    vec3f __right_vec = Math::cross(__view.calcUpVect(), __front_vec);
+                    const float __right_len = __right_vec.norm();
+                    if (__right_len < 1e-6f) return true; // looks exactly along the up vector
+                    __right_vec = __right_vec / __right_len;
+                    const vec3f __screen_up = Math::cross(__front_vec, __right_vec);
+
+                    // Grab: the scene follows the cursor, so the camera moves the other way (the screen y goes down)
+                    const float __sign = invert_pan ? 1.f : -1.f;
+                    __view.look_at += __sign * __dx * __right_vec;
+                    __view.look_at -= __sign * __dy * __screen_up;
                     return true;
+                }
                 case INPUT_EVENT_SCROLL:
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _event.dy, 20.f, 45.f);
+                    camera.proj_class.fovy = scrollFovy(camera.proj_class.fovy, _event.dy);
                     return true;
                 case INPUT_EVENT_FBUFFER_SIZE:
                     if (_event.width > 0 && _event.height > 0) // 0x0 when minimized, the aspect ratio would be NaN
@@ -747,8 +803,9 @@ namespace Simple {
             vec3 __front_vec = (camera.view_class.calcLookAt() - camera.view_class.cam_pos).normalize();
             vec3 __right_vec = Math::cross(camera.view_class.up_vect, __front_vec);
 
-            camera.view_class.cam_pos += moveForward() * __front_vec * _frame_time;
-            camera.view_class.cam_pos += moveRight()   * __right_vec * _frame_time;
+            const float __step = move_speed * (float) _frame_time;
+            camera.view_class.cam_pos += moveForward() * __step * __front_vec;
+            camera.view_class.cam_pos += moveRight()   * __step * __right_vec;
         }
 
         bool CameraControls<ProjPerspective, ViewPOV>::onEvent(const InputEvent &_event) {
@@ -759,7 +816,7 @@ namespace Simple {
                     camera.view_class.pitch -= (float) _event.dy * rotate_speed;
                     return true;
                 case INPUT_EVENT_SCROLL:
-                    camera.proj_class.fovy = Math::clampCL(camera.proj_class.fovy - (float) _event.dy, 20.f, 45.f);
+                    camera.proj_class.fovy = scrollFovy(camera.proj_class.fovy, _event.dy);
                     return true;
                 case INPUT_EVENT_FBUFFER_SIZE:
                     if (_event.width > 0 && _event.height > 0) // 0x0 when minimized, the aspect ratio would be NaN
@@ -768,6 +825,64 @@ namespace Simple {
                 default:
                     return processBinding(_event);
             }
+        }
+
+
+    // CameraSettingsWidget
+
+        CameraSettingsWidget::CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj) : controls{_controls}, proj{_proj} {}
+
+        bool CameraSettingsWidget::begin() { return true; }
+
+        void CameraSettingsWidget::end() {}
+
+        void CameraSettingsWidget::render() {
+            if (ImGui::BeginMainMenuBar()) {
+                if (ImGui::BeginMenu("Controls")) {
+                    ImGui::MenuItem("Camera", nullptr, &show_window);
+                    ImGui::EndMenu();
+                }
+                ImGui::EndMainMenuBar();
+            }
+            if (!show_window || controls == nullptr) return;
+
+            if (!ImGui::Begin("Camera settings", &show_window, ImGuiWindowFlags_AlwaysAutoResize)) { ImGui::End(); return; }
+
+            ImGui::SeparatorText("Movement");
+            ImGui::SliderFloat("Speed", &controls->move_speed, CameraControlsBase::MoveSpeedMin, CameraControlsBase::MoveSpeedMax,
+                               "%.1f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SetItemTooltip("Keys: units per second\nMouse: units per drag over the window height");
+            ImGui::Checkbox("Camera follows the cursor", &controls->invert_pan);
+            ImGui::SetItemTooltip("Off: the scene follows the cursor (grab)");
+
+            ImGui::SeparatorText("Field of view");
+            ImGui::DragFloatRange2("Scroll bounds", &controls->fovy_min, &controls->fovy_max, 0.5f,
+                                   CameraControlsBase::FovyLimitMin, CameraControlsBase::FovyLimitMax,
+                                   "min %.1f", "max %.1f", ImGuiSliderFlags_AlwaysClamp);
+            controls->clampSettings();
+            if (proj != nullptr) {
+                float __fovy = proj->fovy;
+                if (ImGui::SliderFloat("Fovy", &__fovy, controls->fovy_min, controls->fovy_max, "%.1f deg", ImGuiSliderFlags_AlwaysClamp))
+                    proj->fovy = __fovy;
+            }
+
+            if (ImGui::Button("Defaults")) {
+                controls->move_speed = CameraControlsBase::MoveSpeedDefault;
+                controls->fovy_min   = CameraControlsBase::FovyMinDefault;
+                controls->fovy_max   = CameraControlsBase::FovyMaxDefault;
+                controls->invert_pan = false;
+            }
+            if (proj != nullptr) proj->fovy = Math::clampCL(proj->fovy, controls->fovy_min, controls->fovy_max);
+
+            ImGui::SeparatorText("Mouse (default bindings)");
+            ImGui::TextUnformatted("LMB: rotate\nRMB: move in the screen plane\nLMB+RMB: forward/back (cursor up/down)\nScroll: fovy");
+
+            ImGui::End();
+        }
+
+        void CameraSettingsWidget::renderFull() {
+            if (begin()) render();
+            end();
         }
     }; // WindowInput END
 }; // Simple END
