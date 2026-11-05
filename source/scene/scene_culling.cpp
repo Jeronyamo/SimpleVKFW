@@ -398,9 +398,9 @@ namespace Simple {
             for (size_t m = 0u; m < _scene.meshes.size(); ++m) {
                 const Mesh &__mesh = _scene.meshes[m];
                 if (__mesh.skin.size() != __mesh.vertices.size() || __mesh.skin.empty()) continue;
-                std::vector<AABB> __boxes;
+                std::vector<AABB> __bone_boxes;
                 std::vector<uint32_t> __bones;
-                std::vector<uint32_t> __slot; // bone -> index in '__boxes'
+                std::vector<uint32_t> __slot; // bone -> index in '__bone_boxes'
                 // The morphed positions of a vertex extend its box
                 std::vector<uint32_t> __morph_first(__mesh.vertices.size() + 1u, 0u);
                 for (size_t t = 0u; t < __mesh.morphs.size(); ++t)
@@ -425,17 +425,17 @@ namespace Simple {
                         const uint32_t __bone = __skin.bones[b];
                         if (__bone >= __slot.size()) __slot.resize(__bone + 1u, SCENE_NONE);
                         if (__slot[__bone] == SCENE_NONE) {
-                            __slot[__bone] = (uint32_t)__boxes.size();
-                            __boxes.push_back(AABB());
+                            __slot[__bone] = (uint32_t)__bone_boxes.size();
+                            __bone_boxes.push_back(AABB());
                             __bones.push_back(__bone);
                         }
-                        __boxes[__slot[__bone]].add(__vertex);
+                        __bone_boxes[__slot[__bone]].add(__vertex);
                     }
                 }
-                bone_bounds[m].resize(__boxes.size());
-                for (size_t i = 0u; i < __boxes.size(); ++i) {
+                bone_bounds[m].resize(__bone_boxes.size());
+                for (size_t i = 0u; i < __bone_boxes.size(); ++i) {
                     bone_bounds[m][i].bone   = __bones[i];
-                    bone_bounds[m][i].bounds = __boxes[i];
+                    bone_bounds[m][i].bounds = __bone_boxes[i];
                 }
             }
 
