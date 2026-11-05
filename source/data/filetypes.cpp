@@ -806,6 +806,46 @@ namespace Simple {
                 __ftype_file.readBinary(file_content.keyframes_camera[i].fov     );
                 file_content.keyframes_camera[i].perspect = __ftype_file.readBinary<uint8_t>(); // reading 1 byte is super effective, duh
             }
+            // Light keyframes (missing in old files)
+            __keyframes_count = 0u;
+            __ftype_file.readBinary(__keyframes_count);
+            file_content.keyframes_light.resize(__keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                __ftype_file.readBinary(file_content.keyframes_light[i].frame_id);
+                __ftype_file.readBinary(file_content.keyframes_light[i].color);
+                __ftype_file.readBinary(file_content.keyframes_light[i].position);
+            }
+
+            // Self shadow keyframes
+            __keyframes_count = 0u;
+            __ftype_file.readBinary(__keyframes_count);
+            file_content.keyframes_self_shadow.resize(__keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                __ftype_file.readBinary(file_content.keyframes_self_shadow[i].frame_id);
+                file_content.keyframes_self_shadow[i].mode = __ftype_file.readBinary<uint8_t>();
+                __ftype_file.readBinary(file_content.keyframes_self_shadow[i].distance);
+            }
+
+            // Show / IK keyframes
+            const uint32_t __ik_name_len = 20;
+            __keyframes_count = 0u;
+            __ftype_file.readBinary(__keyframes_count);
+            file_content.keyframes_ik.resize(__keyframes_count);
+            printf(SVKFW_WRAPINFO("VMD Reader : IK keyframes total", "%d\n"), __keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                ContentVMD::IKKeyframe &__ik_kframe = file_content.keyframes_ik[i];
+                __ftype_file.readBinary(__ik_kframe.frame_id);
+                __ik_kframe.show = __ftype_file.readBinary<uint8_t>() != 0u;
+                uint32_t __ik_count = 0u;
+                __ftype_file.readBinary(__ik_count);
+                if (!__ftype_file.isValid()) { file_content.keyframes_ik.resize(i); break; }
+                __ik_kframe.iks.resize(__ik_count);
+                for (uint32_t j = 0u; j < __ik_count; ++j) {
+                    memset(__ik_kframe.iks[j].ik_name, 0, sizeof(__ik_kframe.iks[j].ik_name));
+                    __ftype_file.read(__ik_kframe.iks[j].ik_name, __ik_name_len);
+                    __ik_kframe.iks[j].enabled = __ftype_file.readBinary<uint8_t>() != 0u;
+                }
+            }
             printf(SVKFW_WRAPINFO("VMD Reader : Read", "Read END\n"));
             return __ftype_file.isValid() || __ftype_file.isEOF();
         }
@@ -865,6 +905,39 @@ namespace Simple {
                 __ftype_file.writeBinaryArray(file_content.keyframes_camera[i].int_info, __camera_interp_info_len);
                 __ftype_file.writeBinary(file_content.keyframes_camera[i].fov     );
                 __ftype_file.writeBinary((uint8_t)file_content.keyframes_camera[i].perspect);
+            }
+
+            // Light keyframes
+            __keyframes_count = file_content.keyframes_light.size();
+            __ftype_file.writeBinary(__keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                __ftype_file.writeBinary(file_content.keyframes_light[i].frame_id);
+                __ftype_file.writeBinary(file_content.keyframes_light[i].color);
+                __ftype_file.writeBinary(file_content.keyframes_light[i].position);
+            }
+
+            // Self shadow keyframes
+            __keyframes_count = file_content.keyframes_self_shadow.size();
+            __ftype_file.writeBinary(__keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                __ftype_file.writeBinary(file_content.keyframes_self_shadow[i].frame_id);
+                __ftype_file.writeBinary((uint8_t)file_content.keyframes_self_shadow[i].mode);
+                __ftype_file.writeBinary(file_content.keyframes_self_shadow[i].distance);
+            }
+
+            // Show / IK keyframes
+            const uint32_t __ik_name_len = 20;
+            __keyframes_count = file_content.keyframes_ik.size();
+            __ftype_file.writeBinary(__keyframes_count);
+            for (uint32_t i = 0u; i < __keyframes_count; ++i) {
+                const ContentVMD::IKKeyframe &__ik_kframe = file_content.keyframes_ik[i];
+                __ftype_file.writeBinary(__ik_kframe.frame_id);
+                __ftype_file.writeBinary((uint8_t)(__ik_kframe.show ? 1u : 0u));
+                __ftype_file.writeBinary((uint32_t)__ik_kframe.iks.size());
+                for (const ContentVMD::IKKeyframe::IKState &__ik : __ik_kframe.iks) {
+                    __ftype_file.write(__ik.ik_name, __ik_name_len);
+                    __ftype_file.writeBinary((uint8_t)(__ik.enabled ? 1u : 0u));
+                }
             }
             return __ftype_file.isValid();
         }

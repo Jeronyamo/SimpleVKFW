@@ -10,6 +10,7 @@
 #include "interface/imgui_wrap.h"
 #include "scene/scene_graph.h"
 #include "scene/scene_pmx.h"
+#include "scene/scene_animation.h"
 #include "scene/scene_renderer.h"
 
 #include <cmath>
@@ -122,18 +123,23 @@ int main(int argc, char **argv) {
     ubo_camera.view = main_view_centered_proj.getView();
     ubo_camera.proj = main_view_centered_proj.getProj();
 
-    // Skeleton test: the character raises the left arm and waves (forward kinematics on the standard PMX bones)
-    uint32_t chara_skin = SG::SCENE_NONE, arm_bone = SG::SCENE_NONE, elbow_bone = SG::SCENE_NONE;
+    // Animation: an MMD motion (VMD) on the character, looped; bones the model doesn't have are reported and skipped
+    uint32_t              chara_skin = SG::SCENE_NONE;
+    SG::AnimationClip     chara_motion;
+    SG::AnimationBinding  chara_binding;
+    double                motion_time = 0.;
     for (uint32_t i = 0u; i < scene.skins.size(); ++i)
         if (scene.skins[i].node == chara_root) chara_skin = i;
     if (chara_skin != SG::SCENE_NONE) {
-        const SG::Skeleton &__skeleton = scene.skeletons[scene.skins[chara_skin].skeleton];
-        arm_bone   = __skeleton.findBone("\xE5\xB7\xA6\xE8\x85\x95");                 // left arm
-        elbow_bone = __skeleton.findBone("\xE5\xB7\xA6\xE3\x81\xB2\xE3\x81\x98");     // left elbow
-        printf("main: skeleton '%s': %u bones, arm %d, elbow %d\n", __skeleton.name.c_str(), (uint32_t)__skeleton.bones.size(),
-               (int)arm_bone, (int)elbow_bone);
+        try {
+            chara_motion  = SG::loadVMD("resources/assets/anim/IA_Conqueror_full_key_version.vmd");
+            chara_binding = SG::bindAnimation(chara_motion, scene.skeletons[scene.skins[chara_skin].skeleton]);
+            printf("main: motion '%s': %u bone tracks, %u frames\n", chara_motion.name.c_str(), (uint32_t)chara_motion.bones.size(),
+                   (uint32_t)chara_motion.length);
+        } catch (const std::exception &_e) {
+            printf("main: motion: %s\n", _e.what());
+        }
     }
-    double wave_time = 0.;
 
 
 // Input handlers
@@ -625,14 +631,12 @@ int main(int argc, char **argv) {
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
         vk.cxt_memory.writeBuffer(ci_buffer_uniform[current_frame], &ubo_camera, sizeof(ubo_camera));
-        if (arm_bone != SG::SCENE_NONE && elbow_bone != SG::SCENE_NONE) {
-            wave_time += main_window_handler.frame_time;
-            const SG::Skeleton &__skeleton = scene.skeletons[scene.skins[chara_skin].skeleton];
-            SG::Pose &__pose = scene.pose(chara_skin);
-            const float __wave = 0.5f * (float)std::sin(wave_time * 4.);
-            // Note: the arm points along +X; around +Z it goes up, the elbow bends around +Y (towards the front)
-            __pose.local[arm_bone].rotation   = SG::Quat(Simple::vec3{0.f, 0.f, 1.f}, 1.1f) * __skeleton.bones[arm_bone].rest.rotation;
-            __pose.local[elbow_bone].rotation = SG::Quat(Simple::vec3{0.f, 1.f, 0.f}, 0.9f + __wave) * __skeleton.bones[elbow_bone].rest.rotation;
+        if (chara_skin != SG::SCENE_NONE && !chara_motion.bones.empty()) {
+            motion_time += main_window_handler.frame_time;
+            const double __frames = (double)chara_motion.length + 1.;
+            const float  __frame  = (float)std::fmod(motion_time * chara_motion.frames_per_second, __frames);
+            SG::applyAnimation(chara_motion, chara_binding, scene.skeletons[scene.skins[chara_skin].skeleton], __frame,
+                               scene.pose(chara_skin));
             scene.updateSkins();
         }
         scene_renderer.update(current_frame, ubo_camera.view, ubo_camera.proj);

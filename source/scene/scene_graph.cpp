@@ -282,6 +282,8 @@ namespace Simple {
             ik_rotation.assign(__count, Quat());
             grant_rotation.assign(__count, Quat());
             grant_translation.assign(__count, vec3{0.f, 0.f, 0.f});
+            ik_enabled.resize(_skeleton.iks.size());
+            for (size_t i = 0u; i < _skeleton.iks.size(); ++i) ik_enabled[i] = _skeleton.iks[i].enabled ? 1u : 0u;
             model.resize(__count, Mat::Eye4);
             skinning.resize(__count, Mat::Eye4);
             dirty = true;
@@ -448,7 +450,7 @@ namespace Simple {
 
         void Pose::computeFK(const Skeleton &_skeleton) {
             const size_t __count = _skeleton.bones.size();
-            if (local.size() != __count || ik_rotation.size() != __count) reset(_skeleton);
+            if (local.size() != __count || ik_rotation.size() != __count || ik_enabled.size() != _skeleton.iks.size()) reset(_skeleton);
             model.resize(__count);
             skinning.resize(__count);
             ik_rotation.assign(__count, Quat());
@@ -465,7 +467,7 @@ namespace Simple {
                 if (__bone.grant_parent != SCENE_NONE && (__bone.grant_rotation || __bone.grant_translation))
                     applyGrant_(_skeleton, __b);
                 model[__b] = localMatrix_(_skeleton, __b);
-                if (__bone.ik != SCENE_NONE && solve_ik && _skeleton.iks[__bone.ik].enabled) {
+                if (__bone.ik != SCENE_NONE && solve_ik && ik_enabled[__bone.ik]) {
                     const IKChain &__ik = _skeleton.iks[__bone.ik];
                     if (__ik.solver == SCENE_IK_TWO_BONE) solveTwoBone_(_skeleton, __ik);
                     else solveCCD_(_skeleton, __ik);

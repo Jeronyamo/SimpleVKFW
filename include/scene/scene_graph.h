@@ -257,6 +257,7 @@ namespace Simple {
             std::vector<mat4> skinning;
             std::vector<Quat> ik_rotation, grant_rotation; // computed
             std::vector<vec3> grant_translation;           // computed
+            std::vector<uint8_t> ik_enabled;               // per IK chain of the skeleton (animations switch them); from 'IKChain::enabled'
             bool              dirty = true;
             bool              solve_ik = true;
 

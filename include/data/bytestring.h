@@ -6,6 +6,7 @@
 #include <string>
 
 #include "common/terminal.h"
+#include "common/bytes.h"
 
 
 namespace Simple {
@@ -38,8 +39,11 @@ namespace Simple {
             // the first len_char-1 characters (counting multi-byte as 1) are guaranteed to be UTF8-complied
             bool isUTF8(uint32_t *_len_char = nullptr);
 
+            // UTF-16 code units are read/written in the given byte order (little-endian by default, as in PMX, Windows);
+            // a byte order mark at the start overrides it when checking/decoding
+
             // the first len_char-1 characters (counting multi-byte as 1) are guaranteed to be UTF16-complied
-            bool isUTF16(uint32_t *_len_char = nullptr);
+            bool isUTF16(uint32_t *_len_char = nullptr, bool _big_endian = false);
 
             bool isUTF32(uint32_t *_len_char = nullptr);
 
@@ -52,12 +56,12 @@ namespace Simple {
 
             bool decodeUTF8();
 
-            bool decodeUTF16();
+            bool decodeUTF16(bool _big_endian = false);
 
 
         // Encoding
 
-            bool encodeUTF16();
+            bool encodeUTF16(bool _big_endian = false);
 
             // From the decoded form (UTF-32); 'bytestring' gets no terminating zero
             bool encodeUTF8();

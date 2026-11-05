@@ -84,6 +84,29 @@ namespace Simple {
                 // 20-23:    FOV.0x,   FOV.1x,   FOV.0y,   FOV.1y
             };
 
+            struct LightKeyframe {
+                uint32_t frame_id;
+                vec3f    color;
+                vec3f    position;
+            };
+
+            struct SelfShadowKeyframe {
+                uint32_t frame_id;
+                uint32_t mode;     // 1 byte in the file: 0 - off, 1 - mode 1, 2 - mode 2
+                float    distance;
+            };
+
+            // Model visibility and the IK on/off switches from this frame on (IK chains not listed keep their state)
+            struct IKKeyframe {
+                struct IKState {
+                    char ik_name[21]; // Actually 20 + '\0'
+                    bool enabled;
+                };
+                uint32_t frame_id;
+                bool     show;
+                std::vector<IKState> iks;
+            };
+
             struct AttrAdjust {
                 vec4f pos_dist;
                 vec4f rot_fov; // xyz - yaw/pitch/roll, in degrees
@@ -135,6 +158,9 @@ namespace Simple {
             std::vector<BoneKeyframe> keyframes_bone;
             std::vector<MorphKeyframe> keyframes_morph;
             std::vector<CameraKeyframe> keyframes_camera;
+            std::vector<LightKeyframe> keyframes_light;
+            std::vector<SelfShadowKeyframe> keyframes_self_shadow;
+            std::vector<IKKeyframe> keyframes_ik;
 
         // Methods
 
@@ -189,8 +215,9 @@ namespace Simple {
 
             void butterworthLowpass4(std::vector<vec3f> &data, float _freq_sample_hz, float _freq_cutout_hz, bool _is_forward);
 
-            float findU(float _t, float _x1, float _x2);
-            float interpolateForMMD(float _t, vec2f _p1, vec2f _p2);
+            static float findU(float _t, float _x1, float _x2);
+            // MMD Bezier curve through (0,0), _p1, _p2, (1,1) with control points in [0, 127]: the eased value at time _t in [0, 1]
+            static float interpolateForMMD(float _t, vec2f _p1, vec2f _p2);
 
             void reinterpolateBone(const std::string &_raw_bone_name);
             void reinterpolateBones();
