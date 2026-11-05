@@ -1,5 +1,5 @@
-#ifndef SVKFW_ECSBASE_H
-#define SVKFW_ECSBASE_H
+#ifndef SVKFW_ETCS_BASE_H
+#define SVKFW_ETCS_BASE_H
 
 #include <vector>
 #include <unordered_set>
