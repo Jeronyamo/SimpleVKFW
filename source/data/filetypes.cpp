@@ -1,4 +1,5 @@
 #include "data/filetypes.h"
+#include "data/bytestring.h"
 #include <algorithm>
 
 namespace Simple {
@@ -2164,26 +2165,6 @@ namespace Simple {
     // PMX
 
         namespace {
-            // UTF-16LE -> UTF-8 (surrogate pairs included, unpaired ones become U+FFFD)
-            std::string utf16ToUtf8(const std::vector<uint8_t> &_bytes) {
-                std::string __res;
-                const size_t __count = _bytes.size() / 2u;
-                for (size_t i = 0u; i < __count; ++i) {
-                    uint32_t __c = _bytes[2u * i] | (uint32_t(_bytes[2u * i + 1u]) << 8u);
-                    if (__c >= 0xD800u && __c < 0xDC00u && i + 1u < __count) {
-                        uint32_t __low = _bytes[2u * i + 2u] | (uint32_t(_bytes[2u * i + 3u]) << 8u);
-                        if (__low >= 0xDC00u && __low < 0xE000u) { __c = 0x10000u + ((__c - 0xD800u) << 10u) + (__low - 0xDC00u); ++i; }
-                        else __c = 0xFFFDu;
-                    } else if (__c >= 0xD800u && __c < 0xE000u) __c = 0xFFFDu;
-                    if (__c < 0x80u) __res += char(__c);
-                    else if (__c < 0x800u) { __res += char(0xC0u | (__c >> 6u)); __res += char(0x80u | (__c & 0x3Fu)); }
-                    else if (__c < 0x10000u) { __res += char(0xE0u | (__c >> 12u)); __res += char(0x80u | ((__c >> 6u) & 0x3Fu)); __res += char(0x80u | (__c & 0x3Fu)); }
-                    else { __res += char(0xF0u | (__c >> 18u)); __res += char(0x80u | ((__c >> 12u) & 0x3Fu));
-                           __res += char(0x80u | ((__c >> 6u) & 0x3Fu)); __res += char(0x80u | (__c & 0x3Fu)); }
-                }
-                return __res;
-            }
-
             // Sequential reading of the PMX fields; any failure (a cut file) leaves 'ok' false
             struct PMXStream {
                 FileReader &file;
@@ -2203,7 +2184,12 @@ namespace Simple {
                     if (__len > (1 << 24)) { ok = false; return std::string(); } // a broken length
                     std::vector<uint8_t> __bytes((size_t)__len);
                     ok = file.readBinaryArray<uint8_t>(__bytes.data(), __bytes.size()) && ok;
-                    return encoding == 0u ? utf16ToUtf8(__bytes) : std::string(__bytes.begin(), __bytes.end());
+                    if (encoding != 0u) return std::string(__bytes.begin(), __bytes.end());
+                    Enc::Unicode __text;
+                    __text.bytestring    = __bytes;
+                    __text.curr_encoding = Enc::ENC_UTF16;
+                    if (!__text.decodeUTF16() || !__text.encodeUTF8()) return std::string();
+                    return std::string(__text.bytestring.begin(), __text.bytestring.end());
                 }
 
                 // Signed indices (-1: none); vertex indices are unsigned for sizes 1 and 2

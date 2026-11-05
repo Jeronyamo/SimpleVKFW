@@ -253,8 +253,60 @@ namespace Simple {
             return true;
         }
 
+        // Note: little-endian, like 'encodeUTF16' writes it; unpaired surrogates become U+FFFD
         bool Unicode::decodeUTF16() {
-            return false;
+            if ((bytestring.size() & 1u) != 0u) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: Unicode :: decodeUTF16", "odd number of bytes\n"));
+                return false;
+            }
+            std::vector<unsigned char> __bytestring{bytestring};
+            const size_t __count = __bytestring.size() / 2u;
+            bytestring.clear();
+            bytestring.reserve(4u * __count);
+            for (size_t i = 0u; i < __count; ++i) {
+                uint32_t __ch = __bytestring[2u * i] | (uint32_t(__bytestring[2u * i + 1u]) << 8u);
+                if (__ch >= 0xD800u && __ch <= 0xDBFFu && i + 1u < __count) {
+                    const uint32_t __low = __bytestring[2u * i + 2u] | (uint32_t(__bytestring[2u * i + 3u]) << 8u);
+                    if (__low >= 0xDC00u && __low <= 0xDFFFu) { __ch = 0x10000u + ((__ch - 0xD800u) << 10u) + (__low - 0xDC00u); ++i; }
+                    else __ch = 0xFFFDu;
+                } else if (__ch >= 0xD800u && __ch <= 0xDFFFu) __ch = 0xFFFDu;
+                bytestring.push_back((unsigned char)( __ch >> 24));
+                bytestring.push_back((unsigned char)((__ch >> 16) & 0xFFu));
+                bytestring.push_back((unsigned char)((__ch >>  8) & 0xFFu));
+                bytestring.push_back((unsigned char)( __ch        & 0xFFu));
+            }
+            curr_encoding = ENC_UTF32;
+            return true;
+        }
+
+        bool Unicode::encodeUTF8() {
+            if (curr_encoding != ENC_UTF32) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: Unicode :: encodeUTF8", "the string is not decoded\n"));
+                return false;
+            }
+            std::vector<unsigned char> __bytestring{bytestring};
+            bytestring.clear();
+            bytestring.reserve(__bytestring.size());
+            for (size_t i = 0u; i + 3u < __bytestring.size(); i += 4u) {
+                const uint32_t __ch = (uint32_t(__bytestring[i]) << 24) | (uint32_t(__bytestring[i + 1u]) << 16) |
+                                      (uint32_t(__bytestring[i + 2u]) << 8) | __bytestring[i + 3u];
+                if (__ch < 0x80u) bytestring.push_back((unsigned char)__ch);
+                else if (__ch < 0x800u) {
+                    bytestring.push_back((unsigned char)(0xC0u | (__ch >> 6)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                } else if (__ch < 0x10000u) {
+                    bytestring.push_back((unsigned char)(0xE0u | (__ch >> 12)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 6) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                } else {
+                    bytestring.push_back((unsigned char)(0xF0u | (__ch >> 18)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 12) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | ((__ch >> 6) & 0x3Fu)));
+                    bytestring.push_back((unsigned char)(0x80u | (__ch & 0x3Fu)));
+                }
+            }
+            curr_encoding = ENC_UTF8;
+            return true;
         }
 
         bool Unicode::encodeUTF16() {

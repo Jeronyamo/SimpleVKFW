@@ -20,7 +20,7 @@ namespace Simple {
 
             Unicode(const char *_i_str, uint32_t _size_bytes = 0u, EncType _encoding = ENC_UNKNOWN);
 
-            Unicode(const std::string &_i_str = {}, EncType _encoding = ENC_UNKNOWN);
+            Unicode(const std::string &_i_str, EncType _encoding = ENC_UNKNOWN);
 
 
 
@@ -58,6 +58,9 @@ namespace Simple {
         // Encoding
 
             bool encodeUTF16();
+
+            // From the decoded form (UTF-32); 'bytestring' gets no terminating zero
+            bool encodeUTF8();
         }; // Unicode END
     }; // Enc END
 }; // Simple END

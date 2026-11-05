@@ -454,15 +454,17 @@ namespace Simple {
             ik_rotation.assign(__count, Quat());
             grant_rotation.assign(__count, Quat());
             grant_translation.assign(__count, vec3{0.f, 0.f, 0.f});
-            for (uint32_t i = 0u; i < (uint32_t)__count; ++i) model[i] = localMatrix_(_skeleton, i);
-            // Grants and IK in the deform order (without 'finalize' there is none: plain FK)
+            // Without 'finalize' (no deform order): plain FK, parents first
+            if (_skeleton.order.size() != __count)
+                for (uint32_t i = 0u; i < (uint32_t)__count; ++i) model[i] = localMatrix_(_skeleton, i);
+            // MMD: each bone once in the deform order (its parent is normally done before it), grants first; an IK chain moves
+            //      its links and their descendants
             for (size_t o = 0u; o < _skeleton.order.size(); ++o) {
                 const uint32_t __b = _skeleton.order[o];
                 const Bone &__bone = _skeleton.bones[__b];
-                if (__bone.grant_parent != SCENE_NONE && (__bone.grant_rotation || __bone.grant_translation)) {
+                if (__bone.grant_parent != SCENE_NONE && (__bone.grant_rotation || __bone.grant_translation))
                     applyGrant_(_skeleton, __b);
-                    updateModel_(_skeleton, __b);
-                }
+                model[__b] = localMatrix_(_skeleton, __b);
                 if (__bone.ik != SCENE_NONE && solve_ik && _skeleton.iks[__bone.ik].enabled) {
                     const IKChain &__ik = _skeleton.iks[__bone.ik];
                     if (__ik.solver == SCENE_IK_TWO_BONE) solveTwoBone_(_skeleton, __ik);
