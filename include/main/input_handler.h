@@ -259,6 +259,9 @@ namespace Simple {
 
             GLFWwindow      *window = nullptr;            // set by 'setGLFWCallbacks'
             InputHandlerItf *cursor_lock_layer = nullptr; // the first enabled layer that wants the cursor locked, if any
+            // Frames after locking when cursor events are dropped and the cursor stays where it was locked: on Windows the mouse
+            // messages queued before GLFW centers the cursor arrive after it and look like a jump by the distance to the center
+            uint32_t cursor_settle_frames = 0u;
 
             FrameInputHandlerGLFW(GLFWwindow* _window = nullptr, uint32_t _cback_types = UINT32_MAX);
 

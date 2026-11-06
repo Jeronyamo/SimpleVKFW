@@ -483,6 +483,8 @@ namespace Simple {
             // Note: GLFW keeps the cursor position while it is disabled and puts the cursor back when it is enabled,
             //       so the jump back must not count as a movement
             glfwSetInputMode(window, GLFW_CURSOR, __layer != nullptr ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            // Locking: the rest of this poll and the next one (the warp to the center may be seen only then)
+            cursor_settle_frames = __layer != nullptr ? 2u : 0u;
             if (__layer == nullptr) cursor_known = false;
         }
 
@@ -495,6 +497,7 @@ namespace Simple {
 
         void FrameInputHandlerGLFW::frameTick() {
             frame_time = frame_clock.tick();
+            if (cursor_settle_frames > 0u) --cursor_settle_frames;
             for (size_t i = 0u; i < layers.size(); ++i)
                 layers[i]->newFrame();
             updateCursorLock(); // ImGui widgets become active during its frame, not during the events
@@ -530,6 +533,11 @@ namespace Simple {
         void callbackCursor(GLFWwindow* _window, double _pos_x, double _pos_y) {
             FrameInputHandlerGLFW *__dispatcher = dispatcherOf(_window);
             if (__dispatcher == nullptr) return;
+            // Just locked: keep the virtual (disabled) cursor where it was locked, see 'cursor_settle_frames'
+            if (__dispatcher->cursor_settle_frames > 0u && __dispatcher->cursor_lock_layer != nullptr) {
+                if (__dispatcher->cursor_known) glfwSetCursorPos(_window, __dispatcher->cursor_pos.x, __dispatcher->cursor_pos.y);
+                return;
+            }
             InputEvent __in_event = makeEvent(INPUT_EVENT_CURSOR, _window);
             __in_event.x  = _pos_x;
             __in_event.y  = _pos_y;
