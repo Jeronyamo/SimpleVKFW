@@ -2,6 +2,7 @@
 #include "data/filetypes.h"
 
 #include <cctype>
+#include <cmath>
 #include <chrono>
 #include <ctime>
 #include <fstream>
@@ -460,7 +461,8 @@ namespace Simple {
         bool FrameInputHandlerGLFW::dispatch(const InputEvent &_event) {
             const bool __broadcast = _event.isBroadcast();
             // A locked cursor moves for its layer only (e.g. the camera keeps rotating over ImGui windows)
-            const bool __to_lock_layer = _event.type == INPUT_EVENT_CURSOR && cursor_lock_layer != nullptr;
+            // (also the scroll: e.g. the camera distance while rotating)
+            const bool __to_lock_layer = (_event.type == INPUT_EVENT_CURSOR || _event.type == INPUT_EVENT_SCROLL) && cursor_lock_layer != nullptr;
             bool __consumed = false;
             for (size_t i = 0u; i < layers.size(); ++i) {
                 if (!layers[i]->enabled) continue;
@@ -823,7 +825,11 @@ namespace Simple {
                     return true;
                 }
                 case INPUT_EVENT_SCROLL:
-                    camera.proj_class.fovy = scrollFovy(camera.proj_class.fovy, _event.dy);
+                    // With 'rotate' held: the distance to 'look_at', 10% per step (scroll up - closer)
+                    if (isDown(Actions::CAMERA_ROTATE))
+                        camera.view_class.dist = Math::clampCL(camera.view_class.dist * std::pow(0.9f, (float) _event.dy), DistMin, DistMax);
+                    else
+                        camera.proj_class.fovy = scrollFovy(camera.proj_class.fovy, _event.dy);
                     return true;
                 case INPUT_EVENT_FBUFFER_SIZE:
                     if (_event.width > 0 && _event.height > 0) // 0x0 when minimized, the aspect ratio would be NaN
@@ -932,7 +938,7 @@ namespace Simple {
             if (proj != nullptr) proj->fovy = Math::clampCL(proj->fovy, controls->fovy_min, controls->fovy_max);
 
             ImGui::SeparatorText("Mouse (default bindings)");
-            ImGui::TextUnformatted("LMB: rotate\nRMB: move in the screen plane\nLMB+RMB: forward/back (cursor up/down)\nScroll: fovy");
+            ImGui::TextUnformatted("LMB: rotate\nRMB: move in the screen plane\nLMB+RMB: forward/back (cursor up/down)\nScroll: fovy\nLMB+Scroll: distance");
 
             ImGui::End();
         }

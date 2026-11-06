@@ -274,8 +274,8 @@ namespace Simple {
             void insertLayer(uint32_t _index, InputHandlerItf *_layer);
             void removeLayer(InputHandlerItf *_layer);
 
-            // Returns true if a layer consumed the event. While a layer locks the cursor, the layers above it get cursor events
-            // without consuming them
+            // Returns true if a layer consumed the event. While a layer locks the cursor, the layers above it get cursor and scroll
+            // events without consuming them
             bool dispatch(const InputEvent &_event);
             // Locks (GLFW_CURSOR_DISABLED) or frees the cursor for 'wantsCursorLock' of the layers; called by 'dispatch' and 'frameTick'
             void updateCursorLock();
@@ -376,7 +376,7 @@ namespace Simple {
         struct CameraControlsBase : InputHandlerItf {
             static const float MoveSpeedMin, MoveSpeedMax, MoveSpeedDefault;
             static const float FovyLimitMin, FovyLimitMax, FovyMinDefault, FovyMaxDefault;
-            static const float DistMin, DistMax; // the distance slider of 'CameraSettingsWidget'
+            static const float DistMin, DistMax; // the distance slider of 'CameraSettingsWidget' and 'rotate' + scroll
             static const bool  InvertPanDefault;
 
             const float rotate_speed = 0.4f; // degrees per pixel
