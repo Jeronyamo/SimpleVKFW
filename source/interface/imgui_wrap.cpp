@@ -1,4 +1,5 @@
 #include "interface/imgui_wrap.h"
+#include "imgui/imgui_internal.h"
 
 #include <cstdio>
 
@@ -766,6 +767,19 @@ namespace Simple {
 
         bool ImGuiHandler::isKeyboardInUse() {
             return imgui_io != nullptr && imgui_io->WantCaptureKeyboard;
+        }
+
+        bool ImGuiHandler::wantsCursorLock() const {
+            if (!lock_cursor_on_drag || context == nullptr) return false;
+            const ImGuiContext &__g = *context;
+            if (__g.ActiveId == 0 || __g.ActiveIdSource != ImGuiInputSource_Mouse || !__g.IO.MouseDown[ImGuiMouseButton_Left]) return false;
+            // Note: ImGui doesn't store widget types; sliders and drags (also vertical sliders) are the only widgets that claim
+            //       the arrow keys while active, besides text inputs (also the Ctrl+click input of a slider) and generic drags
+            //       that claim all keys (e.g. table column resize). Window moves and resizes don't claim them
+            const int __arrows = (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right) | (1 << ImGuiDir_Up) | (1 << ImGuiDir_Down);
+            if ((__g.ActiveIdUsingNavDirMask & __arrows) == 0 || __g.ActiveIdUsingAllKeyboardKeys) return false;
+            if (__g.InputTextState.ID == __g.ActiveId) return false;
+            return __g.MovingWindow == nullptr;
         }
     }; // ImGUI END
 }; // Simple END

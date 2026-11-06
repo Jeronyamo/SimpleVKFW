@@ -506,6 +506,11 @@ namespace Simple {
             // Note: 'WantCapture*' flags are set by ImGui when the input must not be passed to the application
             bool isGUIHovered();
             bool isKeyboardInUse();
+
+            // Freezes the cursor while a slider or a drag widget is held with the mouse (see 'WindowInput::InputHandlerItf::wantsCursorLock')
+            bool lock_cursor_on_drag = true;
+            // True while a slider/drag widget (not a text input, a window move or a resize) is active and the left mouse button is down
+            bool wantsCursorLock() const;
         }; // ImGuiHandler END
     }; // ImGUI END
 }; // Simple END

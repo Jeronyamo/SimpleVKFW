@@ -206,6 +206,9 @@ namespace Simple {
             virtual bool onEvent(const InputEvent &_event);
             // A bound input of the action was pressed, repeated or released (GLFW_PRESS/REPEAT/RELEASE)
             virtual void onAction(ActionId _action, int _glfw_action);
+            // True while the layer moves something with the mouse: the cursor is hidden and frozen in place (GLFW_CURSOR_DISABLED,
+            // cursor events still come with the offsets), all cursor events go to this layer, and after it the cursor is where it was
+            virtual bool wantsCursorLock() const;
 
         protected:
             bool processBinding(const InputEvent &_event);
@@ -234,6 +237,7 @@ namespace Simple {
             explicit ImGuiLayer(ImGUI::ImGuiHandler &_imgui);
 
             bool onEvent(const InputEvent &_event) override;
+            bool wantsCursorLock() const override; // 'ImGuiHandler::wantsCursorLock'
         }; // ImGuiLayer END
 
 
@@ -253,6 +257,9 @@ namespace Simple {
             vec2d cursor_pos{};      // the last cursor position
             bool  cursor_known = false;
 
+            GLFWwindow      *window = nullptr;            // set by 'setGLFWCallbacks'
+            InputHandlerItf *cursor_lock_layer = nullptr; // the first enabled layer that wants the cursor locked, if any
+
             FrameInputHandlerGLFW(GLFWwindow* _window = nullptr, uint32_t _cback_types = UINT32_MAX);
 
             // Sets this object as user pointer for the window and sets callbacks
@@ -264,8 +271,11 @@ namespace Simple {
             void insertLayer(uint32_t _index, InputHandlerItf *_layer);
             void removeLayer(InputHandlerItf *_layer);
 
-            // Returns true if a layer consumed the event
+            // Returns true if a layer consumed the event. While a layer locks the cursor, the layers above it get cursor events
+            // without consuming them
             bool dispatch(const InputEvent &_event);
+            // Locks (GLFW_CURSOR_DISABLED) or frees the cursor for 'wantsCursorLock' of the layers; called by 'dispatch' and 'frameTick'
+            void updateCursorLock();
 
         // Timer handling
 
@@ -363,11 +373,14 @@ namespace Simple {
         struct CameraControlsBase : InputHandlerItf {
             static const float MoveSpeedMin, MoveSpeedMax, MoveSpeedDefault;
             static const float FovyLimitMin, FovyLimitMax, FovyMinDefault, FovyMaxDefault;
+            static const float DistMin, DistMax; // the distance slider of 'CameraSettingsWidget'
+            static const bool  InvertPanDefault;
 
             const float rotate_speed = 0.4f; // degrees per pixel
             float move_speed = MoveSpeedDefault; // units per second (keys) / per framebuffer height (mouse), [MoveSpeedMin, MoveSpeedMax]
             float fovy_min = FovyMinDefault, fovy_max = FovyMaxDefault; // the scroll changes fovy (degrees) in these bounds
-            bool  invert_pan = true;        // false: the scene follows the cursor (grab), true: the camera does
+            bool  invert_pan = InvertPanDefault; // false: the scene follows the cursor (grab), true: the camera does
+            bool  lock_cursor = true;        // the cursor is frozen while it rotates or moves the camera
 
             CameraControlsBase();
 
@@ -384,6 +397,8 @@ namespace Simple {
             float scrollFovy(float _fovy, double _scroll_dy) const;
             // Keeps 'move_speed' and the fovy bounds valid (after the settings are edited)
             void clampSettings();
+
+            bool wantsCursorLock() const override; // 'lock_cursor' and rotation or movement with the mouse
         }; // CameraControlsBase END
 
         template <class P, class V>
@@ -455,14 +470,18 @@ namespace Simple {
         using CameraControlsCentered = CameraControls<ProjPerspective, ViewCentered>;
 
 
-        // ImGui: the "Controls" menu of the main menu bar with the "Camera" settings window
-        // (movement speed, fovy bounds of the scroll; '_proj' is optional, it shows the current fovy)
+        // ImGui: the "Controls" menu of the main menu bar with the "Camera" settings window (movement speed, fovy bounds
+        // of the scroll, cursor freezing). Optional: '_proj' shows the current fovy, '_view' the distance to 'look_at',
+        // '_imgui' the cursor freezing of ImGui sliders
         struct CameraSettingsWidget : ImGUI::WidgetItf {
-            CameraControlsBase *controls = nullptr;
-            ProjPerspective    *proj     = nullptr;
+            CameraControlsBase  *controls = nullptr;
+            ProjPerspective     *proj     = nullptr;
+            ViewCentered        *view     = nullptr;
+            ImGUI::ImGuiHandler *imgui    = nullptr;
             bool show_window = false;
 
-            CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj = nullptr);
+            CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj = nullptr,
+                                 ViewCentered *_view = nullptr, ImGUI::ImGuiHandler *_imgui = nullptr);
 
             bool      begin() override;
             void        end() override;
