@@ -5,6 +5,8 @@
 #include "main/image.h"
 #include "main/imgui_events.h"
 #include "main/music_editor.h"
+#include "main/mmd_editor.h"
+#include "main/mmd_physics.h"
 #include "interface/vkfw.h"
 #include "interface/vkfw_graph.h"
 #include "interface/imgui_wrap.h"
@@ -124,8 +126,12 @@ int main(int argc, char **argv) {
 
     // ImGUI widgets
     main_window_handler.imgui_handler.setFont("resources/fonts/RobotoMono-VariableFont_wght.ttf", 24.f);
-    main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiWidgetLoadFile{});
-    main_window_handler.imgui_handler.widgets.push_back(new Simple::Event::ImGuiTestWindow{});
+    // Japanese glyphs (MMD bone and morph names) from a system font, if there is one
+    main_window_handler.imgui_handler.mergeFont({ "resources/fonts/japanese.ttf", "C:/Windows/Fonts/meiryo.ttc", "C:/Windows/Fonts/YuGothM.ttc",
+                                                  "C:/Windows/Fonts/msgothic.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                                                  "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc" }, 24.f);
+    Simple::Event::ImGuiTestWindow *test_window = new Simple::Event::ImGuiTestWindow{};
+    main_window_handler.imgui_handler.widgets.push_back(test_window);
 
     // Music: instrument library, song and tracker windows; its keys go right after ImGui, above the camera
     Simple::Editor::MusicStudio music_studio;
@@ -136,6 +142,16 @@ int main(int argc, char **argv) {
     // Camera settings: "Controls" menu of the main menu bar (movement speed, fovy bounds of the scroll)
     Simple::WindowInput::CameraSettingsWidget camera_settings{&main_view_centered_proj, &main_view_centered_proj.getClassProj()};
     main_window_handler.imgui_handler.widgets.push_back(&camera_settings);
+
+    // MMD: models, motions, camera and audio with a keyframe timeline (menu "MMD"); the audio track plays through the music stream
+    Simple::Editor::MMDStudio mmd_studio(scene);
+    if (music_studio.audio_running)
+        mmd_studio.attachAudio(&music_studio.audio.stream_config.audio_sampler, music_studio.audio.stream_config.sample_rate);
+    main_window_handler.imgui_handler.widgets.push_back(&mmd_studio);
+    // MMD physics (rigid bodies and joints of the models; "MMD" -> "Physics" for its settings)
+    Simple::Editor::MMDPhysicsWidget mmd_physics;
+    mmd_studio.simulation = &mmd_physics;
+    main_window_handler.imgui_handler.widgets.push_back(&mmd_physics);
 
     // Callbacks
     main_window_handler.setGLFWCallbacks(main_window.window);
@@ -593,9 +609,24 @@ int main(int argc, char **argv) {
         while (ci_sem_render_finished.size() < vk.cxt_swapchain.getSwapchainImageCount())
             ci_sem_render_finished.push_back(vk.cxt_barrier.addSemaphore());
 
+        // MMD playback (poses, the VMD camera); a loaded or removed model needs a new upload of the scene (the device is idle)
+        mmd_studio.update(main_window_handler.frame_time);
+        if (mmd_studio.takeSceneChanged()) {
+            vkDeviceWaitIdle(vk.cxt_core.device.handle);
+            scene_renderer.destroy();
+            scene_culling.build(scene);
+            SG::SceneRenderer::UploadInfo __info;
+            __info.queue  = ci_queue_graphics;
+            __info.family = ci_qfam_graphics;
+            __info.frames_in_flight = FRAMES_IN_FLIGHT;
+            scene_renderer.upload(scene, __info);
+            scene_renderer.createPipelines(graph, scene_pass);
+        }
+
         // Update uniform buffers (per frame in flight: the buffer of this frame is not used by the GPU after the fence wait)
         ubo_camera.view = main_view_centered_proj.getView();
         ubo_camera.proj = main_view_centered_proj.getProj();
+        mmd_studio.applyCamera(main_view_centered_proj.getClassProj(), ubo_camera.view, ubo_camera.proj);
         vk.cxt_memory.writeBuffer(ci_buffer_uniform[current_frame], &ubo_camera, sizeof(ubo_camera));
         scene.updateSkins(); // the poses changed since the last frame (animations: see 'scene/scene_animation.h')
         scene_renderer.update(current_frame, ubo_camera.view, ubo_camera.proj);
@@ -638,8 +669,7 @@ int main(int argc, char **argv) {
         Simple::VKFW::CommandRecorder(vk, ci_cmdbuf_drawing[curr_frame]).reset();
 
     // ImGUI widgets destruction
-    delete main_window_handler.imgui_handler.widgets[1];
-    delete main_window_handler.imgui_handler.widgets[0];
+    delete test_window;
     main_window_handler.imgui_handler.destroyContext();
 
     // Destruction

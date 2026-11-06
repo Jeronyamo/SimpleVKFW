@@ -488,6 +488,9 @@ namespace Simple {
 
             void setDefaultStyleSVKFW();
             void setFont(const std::string &_font_path, float _size_pixels = 0.f);
+            // Adds the glyphs of the first existing font of '_font_paths' to the last added font (e.g. Japanese bone and morph names
+            // of MMD models); '_ranges' as in ImGui (the Japanese ones by default). Returns the used path, empty if none exists
+            std::string mergeFont(const std::vector<std::string> &_font_paths, float _size_pixels, const ImWchar *_ranges = nullptr);
 
             void newFrame();
             void render();

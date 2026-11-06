@@ -1,197 +1,140 @@
 #ifndef SVKFW_EVENT_HANDLER_H
 #define SVKFW_EVENT_HANDLER_H
 
-#include <list>
-#include <map>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 #include <unordered_map>
-
+#include <functional>
+#include <type_traits>
 #include <mutex>
-#include <future>
-#include <atomic>
 #include <thread>
+#include <atomic>
 
-
-#include "common/terminal.h"
+#include "main/etcs_base.h"
 
 
 namespace Simple {
     namespace Event {
 // EventType enum
 
-        typedef enum EventType : uint32_t {
+        // Note: the types the engine writes; game code adds its own from EV_TYPE_USER on
+        enum EventType : uint32_t {
             EV_TYPE_NONE = 0,
-            // EV_TYPE_PROGRAM_INIT = 1,
-            // EV_TYPE_PROGRAM_END = 2,
-            // EV_TYPE_PROGRAM_ERROR = 3,
-            // and what exactly should it all do? Too broad
 
-            EV_TYPE_EV_HANDLER_CLEAR_LIST = 11,
-            EV_TYPE_EV_HANDLER_STOP_WRITING = 12,
-            EV_TYPE_EV_HANDLER_STOP_HANDLING = 13,
+            // Physics ('physics/physics_world.h'): two bodies started / stopped touching; payload: 'Physics::ContactEvent'.
+            // Written for bodies with TAG_PHYSICS_REPORT_CONTACTS
+            EV_TYPE_PHYSICS_CONTACT_BEGIN = 100,
+            EV_TYPE_PHYSICS_CONTACT_END   = 101,
 
-            EV_TYPE_DELETE_EV_HANDLES = 20,
-            EV_TYPE_DELETE_EV_HANDLES_UNBIND = 21,
-
-        } EventType; // EventType END
+            EV_TYPE_USER = 1024
+        }; // EventType END
 
 
-//  ============  EventHandle type base class and some derivatives  ============  \\
+        // Note: an event is a type, an optional entity and a small payload (any trivially copyable struct up to 'PAYLOAD_SIZE')
+        struct Event {
+            static const uint32_t PAYLOAD_SIZE = 48u;
 
-        class EventHandler;
+            uint32_t type = EV_TYPE_NONE;
+            EntityID entity;
+            alignas(8) uint8_t payload[PAYLOAD_SIZE];
 
-        namespace Handle {
-            struct HandleBase {
-                HandleBase();
-                HandleBase(const HandleBase &_handle_b);
-                virtual ~HandleBase();
+            Event() { std::memset(payload, 0, sizeof(payload)); }
+            explicit Event(uint32_t _type, EntityID _entity = EntityID::None) : type(_type), entity(_entity) {
+                std::memset(payload, 0, sizeof(payload));
+            }
 
-                virtual void handle(EventHandler*, uint32_t);
+            template <class T> static Event make(uint32_t _type, const T &_data, EntityID _entity = EntityID::None) {
+                Event __ev(_type, _entity);
+                __ev.set(_data);
+                return __ev;
+            }
 
-                // This function is called after handle().
-                // Returned value: 0 - endless, >0 - number of uses. Default: 0.
-                // When returns 1, EventHandler unbinds this handler for this event.
-                virtual uint32_t usageCount();
-            }; // HandlerBase END
-            extern HandleBase Empty_Handle;
+            template <class T> void set(const T &_data) {
+                static_assert(sizeof(T) <= PAYLOAD_SIZE, "Event: the payload is too big");
+                static_assert(std::is_trivially_copyable<T>::value, "Event: the payload must be trivially copyable");
+                std::memcpy(payload, &_data, sizeof(T));
+            }
 
-
-    // EventHandle type for functions
-
-            struct FuncHandle : HandleBase {
-                using void_func_void = void (*)(void);
-                void_func_void func_handle = nullptr;
-
-                FuncHandle();
-                FuncHandle(const FuncHandle &_func_handle);
-                FuncHandle(void_func_void _func_handle);
-                virtual ~FuncHandle();
-
-
-                void set(void_func_void _func_handle);
-
-                void_func_void replace(void_func_void _func_handle);
-
-                void handle(EventHandler*, uint32_t _event_type) override;
-            }; // FuncHandle END
-
-            struct FuncEventHandle : HandleBase {
-                using void_func_event = void (*)(uint32_t);
-                void_func_event func_handle = nullptr;
-
-                FuncEventHandle();
-                FuncEventHandle(const FuncEventHandle &_func_handle);
-                FuncEventHandle(void_func_event _func_handle);
-                virtual ~FuncEventHandle();
-
-
-                void set(void_func_event _func_handle);
-
-                void_func_event replace(void_func_event _func_handle);
-
-                void handle(EventHandler*, uint32_t _event_type) override;
-            }; // FuncEventHandle END
-
-            struct FuncExtHandle : HandleBase {
-                using void_func_handler_event = void (*)(EventHandler*, uint32_t);
-                void_func_handler_event func_handle = nullptr;
-
-                FuncExtHandle();
-                FuncExtHandle(const FuncExtHandle &_func_handle);
-                FuncExtHandle(void_func_handler_event _func_handle);
-                virtual ~FuncExtHandle();
-
-
-                void set(void_func_handler_event _func_handle);
-
-                void_func_handler_event replace(void_func_handler_event _func_handle);
-
-                void handle(EventHandler* _this_ev_handler, uint32_t _event_type) override;
-            }; // FuncExtHandle END
-
-
-    // EventHandle for deleting EventHandle objects created by "new"
-
-            struct DelHandle : HandleBase {
-                std::map<HandleBase*, std::vector<uint32_t>> handles_events;
-                std::mutex handles_events_mutex;
-
-
-            };
-            extern DelHandle Handle_Deleter;
-
-
-    // EventHandle 
-
-    // EventHandle decorator(?): Adds finite "lifetime" for EventHandle object 
-
-            template <class EvHandle>
-            struct CountableWrap : EvHandle {
-                uint32_t usage_count = 0u;
-
-                CountableWrap() : EvHandle{} {}
-                CountableWrap(const EvHandle &_ev_handle, uint32_t _usage_c)
-                                : EvHandle{_ev_handle}, usage_count{_usage_c} {}
-
-                uint32_t usageCount() override { return usage_count > 1u ? usage_count-- : usage_count; }
-            }; // CountableWrap END
-        }; // Handle END
-
+            template <class T> T get() const {
+                static_assert(sizeof(T) <= PAYLOAD_SIZE, "Event: the payload is too big");
+                static_assert(std::is_trivially_copyable<T>::value, "Event: the payload must be trivially copyable");
+                T __data;
+                std::memcpy(&__data, payload, sizeof(T));
+                return __data;
+            }
+        }; // Event END
 
 
 //  ============  Event Handler  ============  \\
 
+        class EventHandler;
+
+        // Note: '_handler' is the handler that dispatches (handlers may write new events or subscribe through it)
+        typedef std::function<void(EventHandler &_handler, const Event &_event)> HandleFunc;
+        typedef uint32_t SubscriptionID; // 0: none
+
+        // Note: a queue of events with subscribers per event type.
+        //       - 'write' is thread-safe: any thread (audio, asset loading, physics) can post events; it only holds a short lock.
+        //       - 'poll' dispatches the queued events on the thread that calls it (the main thread, at a fixed point of the
+        //         frame), without holding the lock: handlers can write events (handled by the same 'poll', in the next
+        //         round, up to '_max_rounds'; the rest waits for the next 'poll'), subscribe and unsubscribe.
+        //       - subscribing and dispatching belong to the polling thread (checked in debug builds).
+        //       There is no dedicated event thread: game state changes happen at a known point of the frame, in order, without
+        //       locks in every handler. Long work (loading) should run in a worker that writes an event when done.
         class EventHandler {
-            std::list<uint32_t> events;
-            std::mutex event_list_mutex;
+            struct Subscription {
+                SubscriptionID id = 0u;
+                uint32_t       type = 0u;
+                HandleFunc     func;
+                uint32_t       uses_left = 0u; // 0: unlimited
+            };
 
-            std::unordered_map<uint32_t, Handle::HandleBase*> event_handles{ {0u, &Handle::Empty_Handle} };
-            std::mutex event_handling_mutex;
+            std::mutex         queue_mutex_;
+            std::vector<Event> queue_;       // written by any thread
+            std::vector<Event> processing_;  // swapped with 'queue_' by 'poll'
+            std::atomic<bool>  writing_stopped_{false};
 
-            std::atomic<bool> stop_event_handling{false};
-            std::atomic<bool> stop_event_writing{false};
+            std::unordered_map<uint32_t, std::vector<Subscription>> subscriptions_;
+            std::vector<Subscription> added_;  // subscribed during dispatching: appended after it
+            SubscriptionID next_id_ = 1u;
+            uint32_t       dispatch_depth_ = 0u;
+            bool           removed_ = false;   // some subscriptions were removed during dispatching
+            std::thread::id owner_;
+
+            void checkThread_();
+            void flushChanges_();
 
         public:
-        // methods used from outside
+            EventHandler();
 
-            uint32_t writeEvent(uint32_t _event);
-            // inline std::future<uint32_t> writeEventAsync(uint32_t _event) {
-            //     return std::async(writeEvent, this, _event);
-            // }
+        // Any thread
 
-            uint32_t writeEventSeq(const std::vector<uint32_t> &_events);
-            // inline std::future<uint32_t> writeEventSeqAsync(const std::vector<uint32_t> &_events) {
-            //     return std::async(writeEventSeq, this, _events);
-            // }
+            // Queues the event; returns false if writing is stopped
+            bool write(const Event &_event);
+            bool write(uint32_t _type, EntityID _entity = EntityID::None) { return write(Event(_type, _entity)); }
+            bool write(const std::vector<Event> &_events);
 
+            void stopWriting()   { writing_stopped_ = true;  }
+            void resumeWriting() { writing_stopped_ = false; }
+            // Drops the queued events
+            void clearQueue();
+            size_t queued();
 
-            uint32_t setHandle(uint32_t _event, Handle::HandleBase* _handler = &Handle::Empty_Handle);
-            // inline std::future<uint32_t> setHandleAsync(uint32_t _event, Handle::HandleBase* _handler = &Handle::Empty_Handle) {
-            //     return std::async(setHandle, this, _event, _handler);
-            // }
+        // The polling thread
 
-            void stopEventHandling();
+            // '_uses' > 0: the subscription ends after that many calls
+            SubscriptionID subscribe(uint32_t _type, const HandleFunc &_func, uint32_t _uses = 0u);
+            // Returns false if there is no such subscription (already ended)
+            bool unsubscribe(SubscriptionID _id);
+            void unsubscribeAll(uint32_t _type);
 
-            void stopEventWriting();
+            // Calls the subscribers of the event now (bypasses the queue)
+            void dispatch(const Event &_event);
 
-        // methods used in handlers (they are guaranteed to have access to EventHandler members (mutexes already locked))
-
-            uint32_t handlerWriteEventSeq(const std::vector<uint32_t> &_events);
-
-        // poll events
-
-            void pollEvents();
-
-        // handling loops
-
-            void runEventHandling();
-
-            // Note: the event list is not locked while waiting for the next event, but it is locked while handling,
-            //       because handlers may call 'handlerWriteEventSeq()' (which expects the list mutex to be locked).
-            void runEventHandlingLong();
-            void runEventHandlingAsync();
+            // Dispatches the queued events in the order they were written; returns the number of dispatched events
+            uint32_t poll(uint32_t _max_rounds = 4u);
         }; // EventHandler END
-        extern EventHandler Event_Handler;
     }; // Event END
 }; // Simple END
 

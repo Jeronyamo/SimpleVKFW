@@ -198,6 +198,8 @@ namespace Simple {
 
         InputHandlerItf::~InputHandlerItf() {}
 
+        bool InputHandlerItf::wantsCursorLock() const { return false; }
+
         void InputHandlerItf::declareActions(const char *const *_names, uint32_t _count) {
             actions.clear();
             for (uint32_t i = 0u; i < _count; ++i) addAction(_names[i]);
@@ -378,6 +380,8 @@ namespace Simple {
 
         ImGuiLayer::ImGuiLayer(ImGUI::ImGuiHandler &_imgui) : imgui{_imgui} {}
 
+        bool ImGuiLayer::wantsCursorLock() const { return imgui.wantsCursorLock(); }
+
         bool ImGuiLayer::onEvent(const InputEvent &_event) {
             GLFWwindow *__w = _event.window;
             switch (_event.type) {
@@ -437,6 +441,7 @@ namespace Simple {
                 glfwSetWindowFocusCallback(_window, callbackFocus);
 
             glfwSetWindowUserPointer(_window, this);
+            window = _window;
         }
 
         void FrameInputHandlerGLFW::pushLayer(InputHandlerItf *_layer) { layers.push_back(_layer); }
@@ -447,16 +452,38 @@ namespace Simple {
 
         void FrameInputHandlerGLFW::removeLayer(InputHandlerItf *_layer) {
             for (size_t i = 0u; i < layers.size(); ++i)
-                if (layers[i] == _layer) { layers.erase(layers.begin() + i); return; }
+                if (layers[i] == _layer) { layers.erase(layers.begin() + i); break; }
+            if (cursor_lock_layer == _layer) cursor_lock_layer = nullptr;
+            updateCursorLock();
         }
 
         bool FrameInputHandlerGLFW::dispatch(const InputEvent &_event) {
             const bool __broadcast = _event.isBroadcast();
+            // A locked cursor moves for its layer only (e.g. the camera keeps rotating over ImGui windows)
+            const bool __to_lock_layer = _event.type == INPUT_EVENT_CURSOR && cursor_lock_layer != nullptr;
+            bool __consumed = false;
             for (size_t i = 0u; i < layers.size(); ++i) {
                 if (!layers[i]->enabled) continue;
-                if (layers[i]->onEvent(_event) && !__broadcast) return true;
+                const bool __layer_consumed = layers[i]->onEvent(_event);
+                if (__broadcast || (__to_lock_layer && layers[i] != cursor_lock_layer)) continue;
+                if (__layer_consumed) { __consumed = true; break; }
             }
-            return false;
+            updateCursorLock();
+            return __consumed;
+        }
+
+        void FrameInputHandlerGLFW::updateCursorLock() {
+            InputHandlerItf *__layer = nullptr;
+            for (size_t i = 0u; i < layers.size() && __layer == nullptr; ++i)
+                if (layers[i]->enabled && layers[i]->wantsCursorLock()) __layer = layers[i];
+            const bool __was_locked = cursor_lock_layer != nullptr;
+            cursor_lock_layer = __layer;
+            if (window == nullptr || __was_locked == (__layer != nullptr)) return;
+
+            // Note: GLFW keeps the cursor position while it is disabled and puts the cursor back when it is enabled,
+            //       so the jump back must not count as a movement
+            glfwSetInputMode(window, GLFW_CURSOR, __layer != nullptr ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            if (__layer == nullptr) cursor_known = false;
         }
 
         double FrameInputHandlerGLFW::getFrameTime() const { return frame_time; }
@@ -470,6 +497,7 @@ namespace Simple {
             frame_time = frame_clock.tick();
             for (size_t i = 0u; i < layers.size(); ++i)
                 layers[i]->newFrame();
+            updateCursorLock(); // ImGui widgets become active during its frame, not during the events
         }
 
 
@@ -671,6 +699,9 @@ namespace Simple {
         const float CameraControlsBase::FovyLimitMax     = 170.f;
         const float CameraControlsBase::FovyMinDefault   =   1.f;
         const float CameraControlsBase::FovyMaxDefault   =  75.f;
+        const float CameraControlsBase::DistMin          =   0.1f;
+        const float CameraControlsBase::DistMax          = 100.f;
+        const bool  CameraControlsBase::InvertPanDefault = true;
 
         CameraControlsBase::CameraControlsBase() {
             declareActions(Actions::camera_names, Actions::CAMERA_COUNT);
@@ -685,6 +716,10 @@ namespace Simple {
 
         float CameraControlsBase::scrollFovy(float _fovy, double _scroll_dy) const {
             return Math::clampCL(_fovy - (float) _scroll_dy, fovy_min, fovy_max);
+        }
+
+        bool CameraControlsBase::wantsCursorLock() const {
+            return lock_cursor && (isDown(Actions::CAMERA_ROTATE) || isDown(Actions::CAMERA_PAN));
         }
 
         void CameraControlsBase::clampSettings() {
@@ -830,7 +865,8 @@ namespace Simple {
 
     // CameraSettingsWidget
 
-        CameraSettingsWidget::CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj) : controls{_controls}, proj{_proj} {}
+        CameraSettingsWidget::CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj, ViewCentered *_view, ImGUI::ImGuiHandler *_imgui)
+                                : controls{_controls}, proj{_proj}, view{_view}, imgui{_imgui} {}
 
         bool CameraSettingsWidget::begin() { return true; }
 
@@ -854,6 +890,17 @@ namespace Simple {
             ImGui::SetItemTooltip("Keys: units per second\nMouse: units per drag over the window height");
             ImGui::Checkbox("Camera follows the cursor", &controls->invert_pan);
             ImGui::SetItemTooltip("Off: the scene follows the cursor (grab)");
+            if (view != nullptr) {
+                float __dist = view->dist;
+                if (ImGui::SliderFloat("Distance", &__dist, CameraControlsBase::DistMin, CameraControlsBase::DistMax, "%.2f",
+                                       ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp))
+                    view->dist = __dist;
+                ImGui::SetItemTooltip("From the camera to the point it rotates around");
+            }
+
+            ImGui::SeparatorText("Cursor");
+            ImGui::Checkbox("Freeze while moving the camera", &controls->lock_cursor);
+            if (imgui != nullptr) ImGui::Checkbox("Freeze while dragging sliders", &imgui->lock_cursor_on_drag);
 
             ImGui::SeparatorText("Field of view");
             ImGui::DragFloatRange2("Scroll bounds", &controls->fovy_min, &controls->fovy_max, 0.5f,
@@ -870,7 +917,9 @@ namespace Simple {
                 controls->move_speed = CameraControlsBase::MoveSpeedDefault;
                 controls->fovy_min   = CameraControlsBase::FovyMinDefault;
                 controls->fovy_max   = CameraControlsBase::FovyMaxDefault;
-                controls->invert_pan = false;
+                controls->invert_pan = CameraControlsBase::InvertPanDefault;
+                controls->lock_cursor = true;
+                if (imgui != nullptr) imgui->lock_cursor_on_drag = true;
             }
             if (proj != nullptr) proj->fovy = Math::clampCL(proj->fovy, controls->fovy_min, controls->fovy_max);
 

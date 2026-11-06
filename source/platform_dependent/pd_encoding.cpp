@@ -6,6 +6,19 @@
 
 #ifdef WIN32
 #include <Windows.h>
+
+        static std::string utf8ToShiftJISFull_(const std::string &_str) {
+            if (_str.empty()) return std::string();
+            const int __wide_size = MultiByteToWideChar(CP_UTF8, 0, _str.data(), int(_str.size()), NULL, 0);
+            if (__wide_size <= 0) return std::string();
+            std::vector<wchar_t> __wide(__wide_size);
+            MultiByteToWideChar(CP_UTF8, 0, _str.data(), int(_str.size()), __wide.data(), __wide_size);
+            const int __size = WideCharToMultiByte(932, 0, __wide.data(), __wide_size, NULL, 0, NULL, NULL);
+            if (__size <= 0) return std::string();
+            std::string __res(size_t(__size), '\0');
+            WideCharToMultiByte(932, 0, __wide.data(), __wide_size, &__res[0], __size, NULL, NULL);
+            return __res;
+        }
 #else
 #include <iconv.h>
 #include <cerrno>
@@ -76,6 +89,45 @@ namespace Simple {
             __res.resize(__res.size() - __out_left);
             return __res;
         }
+
+        static std::string utf8ToShiftJISFull_(const std::string &_str) {
+            if (_str.empty()) return std::string();
+            iconv_t __conv = iconv_open("CP932", "UTF-8");
+            if (__conv == (iconv_t)-1) __conv = iconv_open("SHIFT_JIS", "UTF-8");
+            if (__conv == (iconv_t)-1) {
+                fprintf(svkfwwarn, "%s", SVKFW_WRAPWARN("Enc :: utf8ToShiftJIS", "iconv has no Shift-JIS converter\n"));
+                return _str;
+            }
+            std::string __res(_str.size() * 2u + 4u, '\0');
+            char  *__in  = const_cast<char*>(_str.data());
+            size_t __in_left = _str.size();
+            char  *__out = &__res[0];
+            size_t __out_left = __res.size();
+            while (__in_left > 0u && iconv(__conv, &__in, &__in_left, &__out, &__out_left) == (size_t)-1) {
+                if (errno != EILSEQ || __out_left == 0u) break;
+                // A character CP932 doesn't have: skip its UTF-8 bytes, write '?'
+                do { ++__in; --__in_left; } while (__in_left > 0u && (static_cast<unsigned char>(*__in) & 0xC0u) == 0x80u);
+                *__out++ = '?'; --__out_left;
+            }
+            iconv_close(__conv);
+            __res.resize(__res.size() - __out_left);
+            return __res;
+        }
 #endif
+
+        std::string utf8ToShiftJIS(const std::string &_str, size_t _max_bytes) {
+            std::string __res = utf8ToShiftJISFull_(_str);
+            if (_max_bytes == 0u || __res.size() <= _max_bytes) return __res;
+            size_t __end = 0u;
+            for (size_t i = 0u; i < __res.size();) {
+                const unsigned char ch = static_cast<unsigned char>(__res[i]);
+                const size_t __len = ((ch >= 0x81u && ch <= 0x9Fu) || (ch >= 0xE0u && ch <= 0xFCu)) ? 2u : 1u;
+                if (i + __len > _max_bytes) break;
+                i += __len;
+                __end = i;
+            }
+            __res.resize(__end);
+            return __res;
+        }
     }; // Enc END
 }; // Simple END

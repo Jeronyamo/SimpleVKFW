@@ -56,6 +56,48 @@ namespace ImGuiCustom {
     bool TextGrid(const char *_id, int _rows, int _columns, const std::function<const char*(int)> &_column_name,
                   const TextGridStyle &_style, const std::function<void(int, int, int, char*, int)> &_sub_text,
                   TextGridCursor &_cursor, int _play_row, int _scroll_to, const ImVec2 &_size = ImVec2(0.f, 0.f));
+
+
+    // MMD interpolation curve: a cubic Bezier from (0,0) to (1,1) with control points (x1,y1), (x2,y2) in [0, 127] (VMD bytes),
+    // the nearer control point follows the mouse while dragging. Returns true if changed
+    bool BezierCurve127(const char *_id, int *_x1, int *_y1, int *_x2, int *_y2, const ImVec2 &_size = ImVec2(0.f, 0.f));
+
+
+    // Dope sheet of keyframes (MMD style): one row per track with its keys as diamonds over a frame ruler.
+    // Click: selects a key (or sets the current frame on an empty spot); drag a selected key: moves it (whole frames);
+    // drag on the ruler: scrubs. Mouse wheel scrolls the rows, Ctrl + wheel zooms the frames, Shift + wheel (or the scroll bar
+    // at the bottom) scrolls them
+    struct TimelineRow {
+        const char        *name = "";
+        std::vector<float> frames;         // the keys of the track, sorted
+        ImU32              color = 0u;     // diamond color, 0 - default
+        bool               header = false; // a group title row without keys
+    }; // TimelineRow END
+
+    struct TimelineState {
+        float first_frame = 0.f;     // the frame at the left edge
+        float px_per_frame = 6.f;
+        int   first_row = 0;         // scrolled rows
+        float scroll_to = -1.f;      // >= 0: the next call scrolls the frames to show this one in the middle (then resets it)
+        int   selected_row = -1, selected_key = -1;
+        // Drag of the selected key (internal)
+        bool  dragging = false;
+        float drag_frame = 0.f;
+        // Drag of the scroll bar (internal): the mouse offset in the grab, < 0 - not dragging
+        float scroll_grab = -1.f;
+    }; // TimelineState END
+
+    struct TimelineEvent {
+        enum Type { TL_EVENT_NONE = 0, TL_EVENT_SEEK, TL_EVENT_SELECT, TL_EVENT_MOVE_KEY, TL_EVENT_DOUBLE_CLICK } type = TL_EVENT_NONE;
+        int   row = -1, key = -1;
+        float frame = 0.f;           // SEEK: the new current frame; MOVE_KEY: where the key goes; DOUBLE_CLICK: the clicked frame;
+                                     // SELECT: the key's frame, or the clicked frame (-1 if the name was clicked)
+    }; // TimelineEvent END
+
+    // '_current' is the play head; '_length' (frames) limits the ruler (it extends past the last key anyway).
+    // Returns true when '_event' has something
+    bool Timeline(const char *_id, const std::vector<TimelineRow> &_rows, float _current, float _length, TimelineState &_state,
+                  TimelineEvent &_event, const ImVec2 &_size = ImVec2(0.f, 0.f));
 }; // ImGuiCustom END
 
 #endif

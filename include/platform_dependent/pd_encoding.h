@@ -12,6 +12,9 @@ namespace Simple {
         // the end of a fixed-size field (VMD names are 15/20 bytes) is dropped
         std::string shiftJISToUTF8(const char *_str, size_t _size);
         std::string shiftJISToUTF8(const std::string &_str);
+        // UTF-8 to Shift-JIS (CP932), e.g. names written to VMD files; characters CP932 lacks become '?'. With '_max_bytes' > 0
+        // the result is cut to at most that many bytes without splitting a two-byte character (VMD bone names: 15 bytes)
+        std::string utf8ToShiftJIS(const std::string &_str, size_t _max_bytes = 0u);
     }; // Enc END
 }; // Simple END
 

@@ -2527,6 +2527,67 @@ namespace Simple {
                 }
             }
             SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "': bad morphs\n", return false);
+
+            // Display frames (skipped), rigid bodies, joints. A model without them (or a cut file) is still usable: the
+            // physics part is dropped with a warning
+            const int32_t __frames = __in.get<int32_t>();
+            for (int32_t f = 0; __in.ok && f < __frames; ++f) {
+                __in.text(); __in.text();
+                __in.get<uint8_t>();
+                const int32_t __elements = __in.get<int32_t>();
+                if (__elements < 0 || __elements > (1 << 24)) { __in.ok = false; break; }
+                for (int32_t e = 0; __in.ok && e < __elements; ++e)
+                    __in.index(__in.get<uint8_t>() == 0u ? __in.bone_index : __in.morph_index);
+            }
+            const int32_t __bodies = __in.ok ? __in.get<int32_t>() : 0;
+            if (__in.ok && __bodies >= 0 && __bodies < (1 << 20)) {
+                file_content.rigid_bodies.resize((size_t)__bodies);
+                for (ContentPMX::RigidBody &__b : file_content.rigid_bodies) {
+                    __b.name            = __in.text();
+                    __b.name_en         = __in.text();
+                    __b.bone            = __in.index(__in.bone_index);
+                    __b.group           = __in.get<uint8_t>();
+                    __b.collision_mask  = __in.get<uint16_t>();
+                    __b.shape           = (ContentPMX::RigidShape)__in.get<uint8_t>();
+                    __b.size            = __in.vec3();
+                    __b.position        = __in.vec3();
+                    __b.rotation        = __in.vec3();
+                    __b.mass            = __in.get<float>();
+                    __b.linear_damping  = __in.get<float>();
+                    __b.angular_damping = __in.get<float>();
+                    __b.restitution     = __in.get<float>();
+                    __b.friction        = __in.get<float>();
+                    __b.mode            = (ContentPMX::RigidMode)__in.get<uint8_t>();
+                    if (__b.shape > ContentPMX::RIGID_CAPSULE) __b.shape = ContentPMX::RIGID_SPHERE;
+                    if (__b.mode  > ContentPMX::RIGID_PHYSICS_BONE_POSITION) __b.mode = ContentPMX::RIGID_PHYSICS;
+                }
+            } else __in.ok = false;
+            const int32_t __joints = __in.ok ? __in.get<int32_t>() : 0;
+            if (__in.ok && __joints >= 0 && __joints < (1 << 20)) {
+                file_content.joints.resize((size_t)__joints);
+                for (ContentPMX::Joint &__j : file_content.joints) {
+                    __j.name           = __in.text();
+                    __j.name_en        = __in.text();
+                    __j.type           = __in.get<uint8_t>();
+                    __j.body_a         = __in.index(__in.rigid_index);
+                    __j.body_b         = __in.index(__in.rigid_index);
+                    __j.position       = __in.vec3();
+                    __j.rotation       = __in.vec3();
+                    __j.linear_min     = __in.vec3();
+                    __j.linear_max     = __in.vec3();
+                    __j.angular_min    = __in.vec3();
+                    __j.angular_max    = __in.vec3();
+                    __j.linear_spring  = __in.vec3();
+                    __j.angular_spring = __in.vec3();
+                }
+            } else __in.ok = false;
+            if (!__in.ok) {
+                if (!file_content.rigid_bodies.empty() || !file_content.joints.empty() || __frames != 0)
+                    fprintf(svkfwwarn, "%s", (std::string(SVKFW_WRAPWARN("File::ReaderWriterPMX :: read", "")) + "'" + _fpath +
+                                              "': bad display frames / rigid bodies / joints, the model goes without physics\n").c_str());
+                file_content.rigid_bodies.clear();
+                file_content.joints.clear();
+            }
             return true;
         }
 

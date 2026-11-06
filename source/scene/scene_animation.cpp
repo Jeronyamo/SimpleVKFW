@@ -1,6 +1,7 @@
 #include "scene/scene_animation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -190,16 +191,18 @@ namespace Simple {
         AnimationClip loadVMD(const std::string &_path) {
             File::ReaderWriterVMD __reader;
             SVKFW_ASSERT(__reader.read(_path), std::runtime_error, "SceneGraph :: loadVMD", "could not read '" + _path + "'");
-            File::ContentVMD &__vmd = __reader.file_content;
-
-            AnimationClip __clip;
             const size_t __sep = _path.find_last_of("/\\");
-            __clip.name = __sep == std::string::npos ? _path : _path.substr(__sep + 1u);
+            return convertVMD(__reader.file_content, __sep == std::string::npos ? _path : _path.substr(__sep + 1u));
+        }
+
+        AnimationClip convertVMD(const File::ContentVMD &_vmd, const std::string &_name) {
+            AnimationClip __clip;
+            __clip.name = _name;
 
             // Bone keys: one track per name, in the order of the first appearance
             const size_t __bone_name_len = 15u;
             std::map<std::string, size_t> __tracks; // raw name -> track
-            for (File::ContentVMD::BoneKeyframe &__kf : __vmd.keyframes_bone) {
+            for (File::ContentVMD::BoneKeyframe __kf : _vmd.keyframes_bone) { // a copy: 'GetInterpolation' takes a reference
                 const std::string __raw(__kf.bone_name, strnlen(__kf.bone_name, __bone_name_len));
                 std::map<std::string, size_t>::iterator __found = __tracks.find(__raw);
                 if (__found == __tracks.end()) {
@@ -229,7 +232,7 @@ namespace Simple {
             // Morph keys: one track per name
             const size_t __morph_name_len = 15u;
             std::map<std::string, size_t> __morph_tracks;
-            for (const File::ContentVMD::MorphKeyframe &__kf : __vmd.keyframes_morph) {
+            for (const File::ContentVMD::MorphKeyframe &__kf : _vmd.keyframes_morph) {
                 const std::string __raw(__kf.morph_name, strnlen(__kf.morph_name, __morph_name_len));
                 std::map<std::string, size_t>::iterator __found = __morph_tracks.find(__raw);
                 if (__found == __morph_tracks.end()) {
@@ -245,7 +248,7 @@ namespace Simple {
 
             // IK switches: a key per IK keyframe of each listed chain
             const size_t __ik_name_len = 20u;
-            for (const File::ContentVMD::IKKeyframe &__kf : __vmd.keyframes_ik) {
+            for (const File::ContentVMD::IKKeyframe &__kf : _vmd.keyframes_ik) {
                 for (const File::ContentVMD::IKKeyframe::IKState &__state : __kf.iks) {
                     const std::string __name = Enc::shiftJISToUTF8(__state.ik_name, __ik_name_len);
                     size_t __track = 0u;
@@ -261,6 +264,77 @@ namespace Simple {
                 }
             }
 
+            __clip.finalize();
+            return __clip;
+        }
+
+
+//  == === ==== >  MMD camera
+
+        namespace {
+            // Rotations of a column vector (right-hand rule matrices, applied in the MMD space)
+            vec3 rotX(const vec3 &_v, float _a) { const float c = std::cos(_a), s = std::sin(_a); return { _v.x, _v.y * c - _v.z * s, _v.y * s + _v.z * c }; }
+            vec3 rotY(const vec3 &_v, float _a) { const float c = std::cos(_a), s = std::sin(_a); return { _v.x * c + _v.z * s, _v.y, -_v.x * s + _v.z * c }; }
+            vec3 rotZ(const vec3 &_v, float _a) { const float c = std::cos(_a), s = std::sin(_a); return { _v.x * c - _v.y * s, _v.x * s + _v.y * c, _v.z }; }
+            vec3 cameraRotate(const vec3 &_v, const vec3 &_r) { return rotY(rotX(rotZ(_v, -_r.z), -_r.x), -_r.y); }
+        } // anonymous
+
+        // Note: MMD rotates the offset (0, 0, -distance) and the up vector by the roll first, then the pitch, then the yaw, all with
+        //       the VMD angles negated: Ry(-y) Rx(-x) Rz(-z) (checked against MMD on a camera VMD)
+        void CameraPose::lookAt(vec3 &_eye, vec3 &_up) const {
+            _eye = center + cameraRotate({0.f, 0.f, -distance}, rotation);
+            _up  = cameraRotate({0.f, 1.f, 0.f}, rotation);
+        }
+
+        bool CameraClip::empty() const { return keys.empty(); }
+
+        void CameraClip::finalize() {
+            sortKeys(keys);
+            length = keys.empty() ? 0.f : keys.back().frame;
+        }
+
+        CameraPose CameraClip::evaluate(float _frame) const {
+            if (keys.empty()) return CameraPose();
+            _frame = std::min(std::max(_frame, 0.f), length);
+            const size_t __next = size_t(std::upper_bound(keys.begin(), keys.end(), _frame, frameBeforeKey<CameraKey>) - keys.begin());
+            if (__next == 0u) return keys.front().pose;
+            if (__next >= keys.size()) return keys.back().pose;
+            const CameraKey &a = keys[__next - 1u], &b = keys[__next];
+            // Keys on adjacent frames: MMD ignores the curves and cuts at the next key (a camera cut)
+            if (b.frame - a.frame <= 1.f) return a.pose;
+            const float t = (_frame - a.frame) / (b.frame - a.frame);
+            float e[CAMERA_CHANNEL_COUNT];
+            for (int c = 0; c < CAMERA_CHANNEL_COUNT; ++c) e[c] = b.curves[c].evaluate(t);
+            CameraPose __pose;
+            __pose.center   = lerp3(a.pose.center, b.pose.center, e[CAMERA_X], e[CAMERA_Y], e[CAMERA_Z]);
+            __pose.rotation = a.pose.rotation + (b.pose.rotation - a.pose.rotation) * e[CAMERA_ROTATION];
+            __pose.distance = a.pose.distance + (b.pose.distance - a.pose.distance) * e[CAMERA_DISTANCE];
+            __pose.fov      = a.pose.fov + (b.pose.fov - a.pose.fov) * e[CAMERA_FOV];
+            __pose.perspective = a.pose.perspective;
+            return __pose;
+        }
+
+        CameraClip convertVMDCamera(const File::ContentVMD &_vmd, const std::string &_name) {
+            CameraClip __clip;
+            __clip.name = _name;
+            for (File::ContentVMD::CameraKeyframe __kf : _vmd.keyframes_camera) {
+                CameraKey __key;
+                __key.frame = float(__kf.frame_id);
+                __key.pose.center   = { __kf.position.x, __kf.position.y, __kf.position.z };
+                __key.pose.rotation = { __kf.rotation.x, __kf.rotation.y, __kf.rotation.z };
+                __key.pose.distance = -__kf.distance; // the VMD stores it negated
+                __key.pose.fov      = float(__kf.fov);
+                __key.pose.perspective = __kf.perspect == 0u; // VMD stores "perspective off"
+                const File::ContentVMD::InterpolationInfo __info = File::ContentVMD::GetInterpolation(__kf);
+                const vec4u8 *__channels[CAMERA_CHANNEL_COUNT] = { &__info.mov_x, &__info.mov_y, &__info.mov_z, &__info.rot, &__info.dist, &__info.fov };
+                for (int c = 0; c < CAMERA_CHANNEL_COUNT; ++c) {
+                    __key.curves[c].x1 = __channels[c]->x;
+                    __key.curves[c].y1 = __channels[c]->y;
+                    __key.curves[c].x2 = __channels[c]->z;
+                    __key.curves[c].y2 = __channels[c]->w;
+                }
+                __clip.keys.push_back(__key);
+            }
             __clip.finalize();
             return __clip;
         }

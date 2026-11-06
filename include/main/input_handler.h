@@ -367,7 +367,7 @@ namespace Simple {
             const float rotate_speed = 0.4f; // degrees per pixel
             float move_speed = MoveSpeedDefault; // units per second (keys) / per framebuffer height (mouse), [MoveSpeedMin, MoveSpeedMax]
             float fovy_min = FovyMinDefault, fovy_max = FovyMaxDefault; // the scroll changes fovy (degrees) in these bounds
-            bool  invert_pan = false;        // false: the scene follows the cursor (grab), true: the camera does
+            bool  invert_pan = true;        // false: the scene follows the cursor (grab), true: the camera does
 
             CameraControlsBase();
 

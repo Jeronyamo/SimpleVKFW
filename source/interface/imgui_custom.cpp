@@ -374,4 +374,256 @@ namespace ImGuiCustom {
         ImGui::EndTable();
         return __clicked;
     }
+    static float bezierAxis(float _u, float _p1, float _p2) {
+        const float __v = 1.f - _u;
+        return 3.f * __v * __v * _u * _p1 + 3.f * __v * _u * _u * _p2 + _u * _u * _u;
+    }
+
+    bool BezierCurve127(const char *_id, int *_x1, int *_y1, int *_x2, int *_y2, const ImVec2 &_size) {
+        const float __side = _size.x > 0.f ? _size.x : ImGui::GetTextLineHeight() * 8.f;
+        const ImVec2 __size(__side, _size.y > 0.f ? _size.y : __side);
+        const ImVec2 __pos = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton(_id, __size);
+        const float __pad = ImGui::GetFontSize() * 0.5f;
+        const ImVec2 __a(__pos.x + __pad, __pos.y + __size.y - __pad), __b(__pos.x + __size.x - __pad, __pos.y + __pad);
+        const float __w = __b.x - __a.x, __h = __a.y - __b.y;
+        // (0..127, 0..127) -> screen
+        struct Map {
+            ImVec2 a; float w, h;
+            ImVec2 operator()(float _x, float _y) const { return ImVec2(a.x + _x / 127.f * w, a.y - _y / 127.f * h); }
+        } __map = { __a, __w, __h };
+
+        ImGuiStorage *__storage = ImGui::GetStateStorage();
+        const ImGuiID __drag_id = ImGui::GetID("##bezier_drag");
+        int __drag = __storage->GetInt(__drag_id, -1);
+        const ImVec2 __mouse = ImGui::GetIO().MousePos;
+        const ImVec2 __p1 = __map(float(*_x1), float(*_y1)), __p2 = __map(float(*_x2), float(*_y2));
+        if (ImGui::IsItemActivated()) {
+            const float d1 = (__mouse.x - __p1.x) * (__mouse.x - __p1.x) + (__mouse.y - __p1.y) * (__mouse.y - __p1.y);
+            const float d2 = (__mouse.x - __p2.x) * (__mouse.x - __p2.x) + (__mouse.y - __p2.y) * (__mouse.y - __p2.y);
+            __drag = d1 <= d2 ? 0 : 1;
+        }
+        bool __changed = false;
+        if (ImGui::IsItemActive() && __drag >= 0) {
+            const int __x = (int)std::lround(clampf((__mouse.x - __a.x) / __w, 0.f, 1.f) * 127.f);
+            const int __y = (int)std::lround(clampf((__a.y - __mouse.y) / __h, 0.f, 1.f) * 127.f);
+            int *__px = __drag == 0 ? _x1 : _x2, *__py = __drag == 0 ? _y1 : _y2;
+            __changed = *__px != __x || *__py != __y;
+            *__px = __x; *__py = __y;
+        }
+        if (!ImGui::IsItemActive()) __drag = -1;
+        __storage->SetInt(__drag_id, __drag);
+
+        ImDrawList *__draw = ImGui::GetWindowDrawList();
+        __draw->AddRectFilled(__pos, __pos + __size, ImGui::GetColorU32(ImGuiCol_FrameBg));
+        __draw->AddRect(__map(0.f, 0.f), __map(127.f, 127.f), ImGui::GetColorU32(ImGuiCol_Border));
+        __draw->AddLine(__map(0.f, 0.f), __map(127.f, 127.f), ImGui::GetColorU32(ImGuiCol_TextDisabled));
+        const ImU32 __col = ImGui::GetColorU32(ImGuiCol_PlotLines);
+        ImVec2 __prev = __map(0.f, 0.f);
+        for (int i = 1; i <= 32; ++i) {
+            const float u = i / 32.f;
+            const ImVec2 __pt = __map(bezierAxis(u, float(*_x1), float(*_x2)), bezierAxis(u, float(*_y1), float(*_y2)));
+            __draw->AddLine(__prev, __pt, __col, 2.f);
+            __prev = __pt;
+        }
+        const ImVec2 __q1 = __map(float(*_x1), float(*_y1)), __q2 = __map(float(*_x2), float(*_y2));
+        __draw->AddLine(__map(0.f, 0.f), __q1, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+        __draw->AddLine(__map(127.f, 127.f), __q2, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+        __draw->AddCircleFilled(__q1, __pad * 0.6f, ImGui::GetColorU32(__drag == 0 ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab));
+        __draw->AddCircleFilled(__q2, __pad * 0.6f, ImGui::GetColorU32(__drag == 1 ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab));
+        return __changed;
+    }
+
+
+    bool Timeline(const char *_id, const std::vector<TimelineRow> &_rows, float _current, float _length, TimelineState &_state,
+                  TimelineEvent &_event, const ImVec2 &_size) {
+        _event = TimelineEvent();
+        ImGuiIO &__io = ImGui::GetIO();
+        const ImVec2 __full = itemSize(_size, 12.f);
+        const ImVec2 __pos  = ImGui::GetCursorScreenPos();
+        const float  __line = ImGui::GetTextLineHeightWithSpacing();
+        // The keys area, the horizontal scroll bar under it
+        const float  __scroll_h = ImGui::GetStyle().ScrollbarSize;
+        const ImVec2 __size(__full.x, std::max(__full.y - __scroll_h, __line * 2.f));
+        const float  __name_w = std::min(ImGui::GetFontSize() * 9.f, __size.x * 0.35f);
+        const float  __ruler_h = __line;
+        const float  __keys_x = __pos.x + __name_w;
+        const float  __keys_w = std::max(__size.x - __name_w, 1.f);
+        const int    __visible_rows = std::max(int((__size.y - __ruler_h) / __line), 1);
+        _state.px_per_frame = clampf(_state.px_per_frame, 0.05f, 64.f);
+        const float  __visible_frames = __keys_w / _state.px_per_frame;
+        if (_state.scroll_to >= 0.f) {
+            _state.first_frame = std::max(_state.scroll_to - __visible_frames * 0.5f, 0.f);
+            _state.scroll_to = -1.f;
+        }
+
+        ImGui::InvisibleButton(_id, __size);
+        const bool __hovered = ImGui::IsItemHovered();
+        // Wheel: rows; Ctrl - zoom around the mouse; Shift - frames
+        if (__hovered && __io.MouseWheel != 0.f) {
+            if (__io.KeyCtrl) {
+                const float __mouse_frame = _state.first_frame + (__io.MousePos.x - __keys_x) / _state.px_per_frame;
+                _state.px_per_frame = clampf(_state.px_per_frame * (__io.MouseWheel > 0.f ? 1.25f : 0.8f), 0.05f, 64.f);
+                _state.first_frame = __mouse_frame - (__io.MousePos.x - __keys_x) / _state.px_per_frame;
+            } else if (__io.KeyShift) _state.first_frame -= __io.MouseWheel * 40.f / _state.px_per_frame;
+            else _state.first_row -= int(__io.MouseWheel * 3.f);
+        }
+        if (__hovered && __io.MouseWheelH != 0.f) _state.first_frame -= __io.MouseWheelH * 40.f / _state.px_per_frame;
+        _state.first_frame = std::max(_state.first_frame, 0.f);
+        _state.first_row = std::max(std::min(_state.first_row, int(_rows.size()) - __visible_rows), 0);
+
+        const float __frame_end = std::max(_length, 1.f);
+        struct Map {
+            float x0, first, px;
+            float x(float _f) const { return x0 + (_f - first) * px; }
+            float frame(float _x) const { return first + (_x - x0) / px; }
+        } __map = { __keys_x, _state.first_frame, _state.px_per_frame };
+
+        // Hit test: the row and the nearest key under the mouse
+        const ImVec2 __mouse = __io.MousePos;
+        const bool __in_ruler = __mouse.y < __pos.y + __ruler_h;
+        const bool __in_keys  = __mouse.x >= __keys_x;
+        int __hit_row = -1, __hit_key = -1;
+        if (!__in_ruler) {
+            const int __r = _state.first_row + int((__mouse.y - __pos.y - __ruler_h) / __line);
+            if (__r >= 0 && __r < (int)_rows.size()) __hit_row = __r;
+        }
+        if (__hit_row >= 0 && __in_keys) {
+            float __best = __line * 0.5f;
+            const std::vector<float> &__frames = _rows[__hit_row].frames;
+            for (size_t k = 0u; k < __frames.size(); ++k) {
+                const float d = std::fabs(__map.x(__frames[k]) - __mouse.x);
+                if (d <= __best) { __best = d; __hit_key = (int)k; }
+            }
+        }
+        const float __mouse_frame = std::max(std::floor(__map.frame(__mouse.x) + 0.5f), 0.f);
+
+        if (ImGui::IsItemActivated()) {
+            if (__in_ruler && __in_keys) { _event.type = TimelineEvent::TL_EVENT_SEEK; _event.frame = __mouse_frame; }
+            else if (__hit_key >= 0) {
+                _state.selected_row = __hit_row; _state.selected_key = __hit_key;
+                _state.dragging = true; _state.drag_frame = _rows[__hit_row].frames[__hit_key];
+                _event.type = TimelineEvent::TL_EVENT_SELECT; _event.row = __hit_row; _event.key = __hit_key;
+                _event.frame = _state.drag_frame;
+            } else if (__hit_row >= 0) {
+                _state.selected_row = __hit_row; _state.selected_key = -1;
+                _event.type = TimelineEvent::TL_EVENT_SELECT; _event.row = __hit_row;
+                _event.frame = __in_keys ? __mouse_frame : -1.f;
+            }
+        }
+        if (ImGui::IsItemActive() && __in_ruler && !_state.dragging && __in_keys && _event.type == TimelineEvent::TL_EVENT_NONE &&
+            ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.f)) {
+            _event.type = TimelineEvent::TL_EVENT_SEEK; _event.frame = __mouse_frame;
+        }
+        if (_state.dragging) {
+            if (ImGui::IsItemActive()) _state.drag_frame = __mouse_frame;
+            else {
+                _state.dragging = false;
+                if (_state.selected_row >= 0 && _state.selected_row < (int)_rows.size() && _state.selected_key >= 0 &&
+                    _state.selected_key < (int)_rows[_state.selected_row].frames.size() &&
+                    _rows[_state.selected_row].frames[_state.selected_key] != _state.drag_frame) {
+                    _event.type = TimelineEvent::TL_EVENT_MOVE_KEY; _event.row = _state.selected_row; _event.key = _state.selected_key;
+                    _event.frame = _state.drag_frame;
+                }
+            }
+        }
+        if (__hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && __hit_row >= 0 && __in_keys) {
+            _event.type = TimelineEvent::TL_EVENT_DOUBLE_CLICK; _event.row = __hit_row; _event.key = __hit_key; _event.frame = __mouse_frame;
+        }
+
+        // Horizontal scroll bar: the range covers the motion (and the play head) plus half a view, and the current view
+        const float __range = std::max(std::max(__frame_end, _current) + __visible_frames * 0.5f, _state.first_frame + __visible_frames);
+        const float __grab_w = std::min(std::max(__keys_w * __visible_frames / __range, __scroll_h), __keys_w);
+        const float __track_w = std::max(__keys_w - __grab_w, 1.f);
+        const float __scroll_max = std::max(__range - __visible_frames, 1e-3f);
+        const ImVec2 __bar_pos(__keys_x, __pos.y + __size.y);
+        ImGui::SetCursorScreenPos(__bar_pos);
+        ImGui::PushID(_id);
+        ImGui::InvisibleButton("##hscroll", ImVec2(__keys_w, __scroll_h));
+        ImGui::PopID();
+        const bool __bar_hovered = ImGui::IsItemHovered(), __bar_active = ImGui::IsItemActive();
+        float __grab_x = __keys_x + _state.first_frame / __scroll_max * __track_w;
+        if (ImGui::IsItemActivated()) {
+            // On the grab: drag it; elsewhere: center the grab on the mouse, then drag
+            if (__mouse.x >= __grab_x && __mouse.x <= __grab_x + __grab_w) _state.scroll_grab = __mouse.x - __grab_x;
+            else _state.scroll_grab = __grab_w * 0.5f;
+        }
+        if (__bar_active && _state.scroll_grab >= 0.f) {
+            _state.first_frame = clampf((__mouse.x - _state.scroll_grab - __keys_x) / __track_w, 0.f, 1.f) * __scroll_max;
+            __grab_x = __keys_x + _state.first_frame / __scroll_max * __track_w;
+            __map.first = _state.first_frame;
+        } else _state.scroll_grab = -1.f;
+        if (__bar_hovered && __io.MouseWheel != 0.f && !__io.KeyCtrl) {
+            _state.first_frame = std::max(_state.first_frame - __io.MouseWheel * 40.f / _state.px_per_frame, 0.f);
+            __map.first = _state.first_frame;
+        }
+
+        // Drawing
+        ImDrawList *__draw = ImGui::GetWindowDrawList();
+        __draw->PushClipRect(__pos, __pos + __size, true);
+        __draw->AddRectFilled(__pos, __pos + __size, ImGui::GetColorU32(ImGuiCol_FrameBg));
+        // Ruler: a tick every 'step' frames with a label every 'label' frames
+        const float __steps[] = { 1.f, 2.f, 5.f, 10.f, 15.f, 30.f, 60.f, 150.f, 300.f, 600.f, 1500.f, 3000.f };
+        float __step = 1.f;
+        for (size_t i = 0u; i < sizeof(__steps) / sizeof(__steps[0]); ++i) { __step = __steps[i]; if (__step * __map.px >= 8.f) break; }
+        const float __label_step = __step * 5.f;
+        const float __last_visible = __map.frame(__keys_x + __keys_w);
+        const ImU32 __col_tick = ImGui::GetColorU32(ImGuiCol_TextDisabled), __col_text = ImGui::GetColorU32(ImGuiCol_Text);
+        for (float f = std::floor(_state.first_frame / __step) * __step; f <= __last_visible; f += __step) {
+            const float x = __map.x(f);
+            if (x < __keys_x) continue;
+            const bool __major = std::fmod(f, __label_step) < 0.5f;
+            __draw->AddLine(ImVec2(x, __pos.y + __ruler_h * (__major ? 0.4f : 0.7f)), ImVec2(x, __pos.y + __size.y),
+                            __major ? ImGui::GetColorU32(ImGuiCol_Border) : (__col_tick & 0x30FFFFFFu));
+            if (__major) {
+                char __buf[16];
+                snprintf(__buf, sizeof(__buf), "%d", int(f));
+                __draw->AddText(ImVec2(x + 2.f, __pos.y), __col_tick, __buf);
+            }
+        }
+        // The end of the motion
+        if (__map.x(__frame_end) >= __keys_x)
+            __draw->AddRectFilled(ImVec2(std::max(__map.x(__frame_end), __keys_x), __pos.y + __ruler_h), __pos + __size,
+                                  ImGui::GetColorU32(ImGuiCol_WindowBg) & 0x80FFFFFFu);
+        // Rows
+        const float __half = __line * 0.3f;
+        for (int r = _state.first_row; r < (int)_rows.size() && r < _state.first_row + __visible_rows; ++r) {
+            const TimelineRow &__row = _rows[r];
+            const float y = __pos.y + __ruler_h + (r - _state.first_row) * __line;
+            if (r == _state.selected_row)
+                __draw->AddRectFilled(ImVec2(__pos.x, y), ImVec2(__pos.x + __size.x, y + __line), ImGui::GetColorU32(ImGuiCol_Header));
+            else if (r % 2 == 1)
+                __draw->AddRectFilled(ImVec2(__pos.x, y), ImVec2(__pos.x + __size.x, y + __line), ImGui::GetColorU32(ImGuiCol_TableRowBgAlt));
+            __draw->PushClipRect(ImVec2(__pos.x, y), ImVec2(__keys_x - 2.f, y + __line), true);
+            __draw->AddText(ImVec2(__pos.x + (__row.header ? 2.f : 10.f), y), __row.header ? __col_tick : __col_text, __row.name);
+            __draw->PopClipRect();
+            const float cy = y + __line * 0.5f;
+            const ImU32 __col_key = __row.color ? __row.color : ImGui::GetColorU32(ImGuiCol_PlotLines);
+            for (size_t k = 0u; k < __row.frames.size(); ++k) {
+                const bool __selected = r == _state.selected_row && (int)k == _state.selected_key;
+                const float __f = __selected && _state.dragging ? _state.drag_frame : __row.frames[k];
+                const float x = __map.x(__f);
+                if (x < __keys_x - __half || x > __keys_x + __keys_w + __half) continue;
+                const ImVec2 __pts[4] = { ImVec2(x, cy - __half), ImVec2(x + __half, cy), ImVec2(x, cy + __half), ImVec2(x - __half, cy) };
+                __draw->AddConvexPolyFilled(__pts, 4, __selected ? ImGui::GetColorU32(ImGuiCol_PlotHistogramHovered) : __col_key);
+                if (__selected) __draw->AddPolyline(__pts, 4, __col_text, ImDrawFlags_Closed, 1.5f);
+            }
+        }
+        __draw->AddLine(ImVec2(__keys_x, __pos.y), ImVec2(__keys_x, __pos.y + __size.y), ImGui::GetColorU32(ImGuiCol_Border));
+        // Play head
+        const float __head = __map.x(_current);
+        if (__head >= __keys_x)
+            __draw->AddLine(ImVec2(__head, __pos.y), ImVec2(__head, __pos.y + __size.y), ImGui::GetColorU32(ImGuiCol_PlotHistogram), 2.f);
+        __draw->PopClipRect();
+        // The scroll bar
+        __draw->AddRectFilled(ImVec2(__pos.x, __bar_pos.y), ImVec2(__pos.x + __full.x, __bar_pos.y + __scroll_h),
+                              ImGui::GetColorU32(ImGuiCol_ScrollbarBg));
+        const ImGuiCol __grab_col = __bar_active ? ImGuiCol_ScrollbarGrabActive : (__bar_hovered ? ImGuiCol_ScrollbarGrabHovered : ImGuiCol_ScrollbarGrab);
+        __draw->AddRectFilled(ImVec2(__grab_x, __bar_pos.y + 2.f), ImVec2(__grab_x + __grab_w, __bar_pos.y + __scroll_h - 2.f),
+                              ImGui::GetColorU32(__grab_col), ImGui::GetStyle().ScrollbarRounding);
+        // The play head on the scroll bar
+        const float __head_bar = __keys_x + clampf(_current / __range, 0.f, 1.f) * __keys_w;
+        __draw->AddLine(ImVec2(__head_bar, __bar_pos.y), ImVec2(__head_bar, __bar_pos.y + __scroll_h), ImGui::GetColorU32(ImGuiCol_PlotHistogram), 2.f);
+        return _event.type != TimelineEvent::TL_EVENT_NONE;
+    }
 }; // ImGuiCustom END

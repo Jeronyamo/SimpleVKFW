@@ -39,10 +39,13 @@ namespace Simple {
                 // Vertex and UV morph offsets per PMX vertex (CSR: the offsets of vertex v are [morph_first[v], morph_first[v + 1]))
                 std::vector<uint32_t>    morph_first;
                 std::vector<MorphTarget> morph_targets; // 'vertex' is the PMX vertex here
+                // The first scene material of the model: each PMX material adds one ('convert'), so PMX material i is 'material_base + i'
+                uint32_t                 material_base;
 
                 PMXConverter(Scene &_scene, const PMX &_pmx, const std::string &_dir, const ImportOptions &_options)
                     : scene(_scene), pmx(_pmx), dir(_dir), options(_options),
-                      textures(_pmx.textures.size(), SCENE_NONE), texture_tried(_pmx.textures.size(), 0u) {}
+                      textures(_pmx.textures.size(), SCENE_NONE), texture_tried(_pmx.textures.size(), 0u),
+                      material_base((uint32_t)_scene.materials.size()) {}
 
                 uint32_t texture(int32_t _index) {
                     if (_index < 0 || (size_t)_index >= pmx.textures.size()) return SCENE_NONE;
@@ -133,8 +136,54 @@ namespace Simple {
                         if (!__ik.links.empty()) __skeleton.addIK(__ik);
                     }
                     morphs(__skeleton);
+                    physics(__skeleton);
                     __skeleton.finalize();
                     return scene.addSkeleton(__skeleton);
+                }
+
+                // PMX Euler angles (radians): q = qY * qX * qZ (Z first)
+                static Quat eulerPMX(const vec3f &_r) {
+                    return Quat(vec3{0.f, 1.f, 0.f}, _r.y) * Quat(vec3{1.f, 0.f, 0.f}, _r.x) * Quat(vec3{0.f, 0.f, 1.f}, _r.z);
+                }
+
+                // Rigid bodies and joints keep the PMX order (joints refer to it); bones are remapped
+                void physics(Skeleton &_skeleton) {
+                    _skeleton.rigid_bodies.reserve(pmx.rigid_bodies.size());
+                    for (size_t i = 0u; i < pmx.rigid_bodies.size(); ++i) {
+                        const PMX::RigidBody &__b = pmx.rigid_bodies[i];
+                        RigidBodyDesc __d;
+                        __d.name   = __b.name;
+                        __d.bone   = __b.bone >= 0 && (size_t)__b.bone < pmx.bones.size() ? bone_map[__b.bone] : SCENE_NONE;
+                        __d.group  = std::min<uint32_t>(__b.group, 15u);
+                        __d.collision_mask = __b.collision_mask;
+                        __d.shape  = (RigidShape)__b.shape;
+                        __d.size   = toVec3(__b.size);
+                        __d.position = toVec3(__b.position);
+                        __d.rotation = eulerPMX(__b.rotation);
+                        __d.mass            = __b.mass;
+                        __d.linear_damping  = __b.linear_damping;
+                        __d.angular_damping = __b.angular_damping;
+                        __d.restitution     = __b.restitution;
+                        __d.friction        = __b.friction;
+                        __d.mode   = (RigidMode)__b.mode;
+                        _skeleton.rigid_bodies.push_back(__d);
+                    }
+                    const int32_t __count = (int32_t)pmx.rigid_bodies.size();
+                    for (size_t i = 0u; i < pmx.joints.size(); ++i) {
+                        const PMX::Joint &__j = pmx.joints[i];
+                        if (__j.body_a < 0 || __j.body_a >= __count || __j.body_b < 0 || __j.body_b >= __count || __j.body_a == __j.body_b) continue;
+                        JointDesc __d;
+                        __d.name     = __j.name;
+                        __d.body_a   = (uint32_t)__j.body_a;
+                        __d.body_b   = (uint32_t)__j.body_b;
+                        __d.position = toVec3(__j.position);
+                        __d.rotation = eulerPMX(__j.rotation);
+                        __d.linear_min  = toVec3(__j.linear_min);  __d.linear_max  = toVec3(__j.linear_max);
+                        __d.angular_min = toVec3(__j.angular_min); __d.angular_max = toVec3(__j.angular_max);
+                        __d.linear_spring  = toVec3(__j.linear_spring);
+                        __d.angular_spring = toVec3(__j.angular_spring);
+                        _skeleton.joints.push_back(__d);
+                    }
                 }
 
                 // Morphs keep the PMX order (group entries refer to it); vertex and UV offsets go to the meshes ('mesh')
@@ -197,6 +246,23 @@ namespace Simple {
                                 __entry.weight = __m.group[o].weight;
                                 __morph.group.push_back(__entry);
                             }
+                        // Material morphs: -1 means all materials of the model
+                        for (size_t o = 0u; o < __m.materials.size(); ++o) {
+                            const PMX::Morph::MaterialOffset &__src = __m.materials[o];
+                            if (__src.material >= 0 && (size_t)__src.material >= pmx.materials.size()) continue;
+                            MorphMaterialOffset __offset;
+                            __offset.add          = __src.operation == 1u;
+                            __offset.diffuse      = { __src.diffuse.x, __src.diffuse.y, __src.diffuse.z, __src.diffuse.w };
+                            __offset.specular     = toVec3(__src.specular);
+                            __offset.shininess    = __src.specular_power;
+                            __offset.texture_tint = { __src.texture_tint.x, __src.texture_tint.y, __src.texture_tint.z, __src.texture_tint.w };
+                            const uint32_t __first = __src.material < 0 ? 0u : (uint32_t)__src.material;
+                            const uint32_t __end   = __src.material < 0 ? (uint32_t)pmx.materials.size() : __first + 1u;
+                            for (uint32_t mat = __first; mat < __end; ++mat) {
+                                __offset.material = material_base + mat;
+                                __morph.materials.push_back(__offset);
+                            }
+                        }
                         _skeleton.morphs.push_back(__morph);
                     }
                 }

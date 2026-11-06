@@ -144,11 +144,15 @@ namespace Simple {
                     Math::cos(pitch * float(M_PI / 180)) * Math::cos(yaw * float(M_PI / 180))).normalize() + cam_pos;
     }
 
-    mat4 ViewPOV::view() const {
+    vec3 ViewPOV::calcUpVect() const {
         int __test_pitch = int((Math::abs(pitch) + 90.f) / 180);
         if (__test_pitch < 0) __test_pitch ^= 1;
         bool __inverse_upvec = __test_pitch & 1;
 
-        return ViewMat(cam_pos, calcLookAt(), __inverse_upvec ? -up_vect : up_vect);
+        return __inverse_upvec ? -up_vect : up_vect;
+    }
+
+    mat4 ViewPOV::view() const {
+        return ViewMat(cam_pos, calcLookAt(), calcUpVect());
     }
 }; // Simple END

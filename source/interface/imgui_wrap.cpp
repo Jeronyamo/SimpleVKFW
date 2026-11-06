@@ -1,5 +1,7 @@
 #include "interface/imgui_wrap.h"
 
+#include <cstdio>
+
 namespace Simple {
     namespace ImGUI {
 
@@ -686,6 +688,22 @@ namespace Simple {
         void ImGuiHandler::setFont(const std::string &_font_path, float _size_pixels) {
             if (imgui_io)
                 imgui_io->Fonts->AddFontFromFileTTF(_font_path.c_str(), _size_pixels);
+        }
+
+        std::string ImGuiHandler::mergeFont(const std::vector<std::string> &_font_paths, float _size_pixels, const ImWchar *_ranges) {
+            if (!imgui_io) return std::string();
+            for (size_t i = 0u; i < _font_paths.size(); ++i) {
+                // Note: ImGui asserts on a missing file, so the path is checked first
+                FILE *__file = std::fopen(_font_paths[i].c_str(), "rb");
+                if (!__file) continue;
+                std::fclose(__file);
+                ImFontConfig __config;
+                __config.MergeMode = true;
+                imgui_io->Fonts->AddFontFromFileTTF(_font_paths[i].c_str(), _size_pixels, &__config,
+                                                    _ranges ? _ranges : imgui_io->Fonts->GetGlyphRangesJapanese());
+                return _font_paths[i];
+            }
+            return std::string();
         }
 
         void ImGuiHandler::newFrame() {

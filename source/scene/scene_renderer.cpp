@@ -29,6 +29,25 @@ namespace Simple {
             return __m == SCENE_NONE ? nullptr : &scene->materials[__m];
         }
 
+        const Material *SceneRenderer::frameMaterial_(uint32_t _mesh) const {
+            uint32_t __m = scene->meshes[_mesh].material;
+            if (__m == SCENE_NONE) return nullptr;
+            return morphed_ && __m < morphed_materials.size() ? &morphed_materials[__m] : &scene->materials[__m];
+        }
+
+        SceneRenderer::MaterialGPU SceneRenderer::materialGPU_(const Material &_mat) {
+            MaterialGPU __gpu;
+            __gpu.base_color            = _mat.base_color;
+            __gpu.specular_shininess    = { _mat.specular.x, _mat.specular.y, _mat.specular.z, _mat.shininess };
+            __gpu.emissive_normal_scale = { _mat.emissive.x, _mat.emissive.y, _mat.emissive.z, _mat.normal_scale };
+            // Blended texels that are (almost) fully transparent are discarded, so they don't write depth
+            float __cutoff = _mat.alpha_mode == SCENE_ALPHA_MASK ? _mat.alpha_cutoff : _mat.alpha_mode == SCENE_ALPHA_BLEND ? 1.f / 255.f : -1.f;
+            __gpu.alpha = { __cutoff, _mat.normal_texture != SCENE_NONE ? 1.f : 0.f, _mat.two_sided ? 1.f : 0.f, 0.f };
+            __gpu.texture_mul = _mat.texture_mul;
+            __gpu.texture_add = _mat.texture_add;
+            return __gpu;
+        }
+
         PipelineId SceneRenderer::pipeline_(const Material *_material, bool _skinned) const {
             const bool __blend = _material && _material->alpha_mode == SCENE_ALPHA_BLEND;
             const bool __cull  = backface_culling && !(_material && _material->two_sided);
@@ -126,20 +145,19 @@ namespace Simple {
             const VkDeviceSize __ubo_align = cxt.cxt_core.phys_device.properties().head().properties.limits.minUniformBufferOffsetAlignment;
             material_stride = Graph::alignUp(sizeof(MaterialGPU), __ubo_align);
             const uint32_t __material_count = (uint32_t)_scene.materials.size() + 1u;
-            std::vector<uint8_t> __material_data((size_t)(material_stride * __material_count), 0u);
+            material_count = __material_count;
+            material_data.assign((size_t)(material_stride * __material_count), 0u);
             for (uint32_t i = 0u; i < __material_count; ++i) {
-                const Material __mat = i < _scene.materials.size() ? _scene.materials[i] : Material();
-                MaterialGPU __gpu;
-                __gpu.base_color            = __mat.base_color;
-                __gpu.specular_shininess    = { __mat.specular.x, __mat.specular.y, __mat.specular.z, __mat.shininess };
-                __gpu.emissive_normal_scale = { __mat.emissive.x, __mat.emissive.y, __mat.emissive.z, __mat.normal_scale };
-                // Blended texels that are (almost) fully transparent are discarded, so they don't write depth
-                float __cutoff = __mat.alpha_mode == SCENE_ALPHA_MASK ? __mat.alpha_cutoff : __mat.alpha_mode == SCENE_ALPHA_BLEND ? 1.f / 255.f : -1.f;
-                __gpu.alpha = { __cutoff, __mat.normal_texture != SCENE_NONE ? 1.f : 0.f, __mat.two_sided ? 1.f : 0.f, 0.f };
-                std::memcpy(&__material_data[(size_t)(material_stride * i)], &__gpu, sizeof(__gpu));
+                const MaterialGPU __gpu = materialGPU_(i < _scene.materials.size() ? _scene.materials[i] : Material());
+                std::memcpy(&material_data[(size_t)(material_stride * i)], &__gpu, sizeof(__gpu));
             }
-            material_buffer = createBuffer(cxt, __material_data.size(), __dst | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, __families);
+            // Note: per frame in flight and host-visible, the material morphs rewrite them ('update')
+            for (uint32_t i = 0u; i < _info.frames_in_flight; ++i) {
+                material_buffers.push_back(createBuffer(cxt, material_data.size(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, __families));
+                material_buffers.back().write(material_data.data(), material_data.size());
+            }
+            material_morphed.assign(_info.frames_in_flight, 0u);
 
         // Frame buffers: camera and lights, the skinning matrices of all skins
             uint32_t __joint_count = 0u;
@@ -212,7 +230,6 @@ namespace Simple {
                     __upload.copyToBuffer(skin_buffer.buffer_id, __skin_vertices.data(), __skin_vertices.size() * sizeof(SkinVertexGPU));
                 if (!__morph_deltas.empty())
                     __upload.copyToBuffer(morph_buffer.buffer_id, __morph_deltas.data(), __morph_deltas.size() * sizeof(MorphDeltaGPU));
-                __upload.copyToBuffer(material_buffer.buffer_id, __material_data.data(), __material_data.size());
                 for (size_t i = 0u; i < _scene.textures.size(); ++i) {
                     const Img::Image4u &__img = _scene.textures[i].image;
                     if (__img.img.empty()) continue;
@@ -270,10 +287,10 @@ namespace Simple {
             descriptor_pool = cxt.cxt_descriptor.addPool();
             {
                 Object::DescriptorPool &__pool_obj = cxt.cxt_descriptor.pool(descriptor_pool);
-                __pool_obj.create_info.edit().maxSets = _info.frames_in_flight + __material_count;
+                __pool_obj.create_info.edit().maxSets = _info.frames_in_flight * (1u + __material_count);
                 __pool_obj.create_info.edit().flags   = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT; // 'destroy' frees the sets
-                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _info.frames_in_flight + __material_count);
-                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3u * __material_count);
+                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _info.frames_in_flight * (1u + __material_count));
+                __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3u * __material_count * _info.frames_in_flight);
                 __pool_obj.create_info.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3u * _info.frames_in_flight);
             }
             cxt.cxt_descriptor.createPool(descriptor_pool);
@@ -282,7 +299,7 @@ namespace Simple {
             cxt.cxt_descriptor.setAllForSet(frame_sets, descriptor_pool, std::vector<DescriptorSetLayoutId>(_info.frames_in_flight, frame_layout));
             cxt.cxt_descriptor.createSets(frame_sets);
             material_sets = cxt.cxt_descriptor.addSet();
-            cxt.cxt_descriptor.setAllForSet(material_sets, descriptor_pool, std::vector<DescriptorSetLayoutId>(__material_count, material_layout));
+            cxt.cxt_descriptor.setAllForSet(material_sets, descriptor_pool, std::vector<DescriptorSetLayoutId>(__material_count * _info.frames_in_flight, material_layout));
             cxt.cxt_descriptor.createSets(material_sets);
 
             std::vector<Struct::StructWrap<VkWriteDescriptorSet>> __writes;
@@ -301,11 +318,12 @@ namespace Simple {
                 __writes.back().setScalars(cxt.get(DescriptorSetId(frame_sets, i)), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3u);
             }
             const VkSampler __sampler = cxt.get(sampler);
-            for (uint32_t i = 0u; i < __material_count; ++i) {
+            for (uint32_t __set_index = 0u; __set_index < __material_count * _info.frames_in_flight; ++__set_index) {
+                const uint32_t i = __set_index % __material_count, __frame = __set_index / __material_count;
                 const Material __mat = i < _scene.materials.size() ? _scene.materials[i] : Material();
-                const VkDescriptorSet __set = cxt.get(DescriptorSetId(material_sets, i));
+                const VkDescriptorSet __set = cxt.get(DescriptorSetId(material_sets, __set_index));
                 __writes.push_back(Struct::StructWrap<VkWriteDescriptorSet>());
-                __writes.back().addBufferInfo(material_buffer.handle(), material_stride * i, sizeof(MaterialGPU));
+                __writes.back().addBufferInfo(material_buffers[__frame].handle(), material_stride * i, sizeof(MaterialGPU));
                 __writes.back().setScalars(__set, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0u);
                 const uint32_t __tex[3] = {
                     __mat.base_color_texture == SCENE_NONE ? white_texture       : __mat.base_color_texture,
@@ -433,6 +451,18 @@ namespace Simple {
             }
             if (!skin_data.empty()) skin_data_buffers[_frame].write(skin_data.data(), skin_data.size() * sizeof(uint32_t));
 
+        // Material morphs: the frame's material buffer gets the morphed materials, or the scene ones again after a morph ended
+            morphed_ = __scene.morphMaterials(morphed_materials);
+            if (morphed_ || material_morphed[_frame]) {
+                for (uint32_t i = 0u; i < material_count; ++i) {
+                    const Material *__mat = i + 1u < material_count ? (morphed_ ? &morphed_materials[i] : &__scene.materials[i]) : nullptr;
+                    const MaterialGPU __gpu = materialGPU_(__mat ? *__mat : Material());
+                    std::memcpy(&material_data[(size_t)(material_stride * i)], &__gpu, sizeof(__gpu));
+                }
+                material_buffers[_frame].write(material_data.data(), material_data.size());
+                material_morphed[_frame] = morphed_ ? 1u : 0u;
+            }
+
         // Draw lists
             opaque_draws.clear();
             blend_draws.clear();
@@ -463,7 +493,7 @@ namespace Simple {
                 if (n >= __scene.nodes.size() || !__scene.world_visible[n]) continue;
                 const Node &__node = __scene.nodes[n];
                 const uint32_t __mesh = __draw.mesh;
-                const Material *__mat = material_(__mesh);
+                const Material *__mat = frameMaterial_(__mesh);
                 if ((__mat && !__mat->visible) || mesh_ranges[__mesh].index_count == 0u) continue;
                 if (__mat && __mat->alpha_mode == SCENE_ALPHA_BLEND) {
                     // Note: blended meshes are sorted by the center of their node, so the meshes of one model keep the file order
@@ -502,7 +532,7 @@ namespace Simple {
             uint32_t __material = scene->meshes[_draw.mesh].material;
             if (__material == SCENE_NONE) __material = (uint32_t)scene->materials.size(); // the default material
             if (__material != _bound_material) {
-                const DescriptorSetId __set[] = { DescriptorSetId(material_sets, __material) };
+                const DescriptorSetId __set[] = { DescriptorSetId(material_sets, frame * material_count + __material) };
                 _rec.bindDescriptorSets(pipeline_layout, __set, {}, VK_PIPELINE_BIND_POINT_GRAPHICS, 1u);
                 _bound_material = __material;
             }
@@ -579,7 +609,13 @@ namespace Simple {
             morph_buffer.destroy();
             vertex_buffer.destroy();
             index_buffer.destroy();
-            material_buffer.destroy();
+            for (size_t i = 0u; i < material_buffers.size(); ++i) material_buffers[i].destroy();
+            material_buffers.clear();
+            material_morphed.clear();
+            morphed_materials.clear();
+            material_data.clear();
+            material_count = 0u;
+            morphed_ = false;
             mesh_ranges.clear();
             opaque_draws.clear();
             blend_draws.clear();

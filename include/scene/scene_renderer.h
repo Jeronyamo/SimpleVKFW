@@ -33,7 +33,8 @@ namespace Simple {
 
         // Note: draws a 'Scene' in a graphics pass of the render graph (forward Blinn-Phong, up to 'MAX_LIGHTS' lights).
         //       GPU data: all meshes in one vertex and one index buffer, all textures in one memory chunk (with mip levels),
-        //       one descriptor set per material (parameters + base color, normal and emissive textures), one uniform buffer per
+        //       one descriptor set per material and frame in flight (parameters + base color, normal and emissive textures; the
+        //       parameters are per frame for the material morphs, see 'Scene::morphMaterials'), one uniform buffer per
         //       frame in flight (camera and lights); the node matrix goes in push constants.
         //       Skinned meshes: the bones, weights, skin mode and morph range in a second vertex buffer, the joints of all skins
         //       (matrix for LBS, dual quaternion for DQS) in one storage buffer per frame in flight. A draw passes its skin as
@@ -75,6 +76,8 @@ namespace Simple {
                 vec4 specular_shininess;    // rgb, exponent
                 vec4 emissive_normal_scale; // rgb, normal map strength
                 vec4 alpha;                 // cutoff (-1: opaque), has normal map, two-sided, unused
+                vec4 texture_mul;           // texture tint: texel * mul + add
+                vec4 texture_add;
             };
             struct LightGPU {
                 vec4 position_range;        // world position, range (0: unlimited)
@@ -133,7 +136,8 @@ namespace Simple {
             SceneCulling *culling = nullptr;
 
             // GPU data
-            Graph::Buffer               vertex_buffer, index_buffer, material_buffer;
+            Graph::Buffer               vertex_buffer, index_buffer;
+            std::vector<Graph::Buffer>  material_buffers; // per frame in flight, HOST_VISIBLE: 'MaterialGPU' of each material (+ the default)
             std::vector<Graph::Buffer>  frame_buffers;  // per frame in flight, HOST_VISIBLE
             Graph::Buffer               skin_buffer;    // 'SkinVertexGPU' of the skinned meshes
             Graph::Buffer               morph_buffer;   // 'MorphDeltaGPU' of the skinned meshes
@@ -145,6 +149,10 @@ namespace Simple {
             std::vector<uint32_t>       morph_offsets;  // per skin: its first morph weight in the skin data buffers
             std::vector<uint32_t>       skin_data;      // 'update' scratch
             VkDeviceSize                material_stride = 0u;
+            uint32_t                    material_count  = 0u;     // the scene materials + the default one
+            std::vector<uint8_t>        material_data;            // 'update' scratch
+            std::vector<uint8_t>        material_morphed;         // per frame in flight: its buffer holds morphed materials
+            std::vector<Material>       morphed_materials;        // the materials of this frame if a material morph is active
             MemoryId                    texture_memory;
             std::vector<Graph::Texture> textures;       // per scene texture, then the defaults: white, flat normal
             uint32_t                    white_texture = 0u, flat_normal_texture = 0u;
@@ -153,7 +161,7 @@ namespace Simple {
 
             DescriptorSetLayoutId       frame_layout, material_layout;
             DescriptorPoolId            descriptor_pool;
-            DescriptorSetsId            frame_sets, material_sets; // the last material set is the default material
+            DescriptorSetsId            frame_sets, material_sets; // material sets: 'material_count' per frame, the last of them is the default material
             PipelineLayoutId            pipeline_layout;
             ShaderModuleId              vertex_shader, skinned_vertex_shader, fragment_shader;
             std::map<uint32_t, PipelineId> pipelines;            // see 'pipelineKey_'
@@ -193,6 +201,10 @@ namespace Simple {
             // The skin used to draw the mesh of '_draw', SCENE_NONE if it is drawn rigidly
             uint32_t skin_(const Draw &_draw) const;
             const Material *material_(uint32_t _mesh) const;
+            // The materials of the current frame (morphed or the scene ones)
+            const Material *frameMaterial_(uint32_t _mesh) const;
+            static MaterialGPU materialGPU_(const Material &_material);
+            bool            morphed_ = false;
             void draw_(CommandRecorder &_rec, const Draw &_draw, PipelineId &_bound_pipeline, uint32_t &_bound_material, bool &_offset_bound);
 
             SceneRenderer(const SceneRenderer &);

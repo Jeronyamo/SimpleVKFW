@@ -299,6 +299,8 @@ namespace Simple {
         }
 
         mat4 Pose::localMatrix_(const Skeleton &_skeleton, uint32_t _bone) const {
+            if (use_physics && _bone < physics_override.size() && physics_override[_bone] && _bone < physics_model.size())
+                return physics_model[_bone];
             TRS __trs = morphed[_bone];
             __trs.rotation    = ik_rotation[_bone] * morphed[_bone].rotation * grant_rotation[_bone];
             __trs.translation = __trs.translation + grant_translation[_bone];
@@ -705,6 +707,71 @@ namespace Simple {
             for (size_t i = 0u; i < dirty_.size(); ++i)
                 if (stamp_[dirty_[i]] != stamp_count_) updateSubtree_(dirty_[i]);
             dirty_.clear();
+        }
+
+        bool Scene::morphMaterials(std::vector<Material> &_out) const {
+            // Accumulated factors per material (multiplications, additions)
+            struct Factors {
+                vec4  diffuse_mul, diffuse_add, tint_mul, tint_add;
+                vec3  specular_mul, specular_add;
+                float shininess_mul, shininess_add;
+            };
+            std::vector<Factors> __factors;
+            for (size_t s = 0u; s < skins.size(); ++s) {
+                const Skin &__skin = skins[s];
+                if (__skin.skeleton >= skeletons.size()) continue;
+                const Skeleton &__skel = skeletons[__skin.skeleton];
+                const std::vector<float> &__w = __skin.pose.morph_final;
+                for (size_t m = 0u; m < __w.size() && m < __skel.morphs.size(); ++m) {
+                    const float w = __w[m];
+                    const Morph &__morph = __skel.morphs[m];
+                    if (w == 0.f || __morph.type != SCENE_MORPH_MATERIAL) continue;
+                    if (__factors.empty()) {
+                        __factors.resize(materials.size());
+                        for (size_t i = 0u; i < __factors.size(); ++i) {
+                            Factors &f = __factors[i];
+                            f.diffuse_mul = f.tint_mul = {1.f, 1.f, 1.f, 1.f};
+                            f.diffuse_add = f.tint_add = {0.f, 0.f, 0.f, 0.f};
+                            f.specular_mul = {1.f, 1.f, 1.f};
+                            f.specular_add = {0.f, 0.f, 0.f};
+                            f.shininess_mul = 1.f;
+                            f.shininess_add = 0.f;
+                        }
+                    }
+                    for (size_t o = 0u; o < __morph.materials.size(); ++o) {
+                        const MorphMaterialOffset &__off = __morph.materials[o];
+                        if (__off.material >= __factors.size()) continue;
+                        Factors &f = __factors[__off.material];
+                        if (__off.add) {
+                            f.diffuse_add   = f.diffuse_add  + __off.diffuse * w;
+                            f.specular_add  = f.specular_add + __off.specular * w;
+                            f.shininess_add += __off.shininess * w;
+                            f.tint_add      = f.tint_add + __off.texture_tint * w;
+                        } else {
+                            const vec4 __one4 = {1.f, 1.f, 1.f, 1.f};
+                            const vec3 __one3 = {1.f, 1.f, 1.f};
+                            f.diffuse_mul   = f.diffuse_mul  * (__one4 + (__off.diffuse - __one4) * w);
+                            f.specular_mul  = f.specular_mul * (__one3 + (__off.specular - __one3) * w);
+                            f.shininess_mul *= 1.f + (__off.shininess - 1.f) * w;
+                            f.tint_mul      = f.tint_mul * (__one4 + (__off.texture_tint - __one4) * w);
+                        }
+                    }
+                }
+            }
+            if (__factors.empty()) return false;
+            _out = materials;
+            for (size_t i = 0u; i < _out.size(); ++i) {
+                Material &__mat = _out[i];
+                const Factors &f = __factors[i];
+                __mat.base_color  = __mat.base_color * f.diffuse_mul + f.diffuse_add;
+                __mat.specular    = __mat.specular * f.specular_mul + f.specular_add;
+                __mat.shininess   = std::max(__mat.shininess * f.shininess_mul + f.shininess_add, 0.f);
+                __mat.texture_mul = __mat.texture_mul * f.tint_mul;
+                __mat.texture_add = __mat.texture_add + f.tint_add;
+                // A part switched off by its zero opacity shows up when a morph gives it some (and the other way round)
+                if (f.diffuse_mul.w != 1.f || f.diffuse_add.w != 0.f) __mat.visible = __mat.base_color.w > 0.f;
+            }
+            return true;
         }
 
         AABB Scene::bounds() const {
