@@ -481,6 +481,9 @@ namespace Simple {
             ProjPerspective     *proj     = nullptr;
             ViewCentered        *view     = nullptr;
             ImGUI::ImGuiHandler *imgui    = nullptr;
+            // Optional: the size of the look-at marker (world units, see 'SceneGraph::LookAtMarker::size') and its default
+            float *marker_size = nullptr;
+            float  marker_size_default = 2.f;
             bool show_window = false;
 
             CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj = nullptr,

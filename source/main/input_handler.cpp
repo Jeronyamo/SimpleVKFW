@@ -927,6 +927,12 @@ namespace Simple {
                     proj->fovy = __fovy;
             }
 
+            if (marker_size != nullptr) {
+                ImGui::SeparatorText("Look-at marker");
+                ImGui::DragFloat("Size", marker_size, 0.05f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SetItemTooltip("World units; shown while the mouse moves the camera");
+            }
+
             if (ImGui::Button("Defaults")) {
                 controls->move_speed = CameraControlsBase::MoveSpeedDefault;
                 controls->fovy_min   = CameraControlsBase::FovyMinDefault;
@@ -934,6 +940,7 @@ namespace Simple {
                 controls->invert_pan = CameraControlsBase::InvertPanDefault;
                 controls->lock_cursor = true;
                 if (imgui != nullptr) imgui->lock_cursor_on_drag = true;
+                if (marker_size != nullptr) *marker_size = marker_size_default;
             }
             if (proj != nullptr) proj->fovy = Math::clampCL(proj->fovy, controls->fovy_min, controls->fovy_max);
 

@@ -1,5 +1,6 @@
 #include "interface/vkfw_graph.h"
 
+#include <climits>
 #include <cstring>
 
 namespace Simple {
@@ -1210,6 +1211,13 @@ namespace Simple {
                 return *this;
             }
 
+            GraphicsPipelineDesc &GraphicsPipelineDesc::stencil(const VkStencilOpState &_state) {
+                stencil_test  = true;
+                stencil_front = _state;
+                stencil_back  = _state;
+                return *this;
+            }
+
             GraphicsPipelineDesc &GraphicsPipelineDesc::vertexAttribute(uint32_t _location, uint32_t _binding, VkFormat _format, uint32_t _offset) {
                 attributes.push_back(VkVertexInputAttributeDescription{ _location, _binding, _format, _offset });
                 return *this;
@@ -1253,7 +1261,8 @@ namespace Simple {
 
                 const bool __depth_used = __depth != VK_FORMAT_UNDEFINED;
                 __info.depth_stencil_state_wrap.setDepth(__depth_used && _desc.depth_test, __depth_used && _desc.depth_write, _desc.depth_compare);
-                __info.depth_stencil_state_wrap.setStencil(false);
+                if (__has_stencil && _desc.stencil_test) __info.depth_stencil_state_wrap.setStencil(true, _desc.stencil_front, _desc.stencil_back);
+                else                                     __info.depth_stencil_state_wrap.setStencil(false);
 
                 __info.color_blend_state_wrap.setLogicOp(); // off: logic ops would disable blending
                 __info.color_blend_state_wrap.attachments_wrap.resize(__colors.size());
@@ -1276,6 +1285,226 @@ namespace Simple {
                 _cxt.cxt_pipeline.createPipeline(__id, _cxt.cxt_core.profile.dynamic_rendering ? VK_NULL_HANDLE : _graph.renderPass(_pass),
                                                  0u, _desc.layout);
                 return __id;
+            }
+
+            PipelineLayoutId createPipelineLayout(VulkanContext &_cxt, Span<DescriptorSetLayoutId> _set_layouts,
+                                                  Span<VkPushConstantRange> _push_constants) {
+                PipelineLayoutId __id = _cxt.cxt_pipeline.addLayout();
+                _cxt.cxt_pipeline.setLayoutDescriptorSetLayouts(__id, _set_layouts);
+                for (uint32_t i = 0u; i < _push_constants.size(); ++i)
+                    _cxt.cxt_pipeline.addLayoutPushConstant(__id, _push_constants[i].stageFlags, _push_constants[i].offset, _push_constants[i].size);
+                _cxt.cxt_pipeline.createLayout(__id);
+                return __id;
+            }
+
+
+        // Device setup
+
+            DeviceSetup::DeviceSetup() {}
+
+            bool DeviceQueues::sharedTransfer() const { return transfer_family.index == graphics_family.index; }
+
+            int defaultDeviceRank(const Util::PhysDeviceFullInfo &_info) {
+                if (!_info.allExtAvailable({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }})) return 0;
+                switch (_info.properties.deviceType) {
+                    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:   return 4;
+                    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 3;
+                    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:    return 2;
+                    default:                                     return 1; // CPU (e.g. lavapipe) and others
+                }
+            }
+
+            DeviceQueues setupDevice(VulkanContext &_cxt, const Window &_window, const DeviceSetup &_setup) {
+                VulkanContext::ContextCore &__core = _cxt.cxt_core;
+
+                // Instance
+                __core.setDefaultApplicationInfo();
+                if (_setup.debug) __core.activateDebug();
+                for (size_t i = 0u; i < _setup.optional_layers.size(); ++i)
+                    if (Util::allInstanceLayersAvailable({{ _setup.optional_layers[i] }}))
+                        __core.instance.create_info.addLayers({{ _setup.optional_layers[i] }});
+                __core.instance.create_info.addExtGLFW();
+                __core.instance.create_info.addExtensions({{ VK_KHR_SURFACE_EXTENSION_NAME }});
+                if (!_setup.instance_extensions.empty()) __core.instance.create_info.addExtensions(_setup.instance_extensions);
+                __core.createInstance();
+                {
+                    vec4u __version;
+                    __version["xyz"] = VulkanAPIVersion::split(VulkanAPIVersion::available(), &__version.w);
+                    printf(SVKFW_WRAPINFO("VKFW::Graph :: setupDevice", "Available VulkanAPI version: %d.%d.%d.%d\n"),
+                           __version.x, __version.y, __version.z, __version.w);
+                    fflush(stdout);
+                }
+                if (_setup.debug) __core.createDebugUtilsMessenger();
+
+                // Physical device and profile
+                __core.loadPhysicalDeviceInfo();
+                __core.phys_device.select_info.selectWithRank(_setup.device_rank ? _setup.device_rank : defaultDeviceRank);
+                __core.findPhysicalDevice();
+                __core.profile = _setup.profile;
+                __core.checkProfileSupport();
+
+                // Queue families: graphics (+ present), then a transfer family other than it if there is one
+                DeviceQueues __queues;
+                __queues.graphics_family = __core.addQueueFamily();
+                __core.loadQueueFamiliesInfo();
+                Object::QueueFamily &__graphics = __core.queueFamily(__queues.graphics_family);
+                __graphics.select_info.selectWithTest(Util::SelectQueueFamily::testSurfAndGraphics);
+                __graphics.createObject();
+                SVKFW_ASSERT(__graphics.handle != UINT32_MAX, std::runtime_error, "VKFW::Graph :: setupDevice",
+                             "the device has no queue family with graphics and presentation");
+                const uint32_t __graphics_index = __graphics.handle;
+                const uint32_t __graphics_queues = __graphics.select_info.properties[__graphics_index].queueCount;
+
+                uint32_t __transfer_index = UINT32_MAX;
+                if (_setup.separate_transfer_family) {
+                    int __best = INT_MIN;
+                    for (uint32_t i = 0u; i < (uint32_t)__graphics.select_info.properties.size(); ++i) {
+                        if (i == __graphics_index) continue;
+                        const Util::QueueFamilyFullInfo __info(__graphics.select_info.properties[i]);
+                        if (!__info.supportsTransfer()) continue;
+                        const int __rank = Util::SelectQueueFamily::rankTransfer(__info, __graphics.select_info.surface_support[i]);
+                        if (__rank > __best) { __best = __rank; __transfer_index = i; }
+                    }
+                }
+
+                const bool     __separate_present = _setup.separate_present_queue && __graphics_queues > 1u;
+                __core.setQueueFamilyQueueCount(__queues.graphics_family, __separate_present ? 2u : 1u);
+                __queues.graphics = QueueId(__queues.graphics_family, 0u);
+                __queues.present  = QueueId(__queues.graphics_family, __separate_present ? 1u : 0u);
+                if (__transfer_index != UINT32_MAX) {
+                    __queues.transfer_family = __core.addQueueFamily();
+                    Object::QueueFamily &__transfer = __core.queueFamily(__queues.transfer_family);
+                    __transfer.select_info.loadInfo(__core.instance.handle, __core.phys_device.handle);
+                    __transfer.handle = __transfer_index;
+                    __core.setQueueFamilyQueueCount(__queues.transfer_family, 1u);
+                    __queues.transfer = QueueId(__queues.transfer_family, 0u);
+                } else {
+                    __queues.transfer_family = __queues.graphics_family;
+                    __queues.transfer = __queues.graphics;
+                }
+                __core.setDeviceQueueInfo();
+
+                // Logical device
+                __core.device.create_info.addExtensions({{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }});
+                if (!_setup.device_extensions.empty()) __core.device.create_info.addExtensions(_setup.device_extensions);
+                for (size_t i = 0u; i < _setup.optional_device_extensions.size(); ++i)
+                    if (Util::allDeviceExtAvailable(__core.phys_device.handle, {{ _setup.optional_device_extensions[i] }}))
+                        __core.device.create_info.addExtensions({{ _setup.optional_device_extensions[i] }});
+                __core.createDevice();
+                __core.acquireQueues();
+                _cxt.initNoncoreContexts();
+
+                // Surface and swapchain (the render passes without dynamic rendering are made by the render graph)
+                VulkanContext::ContextSwapchain &__sc = _cxt.cxt_swapchain;
+                __sc.setWindow(_window);
+                __sc.createSurface();
+                __sc.pickSwapchainImageFormat();
+                __sc.setSwapchainSurfaceCapabilities();
+                __sc.swapchain.create_info.checkSetImageCount(_setup.image_count);
+                __sc.swapchain.create_info.checkSetImageUsage(_setup.image_usage);
+                __sc.swapchain.create_info.edit().imageArrayLayers = 1;
+                __sc.swapchain.create_info.edit().compositeAlpha = _setup.composite_alpha;
+                __sc.swapchain.create_info.edit().presentMode = _setup.present_mode;
+                __sc.setSwapchainExtentFromWindow();
+                __sc.image_view_wrap.setComponents();
+                __sc.image_view_wrap.setRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+                __sc.image_view_wrap.edit().viewType = VK_IMAGE_VIEW_TYPE_2D;
+                __sc.createSwapchainWithDependencies();
+                return __queues;
+            }
+
+
+        // Frames in flight
+
+            void submitAndWait(VulkanContext &_cxt, QueueId _queue, QueueFamilyId _family, const std::function<void(CommandRecorder&)> &_record) {
+                CommandPoolId    __pool = _cxt.cxt_command.addCmdPool();
+                CommandBuffersId __cmds = _cxt.cxt_command.addCmdBuffer();
+                _cxt.cxt_command.createCmdPool(__pool, _family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+                _cxt.cxt_command.createCmdBuffersPrimary(__cmds, __pool, 1u);
+                const CommandBufferId __cmd(__cmds, 0u);
+                {
+                    CommandRecorder __rec(_cxt, __cmd);
+                    __rec.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                    _record(__rec);
+                    __rec.end();
+                }
+                FenceId __fence = _cxt.cxt_barrier.addFence(false);
+                SubmitDesc __submit;
+                __submit.commands(__cmd);
+                _cxt.submit(_queue, __submit, __fence);
+                _cxt.cxt_barrier.wait(__fence);
+                _cxt.cxt_barrier.destroyFence(__fence);
+                _cxt.cxt_command.removeCmdBuffers(__cmds);
+                _cxt.cxt_command.removeCmdPool(__pool);
+            }
+
+            FrameLoop::FrameLoop(VulkanContext &_cxt, RenderGraph &_graph, const DeviceQueues &_queues, uint32_t _frames_in_flight)
+                : cxt(_cxt), graph(_graph), graphics(_queues.graphics), present(_queues.present), frames_in_flight(_frames_in_flight) {
+                SVKFW_ASSERT(_frames_in_flight > 0u, std::invalid_argument, "VKFW::Graph::FrameLoop", "no frames in flight");
+                cmd_pool    = cxt.cxt_command.addCmdPool();
+                cmd_buffers = cxt.cxt_command.addCmdBuffer();
+                cxt.cxt_command.createCmdPool(cmd_pool, _queues.graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+                cxt.cxt_command.createCmdBuffersPrimary(cmd_buffers, cmd_pool, frames_in_flight);
+                for (uint32_t i = 0u; i < frames_in_flight; ++i) {
+                    image_available.push_back(cxt.cxt_barrier.addSemaphore());
+                    in_flight.push_back(cxt.cxt_barrier.addFence(true));
+                }
+                while (render_finished.size() < cxt.cxt_swapchain.getSwapchainImageCount())
+                    render_finished.push_back(cxt.cxt_barrier.addSemaphore());
+            }
+
+            FrameLoop::~FrameLoop() {}
+
+            CommandBufferId FrameLoop::commandBuffer(uint32_t _frame) const { return CommandBufferId(cmd_buffers, _frame); }
+
+            CommandRecorder FrameLoop::recorder() const { return CommandRecorder(cxt, commandBuffer(frame)); }
+
+            bool FrameLoop::begin() {
+                cxt.cxt_barrier.wait(in_flight[frame]);
+                const AcquireResult __acquired = cxt.acquireNextImage(image_available[frame]);
+                // Note: the fence is reset only after a successful acquisition, otherwise it would never be signaled again
+                if (__acquired.status == VKFW_SWAPCHAIN_OUT_OF_DATE) { recreate(); return false; }
+                if (__acquired.status == VKFW_SWAPCHAIN_NOT_READY) return false;
+                cxt.cxt_barrier.reset(in_flight[frame]);
+                image_index = __acquired.image_index;
+                // The image count may grow after a recreation
+                while (render_finished.size() < cxt.cxt_swapchain.getSwapchainImageCount())
+                    render_finished.push_back(cxt.cxt_barrier.addSemaphore());
+
+                CommandRecorder __rec = recorder();
+                __rec.reset();
+                __rec.begin();
+                return true;
+            }
+
+            void FrameLoop::end() {
+                CommandRecorder __rec = recorder();
+                graph.execute(__rec, image_index);
+                __rec.end();
+
+                SubmitDesc __submit;
+                __submit.wait(image_available[frame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+                        .commands(commandBuffer(frame))
+                        .signal(render_finished[image_index]);
+                cxt.submit(graphics, __submit, in_flight[frame]);
+
+                const SwapchainStatus __presented = cxt.present(present, render_finished[image_index], image_index);
+                if (__presented != VKFW_SWAPCHAIN_OK) recreate();
+                frame = (frame + 1u) % frames_in_flight;
+            }
+
+            void FrameLoop::recreate() {
+                cxt.recreateSwapchain();
+                graph.compile();
+                if (on_recreate) on_recreate();
+            }
+
+            void FrameLoop::destroy() {
+                if (destroyed_) return;
+                destroyed_ = true;
+                vkDeviceWaitIdle(cxt.cxt_core.device.handle);
+                cxt.cxt_command.removeCmdBuffers(cmd_buffers);
+                cxt.cxt_command.removeCmdPool(cmd_pool);
             }
         }; // Graph END
     }; // VKFW END

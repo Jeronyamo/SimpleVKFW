@@ -4,4 +4,6 @@ SET SHADERS_PATH=%~dp0
 %VULKAN_SDK%\Bin\glslc.exe %SHADERS_PATH%scene.vert -o %SHADERS_PATH%scene_vert.spv
 %VULKAN_SDK%\Bin\glslc.exe -DSKINNED %SHADERS_PATH%scene.vert -o %SHADERS_PATH%scene_skin_vert.spv
 %VULKAN_SDK%\Bin\glslc.exe %SHADERS_PATH%scene.frag -o %SHADERS_PATH%scene_frag.spv
+%VULKAN_SDK%\Bin\glslc.exe %SHADERS_PATH%marker.vert -o %SHADERS_PATH%marker_vert.spv
+%VULKAN_SDK%\Bin\glslc.exe %SHADERS_PATH%marker.frag -o %SHADERS_PATH%marker_frag.spv
 pause

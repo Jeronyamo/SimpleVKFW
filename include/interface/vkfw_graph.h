@@ -500,6 +500,9 @@ namespace Simple {
             VkCompareOp depth_compare = VK_COMPARE_OP_LESS;
 
             BlendMode   blend = VKFW_BLEND_NONE;
+            // Used only if the pass has a stencil aspect; the reference is usually dynamic (VK_DYNAMIC_STATE_STENCIL_REFERENCE)
+            bool             stencil_test = false;
+            VkStencilOpState stencil_front = {}, stencil_back = {};
 
             // Added to VK_DYNAMIC_STATE_VIEWPORT and VK_DYNAMIC_STATE_SCISSOR
             std::vector<VkDynamicState> dynamic_states;
@@ -509,11 +512,17 @@ namespace Simple {
             // One interleaved vertex buffer at binding '_binding'
             GraphicsPipelineDesc &vertexBinding(uint32_t _binding, uint32_t _stride, VkVertexInputRate _rate = VK_VERTEX_INPUT_RATE_VERTEX);
             GraphicsPipelineDesc &vertexAttribute(uint32_t _location, uint32_t _binding, VkFormat _format, uint32_t _offset);
+            // The same stencil state for both faces (see 'Util::stencilOpState')
+            GraphicsPipelineDesc &stencil(const VkStencilOpState &_state);
         }; // GraphicsPipelineDesc END
 
         // Creates a graphics pipeline for drawing in the pass '_pass' (the graph must be compiled: the pass gives the attachment
         // formats or its render pass). Pipelines don't depend on the swapchain extent, so they survive 'compile' after a resize
         PipelineId createGraphicsPipeline(VulkanContext &_cxt, const RenderGraph &_graph, PassId _pass, const GraphicsPipelineDesc &_desc);
+
+        // A pipeline layout with descriptor set layouts and push constant ranges
+        PipelineLayoutId createPipelineLayout(VulkanContext &_cxt, Span<DescriptorSetLayoutId> _set_layouts,
+                                              Span<VkPushConstantRange> _push_constants = {});
 
 
         // Note: screenshots. 'request' asks for one, 'record' (before 'RenderGraph::execute') requests its copy with 'readbackAfter',
@@ -544,6 +553,113 @@ namespace Simple {
             // Note: the device must not use the buffer
             void destroy();
         }; // FrameCapture END
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Device setup
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: the parameters of 'setupDevice'. Device features are set before the call in 'vk.cxt_core.device.create_info.features'
+        //       (required) and 'optional_features' (enabled if supported); the features of 'profile' are added by 'createDevice'
+        struct DeviceSetup {
+            // Instance
+            bool        debug = true;                     // validation layers and the debug messenger
+            std::vector<std::string> optional_layers = { "VK_LAYER_LUNARG_monitor" }; // added if available (not shipped with newer SDKs)
+            std::vector<std::string> instance_extensions;         // added to the GLFW ones and VK_KHR_surface
+            // Physical device: the best ranked one with a rank > 0 (default: discrete > integrated > virtual > CPU, with VK_KHR_swapchain)
+            Util::PhysDeviceRankFunc device_rank = nullptr;
+            // Note: dynamic rendering + synchronization2 + extended dynamic state need Vulkan 1.3; with all set to false rendering goes
+            //       through VkRenderPass with the original barriers (Vulkan 1.1) and the stencil ops are fixed in the pipeline
+            DeviceProfile profile;
+            // Queues: the graphics family (also presents) gives the graphics queue and, if it has more queues, a separate present queue;
+            //         the transfer queue is in a transfer-only (or the least loaded) family if there is one, otherwise it is the graphics queue
+            bool        separate_present_queue = true;
+            bool        separate_transfer_family = true;
+            std::vector<std::string> device_extensions;          // required (VK_KHR_swapchain is always added)
+            std::vector<std::string> optional_device_extensions = { VK_EXT_MEMORY_BUDGET_EXTENSION_NAME }; // enabled if supported
+            // Swapchain
+            uint32_t          image_count  = 3u;          // clamped to the surface limits
+            VkImageUsageFlags image_usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // the supported ones are set
+            VkPresentModeKHR  present_mode = VK_PRESENT_MODE_FIFO_KHR;
+            VkCompositeAlphaFlagBitsKHR composite_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+            DeviceSetup();
+        }; // DeviceSetup END
+
+        // Note: the queues made by 'setupDevice'; when there is no separate family / queue the ids are the same
+        struct DeviceQueues {
+            QueueFamilyId graphics_family, transfer_family;
+            QueueId       graphics, present, transfer;
+
+            bool sharedTransfer() const; // the transfer queue is in the graphics family
+        }; // DeviceQueues END
+
+        // The rank of 'DeviceSetup::device_rank' by default
+        int defaultDeviceRank(const Util::PhysDeviceFullInfo &_info);
+
+        // Creates the instance, the debug messenger, picks the physical device, creates the device with the queues, the non-core
+        // contexts, the surface of '_window' and the swapchain with its image views
+        DeviceQueues setupDevice(VulkanContext &_cxt, const Window &_window, const DeviceSetup &_setup = DeviceSetup());
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    Frames in flight
+//  == === ==== ================================== ==== === ==  \\
+
+        // Records commands with '_record' into a new command buffer, submits them to '_queue' (of '_family') and waits for them.
+        // Meant for loading (e.g. 'generateMips' after an upload), not for every frame: it creates and destroys a command pool
+        void submitAndWait(VulkanContext &_cxt, QueueId _queue, QueueFamilyId _family, const std::function<void(CommandRecorder&)> &_record);
+
+        // Note: the frame loop of a window: per frame in flight a command buffer, an 'image available' semaphore and a fence,
+        //       per swapchain image a 'render finished' semaphore (there may be more images than frames, and their count may change
+        //       after a recreation). 'begin' waits for the fence of the frame and acquires an image, 'end' records the graph,
+        //       submits and presents; both recreate the swapchain and compile the graph when it is out of date.
+        //
+        //       FrameLoop frames(vk, graph, queues, FRAMES_IN_FLIGHT);
+        //       while (!window.shouldClose()) {
+        //           ...                                  // input
+        //           if (!frames.begin()) continue;       // the swapchain was recreated or isn't ready: no frame this time
+        //           ...                                  // updates of the resources of 'frames.frame' (the device doesn't use them now)
+        //           frames.end();                        // 'graph.execute', submit, present
+        //       }
+        //       frames.destroy();                        // waits for the device
+        struct FrameLoop {
+            VulkanContext   &cxt;
+            RenderGraph     &graph;
+            QueueId          graphics, present;
+            uint32_t         frames_in_flight;
+            uint32_t         frame       = 0u;      // the frame in flight (index of its resources)
+            uint32_t         image_index = 0u;      // the swapchain image of the frame (after 'begin')
+            CommandPoolId    cmd_pool;
+            CommandBuffersId cmd_buffers;
+            std::vector<SemaphoreId> image_available; // per frame in flight
+            std::vector<SemaphoreId> render_finished; // per swapchain image
+            std::vector<FenceId>     in_flight;       // per frame in flight
+            // Called after the swapchain is recreated and the graph is compiled (e.g. for resources with the window size)
+            std::function<void()> on_recreate;
+
+            FrameLoop(VulkanContext &_cxt, RenderGraph &_graph, const DeviceQueues &_queues, uint32_t _frames_in_flight);
+           ~FrameLoop();
+
+            CommandBufferId commandBuffer(uint32_t _frame) const;
+            // The command buffer of the current frame (it is begun by 'begin')
+            CommandRecorder recorder() const;
+
+            // Waits for the frame's fence, acquires a swapchain image and begins its command buffer; returns false if there is no
+            // frame now (the swapchain was out of date and is recreated, or the image isn't ready)
+            bool begin();
+            // Records the graph, ends the command buffer, submits it and presents the image; the next frame becomes current
+            void end();
+            // Recreates the swapchain and compiles the graph (waits for the device)
+            void recreate();
+            // Waits for the device and frees the command buffers (the semaphores and fences go with the context)
+            void destroy();
+
+        private:
+            bool destroyed_ = false;
+            FrameLoop(const FrameLoop &);
+            FrameLoop& operator=(const FrameLoop &);
+        }; // FrameLoop END
 
 
         }; // Graph END
