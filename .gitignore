@@ -6,8 +6,12 @@ CMakeUserPresets.json
 tests/out/
 !tests/out/.gitkeep
 
+# Output
 screenshots/*
 !screenshots/.gitkeep
+
+resources/assets/*
+!resources/assets/.gitkeep
 
 imgui.ini
 
