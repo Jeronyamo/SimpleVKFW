@@ -9,6 +9,8 @@
 
 
 namespace Simple {
+    namespace File { struct ContentVMD; };
+
     namespace SceneGraph {
 
 //  == === ==== ================================== ==== === ==  \\
@@ -103,8 +105,52 @@ namespace Simple {
                             float _frame, Pose &_pose);
 
         // Bone, morph and IK tracks of an MMD motion (VMD); names are converted from Shift-JIS to UTF-8.
-        // Camera and light keys are not converted yet. Asserts (std::runtime_error) if the file can't be read
+        // Camera keys: see 'convertVMDCamera'; light keys are not converted yet. Asserts (std::runtime_error) if the file can't be read
         AnimationClip loadVMD(const std::string &_path);
+        // The same for read VMD data (e.g. edited keyframes); '_name' becomes the clip name
+        AnimationClip convertVMD(const File::ContentVMD &_vmd, const std::string &_name = std::string());
+
+
+//  == === ==== ================================== ==== === ==  \\
+                    MMD camera
+//  == === ==== ================================== ==== === ==  \\
+
+        // Note: an MMD camera looks at 'center' from 'distance' (negative: in front of the models, which face -Z) along +Z
+        //       rotated by 'rotation' (radians: x - pitch, y - yaw, z - roll), in the MMD space (the engine's one).
+        //       'fov' is the vertical field of view in degrees
+        struct CameraPose {
+            vec3  center   = {0.f, 10.f, 0.f};
+            vec3  rotation = {0.f, 0.f, 0.f};
+            float distance = 45.f;     // as shown in MMD: positive is farther (the VMD stores it negated)
+            float fov      = 30.f;
+            bool  perspective = true;
+
+            // The eye position and the up vector (for 'View::ViewMat')
+            void lookAt(vec3 &_eye, vec3 &_up) const;
+        }; // CameraPose END
+
+        enum CameraChannel { CAMERA_X = 0, CAMERA_Y, CAMERA_Z, CAMERA_ROTATION, CAMERA_DISTANCE, CAMERA_FOV, CAMERA_CHANNEL_COUNT };
+
+        // Note: like bone keys, the curves shape the way from the previous key to this one. Keys one frame apart are a cut
+        struct CameraKey {
+            float          frame = 0.f;
+            CameraPose     pose;
+            AnimationCurve curves[CAMERA_CHANNEL_COUNT];
+        }; // CameraKey END
+
+        struct CameraClip {
+            std::string            name;
+            float                  frames_per_second = 30.f;
+            float                  length = 0.f;
+            std::vector<CameraKey> keys; // sorted by frame
+
+            bool empty() const;
+            void finalize();
+            // The camera at '_frame' (clamped to [0, length]); the default pose without keys
+            CameraPose evaluate(float _frame) const;
+        }; // CameraClip END
+
+        CameraClip convertVMDCamera(const File::ContentVMD &_vmd, const std::string &_name = std::string());
     }; // SceneGraph END
 }; // Simple END
 

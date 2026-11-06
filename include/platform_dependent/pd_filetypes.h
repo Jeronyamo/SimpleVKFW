@@ -4,6 +4,8 @@
 #include "common/terminal.h"
 
 #include <fstream>
+#include <string>
+#include <vector>
 
 
 namespace Simple {
@@ -39,6 +41,10 @@ namespace Simple {
         InvalidationFlags operator&(InvalidationFlags &_flag1, InvalidationFlags _flag2);
         InvalidationFlags operator|=(InvalidationFlags &_flag1, InvalidationFlags _flag2);
         InvalidationFlags operator&=(InvalidationFlags &_flag1, InvalidationFlags _flag2);
+
+        // The files in '_dir' (UTF-8 paths with '/', sorted) whose extension is one of '_extensions' (lower case, with the dot,
+        // e.g. ".pmx"; empty: all files); with '_recursive' the subfolders too. An unreadable folder gives no files
+        std::vector<std::string> listFiles(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive = true);
     }; // File END
 }; // Simple END
 

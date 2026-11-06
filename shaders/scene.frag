@@ -28,6 +28,8 @@ layout(set = 1, binding = 0) uniform Material {
     vec4 specular_shininess;
     vec4 emissive_normal_scale;
     vec4 alpha;           // cutoff (< 0: opaque), has normal map, two-sided
+    vec4 texture_mul;     // texture tint (MMD material morphs): texel * mul + add
+    vec4 texture_add;
 } material;
 layout(set = 1, binding = 1) uniform sampler2D base_color_tex;
 layout(set = 1, binding = 2) uniform sampler2D normal_tex;
@@ -51,7 +53,7 @@ float attenuation(float dist, float range) {
 }
 
 void main() {
-    vec4 base = material.base_color * texture(base_color_tex, in_uv);
+    vec4 base = material.base_color * clamp(texture(base_color_tex, in_uv) * material.texture_mul + material.texture_add, 0.0, 1.0);
     if (material.alpha.x >= 0.0 && base.a < material.alpha.x) discard;
 
     vec3 n = normalize(in_normal);

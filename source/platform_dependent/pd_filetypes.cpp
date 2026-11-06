@@ -1,5 +1,12 @@
 #include "platform_dependent/pd_filetypes.h"
 
+#include <algorithm>
+#include <cctype>
+#if (!defined(WIN32))
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
+
 namespace Simple {
     namespace File {
 
@@ -169,5 +176,86 @@ namespace Simple {
         bool WriterStd::isValid() const { return f_handle.   good(); }
 
         void   WriterStd::close() {        f_handle.  close(); }
+    }; // File END
+}; // Simple END
+
+
+namespace Simple {
+    namespace File {
+        namespace {
+            bool extensionMatches(const std::string &_name, const std::vector<std::string> &_extensions) {
+                if (_extensions.empty()) return true;
+                const size_t __dot = _name.find_last_of('.');
+                if (__dot == std::string::npos) return false;
+                std::string __ext = _name.substr(__dot);
+                for (size_t i = 0u; i < __ext.size(); ++i) __ext[i] = (char)std::tolower((unsigned char)__ext[i]);
+                return std::find(_extensions.begin(), _extensions.end(), __ext) != _extensions.end();
+            }
+
+            std::string dirPrefix(const std::string &_dir) {
+                return _dir.empty() ? std::string() : (_dir[_dir.size() - 1u] == '/' ? _dir : _dir + "/");
+            }
+
+            void listFiles_(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive,
+                            std::vector<std::string> &_out, int _depth);
+        } // anonymous
+
+#ifdef WIN32
+        namespace {
+            void listFiles_(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive,
+                            std::vector<std::string> &_out, int _depth) {
+                if (_depth > 16) return;
+                const std::string __prefix  = dirPrefix(_dir);
+                const std::string __pattern = __prefix + "*";
+                const int __wsize = MultiByteToWideChar(CP_UTF8, 0, __pattern.c_str(), -1, NULL, 0);
+                std::vector<wchar_t> __wpattern(size_t(std::max(__wsize, 1)), L'\0');
+                MultiByteToWideChar(CP_UTF8, 0, __pattern.c_str(), -1, __wpattern.data(), __wsize);
+                WIN32_FIND_DATAW __data;
+                HANDLE __find = FindFirstFileW(__wpattern.data(), &__data);
+                if (__find == INVALID_HANDLE_VALUE) return;
+                do {
+                    const int __size = WideCharToMultiByte(CP_UTF8, 0, __data.cFileName, -1, NULL, 0, NULL, NULL);
+                    if (__size <= 1) continue;
+                    std::string __name(size_t(__size - 1), '\0');
+                    WideCharToMultiByte(CP_UTF8, 0, __data.cFileName, -1, &__name[0], __size, NULL, NULL);
+                    if (__name == "." || __name == "..") continue;
+                    if (__data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                        if (_recursive) listFiles_(__prefix + __name, _extensions, _recursive, _out, _depth + 1);
+                    } else if (extensionMatches(__name, _extensions)) _out.push_back(__prefix + __name);
+                } while (FindNextFileW(__find, &__data));
+                FindClose(__find);
+            }
+        } // anonymous
+#else
+        namespace {
+            void listFiles_(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive,
+                            std::vector<std::string> &_out, int _depth) {
+                if (_depth > 16) return;
+                const std::string __prefix = dirPrefix(_dir);
+                DIR *__dirp = opendir(_dir.empty() ? "." : _dir.c_str());
+                if (!__dirp) return;
+                while (dirent *__entry = readdir(__dirp)) {
+                    const std::string __name = __entry->d_name;
+                    if (__name == "." || __name == "..") continue;
+                    const std::string __path = __prefix + __name;
+                    struct stat __st;
+                    if (stat(__path.c_str(), &__st) != 0) continue;
+                    if (S_ISDIR(__st.st_mode)) {
+                        if (_recursive) listFiles_(__path, _extensions, _recursive, _out, _depth + 1);
+                    } else if (extensionMatches(__name, _extensions)) _out.push_back(__path);
+                }
+                closedir(__dirp);
+            }
+        } // anonymous
+#endif
+
+        std::vector<std::string> listFiles(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive) {
+            std::vector<std::string> __res;
+            std::string __dir = _dir;
+            std::replace(__dir.begin(), __dir.end(), '\\', '/');
+            listFiles_(__dir, _extensions, _recursive, __res, 0);
+            std::sort(__res.begin(), __res.end());
+            return __res;
+        }
     }; // File END
 }; // Simple END

@@ -115,12 +115,16 @@ namespace Simple {
                            -Math::cos(pitch * float(M_PI / 180)) * Math::cos(yaw * float(M_PI / 180))).normalize() + look_at;
     }
 
-    mat4 ViewCentered::view() const {
+    vec3 ViewCentered::calcUpVect() const {
         int __test_pitch = int((Math::abs(pitch) + 90.f) / 180);
         if (__test_pitch < 0) __test_pitch ^= 1;
         bool __inverse_upvec = __test_pitch & 1;
 
-        return ViewMat(calcCamPos(), look_at, __inverse_upvec ? -up_vect : up_vect);
+        return __inverse_upvec ? -up_vect : up_vect;
+    }
+
+    mat4 ViewCentered::view() const {
+        return ViewMat(calcCamPos(), look_at, calcUpVect());
     }
 
     ViewPOV::ViewPOV(const vec3 &_cam_pos, float _yaw,
@@ -140,11 +144,15 @@ namespace Simple {
                     Math::cos(pitch * float(M_PI / 180)) * Math::cos(yaw * float(M_PI / 180))).normalize() + cam_pos;
     }
 
-    mat4 ViewPOV::view() const {
+    vec3 ViewPOV::calcUpVect() const {
         int __test_pitch = int((Math::abs(pitch) + 90.f) / 180);
         if (__test_pitch < 0) __test_pitch ^= 1;
         bool __inverse_upvec = __test_pitch & 1;
 
-        return ViewMat(cam_pos, calcLookAt(), __inverse_upvec ? -up_vect : up_vect);
+        return __inverse_upvec ? -up_vect : up_vect;
+    }
+
+    mat4 ViewPOV::view() const {
+        return ViewMat(cam_pos, calcLookAt(), calcUpVect());
     }
 }; // Simple END

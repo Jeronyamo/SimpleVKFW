@@ -488,6 +488,9 @@ namespace Simple {
 
             void setDefaultStyleSVKFW();
             void setFont(const std::string &_font_path, float _size_pixels = 0.f);
+            // Adds the glyphs of the first existing font of '_font_paths' to the last added font (e.g. Japanese bone and morph names
+            // of MMD models); '_ranges' as in ImGui (the Japanese ones by default). Returns the used path, empty if none exists
+            std::string mergeFont(const std::vector<std::string> &_font_paths, float _size_pixels, const ImWchar *_ranges = nullptr);
 
             void newFrame();
             void render();
@@ -503,6 +506,11 @@ namespace Simple {
             // Note: 'WantCapture*' flags are set by ImGui when the input must not be passed to the application
             bool isGUIHovered();
             bool isKeyboardInUse();
+
+            // Freezes the cursor while a slider or a drag widget is held with the mouse (see 'WindowInput::InputHandlerItf::wantsCursorLock')
+            bool lock_cursor_on_drag = true;
+            // True while a slider/drag widget (not a text input, a window move or a resize) is active and the left mouse button is down
+            bool wantsCursorLock() const;
         }; // ImGuiHandler END
     }; // ImGUI END
 }; // Simple END

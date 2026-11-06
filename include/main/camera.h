@@ -85,6 +85,8 @@ namespace Simple {
 
 
         vec3 calcCamPos() const;
+        // 'up_vect' or '-up_vect' when the camera is upside down ('pitch' beyond +-90 degrees), as used by 'view'
+        vec3 calcUpVect() const;
 
         mat4 view() const override;
     }; // ViewCentered END
@@ -102,6 +104,8 @@ namespace Simple {
         ViewPOV(const vec3 &_cam_pos, const vec3 &_look_at, const vec3 &_up_vect);
 
         vec3 calcLookAt() const;
+        // 'up_vect' or '-up_vect' when the camera is upside down ('pitch' beyond +-90 degrees), as used by 'view'
+        vec3 calcUpVect() const;
 
         mat4 view() const override;
 

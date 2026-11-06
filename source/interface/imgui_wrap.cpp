@@ -1,4 +1,7 @@
 #include "interface/imgui_wrap.h"
+#include "imgui/imgui_internal.h"
+
+#include <cstdio>
 
 namespace Simple {
     namespace ImGUI {
@@ -688,6 +691,22 @@ namespace Simple {
                 imgui_io->Fonts->AddFontFromFileTTF(_font_path.c_str(), _size_pixels);
         }
 
+        std::string ImGuiHandler::mergeFont(const std::vector<std::string> &_font_paths, float _size_pixels, const ImWchar *_ranges) {
+            if (!imgui_io) return std::string();
+            for (size_t i = 0u; i < _font_paths.size(); ++i) {
+                // Note: ImGui asserts on a missing file, so the path is checked first
+                FILE *__file = std::fopen(_font_paths[i].c_str(), "rb");
+                if (!__file) continue;
+                std::fclose(__file);
+                ImFontConfig __config;
+                __config.MergeMode = true;
+                imgui_io->Fonts->AddFontFromFileTTF(_font_paths[i].c_str(), _size_pixels, &__config,
+                                                    _ranges ? _ranges : imgui_io->Fonts->GetGlyphRangesJapanese());
+                return _font_paths[i];
+            }
+            return std::string();
+        }
+
         void ImGuiHandler::newFrame() {
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
@@ -748,6 +767,19 @@ namespace Simple {
 
         bool ImGuiHandler::isKeyboardInUse() {
             return imgui_io != nullptr && imgui_io->WantCaptureKeyboard;
+        }
+
+        bool ImGuiHandler::wantsCursorLock() const {
+            if (!lock_cursor_on_drag || context == nullptr) return false;
+            const ImGuiContext &__g = *context;
+            if (__g.ActiveId == 0 || __g.ActiveIdSource != ImGuiInputSource_Mouse || !__g.IO.MouseDown[ImGuiMouseButton_Left]) return false;
+            // Note: ImGui doesn't store widget types; sliders and drags (also vertical sliders) are the only widgets that claim
+            //       the arrow keys while active, besides text inputs (also the Ctrl+click input of a slider) and generic drags
+            //       that claim all keys (e.g. table column resize). Window moves and resizes don't claim them
+            const int __arrows = (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right) | (1 << ImGuiDir_Up) | (1 << ImGuiDir_Down);
+            if ((__g.ActiveIdUsingNavDirMask & __arrows) == 0 || __g.ActiveIdUsingAllKeyboardKeys) return false;
+            if (__g.InputTextState.ID == __g.ActiveId) return false;
+            return __g.MovingWindow == nullptr;
         }
     }; // ImGUI END
 }; // Simple END

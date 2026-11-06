@@ -77,7 +77,7 @@ namespace Simple {
             uint32_t typed_digits = 0u;      // Digits typed into the current hex field
             int32_t scroll_to = -1;
             bool follow = true, pattern_focused = false, instrument_focused = false;
-            bool show_library = true, show_instrument = true, show_song = true, show_pattern = true;
+            bool show_library = false, show_instrument = false, show_song = false, show_pattern = false;
             int32_t key_notes[TrackerAction::NOTE_LAST + 1u]; // Note started by each note key, -1 if none
             uint32_t key_channels[TrackerAction::NOTE_LAST + 1u];
             std::vector<float> wave_preview;

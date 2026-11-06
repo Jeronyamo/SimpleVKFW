@@ -168,6 +168,9 @@ namespace Simple {
             bool        blend_depth_write = false;
             bool        two_sided    = false; // no back face culling (the back faces are lit with the flipped normal)
             bool        visible      = true;  // e.g. parts that are switched off (PMX materials with zero alpha)
+            // Texture tint (MMD material morphs): the base color texture becomes 'clamp(texel * texture_mul + texture_add)'
+            vec4        texture_mul  = {1.f, 1.f, 1.f, 1.f};
+            vec4        texture_add  = {0.f, 0.f, 0.f, 0.f};
         }; // Material END
 
         enum LightType {
@@ -243,7 +246,7 @@ namespace Simple {
             SCENE_MORPH_UV,         // moves texture coordinates ('Mesh::morphs')
             SCENE_MORPH_BONE,       // offsets bones ('bones')
             SCENE_MORPH_GROUP,      // drives other morphs ('group'), e.g. a blink made of the eyes and the eyebrows
-            SCENE_MORPH_MATERIAL,   // material colors: kept by name, not applied yet
+            SCENE_MORPH_MATERIAL,   // material colors ('materials', see 'Scene::morphMaterials')
             SCENE_MORPH_OTHER       // not supported (MMD flip, impulse, additional UVs)
         };
 
@@ -252,6 +255,18 @@ namespace Simple {
             vec3     translation = {0.f, 0.f, 0.f};
             Quat     rotation;
         }; // MorphBoneOffset END
+
+        // Note: MMD material morph of one material: with 'add' the values times the weight are added, otherwise each value is
+        //       multiplied by 'lerp(1, value, weight)'. All multiplications go first, then the additions. Ambient, edge, sphere and
+        //       toon values of PMX are not used by the renderer
+        struct MorphMaterialOffset {
+            uint32_t material = SCENE_NONE; // in the scene
+            bool     add = false;
+            vec4     diffuse  = {1.f, 1.f, 1.f, 1.f}; // base color and alpha
+            vec3     specular = {1.f, 1.f, 1.f};
+            float    shininess = 1.f;
+            vec4     texture_tint = {1.f, 1.f, 1.f, 1.f};
+        }; // MorphMaterialOffset END
 
         struct MorphGroupEntry {
             uint32_t morph  = SCENE_NONE;
@@ -264,13 +279,53 @@ namespace Simple {
             MorphType                    type = SCENE_MORPH_VERTEX;
             std::vector<MorphBoneOffset> bones;
             std::vector<MorphGroupEntry> group;
+            std::vector<MorphMaterialOffset> materials;
         }; // Morph END
+
+        enum RigidShape { SCENE_RIGID_SPHERE = 0, SCENE_RIGID_BOX, SCENE_RIGID_CAPSULE };
+
+        enum RigidMode {
+            SCENE_RIGID_FOLLOW_BONE = 0,       // kinematic: placed by its bone (or the skeleton space without a bone)
+            SCENE_RIGID_PHYSICS,               // dynamic: drives its bone
+            SCENE_RIGID_PHYSICS_BONE_POSITION  // dynamic: drives the rotation of its bone, the bone keeps its animated position
+        };
+
+        // Note: a rigid body of the skeleton (MMD physics), in the skeleton space and the bind pose. Shapes: sphere
+        //       (size.x radius), box (size = half extents), capsule along the local Y (size.x radius, size.y length of the
+        //       cylinder part). 'collision_mask' bit i: collides with the bodies of group i. Simulated by 'scene/scene_physics.h'
+        struct RigidBodyDesc {
+            std::string name;
+            uint32_t    bone  = SCENE_NONE;
+            uint32_t    group = 0u;
+            uint32_t    collision_mask = 0xFFFFu;
+            RigidShape  shape = SCENE_RIGID_SPHERE;
+            vec3        size  = {1.f, 1.f, 1.f};
+            vec3        position = {0.f, 0.f, 0.f};
+            Quat        rotation;
+            float       mass = 1.f, linear_damping = 0.f, angular_damping = 0.f, restitution = 0.f, friction = 0.5f;
+            RigidMode   mode = SCENE_RIGID_FOLLOW_BONE;
+        }; // RigidBodyDesc END
+
+        // Note: a 6DOF spring joint between two rigid bodies of the skeleton; the frame is in the skeleton space (bind pose).
+        //       Limits in the joint frame (angles: Euler XYZ, radians): min > max frees an axis, min == max locks it;
+        //       springs: stiffness per axis, 0: none
+        struct JointDesc {
+            std::string name;
+            uint32_t    body_a = SCENE_NONE, body_b = SCENE_NONE;
+            vec3        position = {0.f, 0.f, 0.f};
+            Quat        rotation;
+            vec3        linear_min  = {0.f, 0.f, 0.f}, linear_max  = {0.f, 0.f, 0.f};
+            vec3        angular_min = {0.f, 0.f, 0.f}, angular_max = {0.f, 0.f, 0.f};
+            vec3        linear_spring = {0.f, 0.f, 0.f}, angular_spring = {0.f, 0.f, 0.f};
+        }; // JointDesc END
 
         struct Skeleton {
             std::string          name;
             std::vector<Bone>    bones;
             std::vector<IKChain> iks;
             std::vector<Morph>   morphs;
+            std::vector<RigidBodyDesc> rigid_bodies; // physics (MMD), see 'scene/scene_physics.h'
+            std::vector<JointDesc>     joints;
 
             // Computed by 'finalize'
             std::vector<uint32_t>              order;    // the deform order
@@ -302,6 +357,11 @@ namespace Simple {
             std::vector<float>   morph_weights;            // per morph of the skeleton (input)
             std::vector<float>   morph_final;              // computed: the weights with the groups resolved (the renderer reads them)
             std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
+            // Physics ('scene/scene_physics.h'): with 'use_physics' the bones with 'physics_override' take 'physics_model'
+            // (their model matrix) instead of their local transform; their descendants follow them
+            std::vector<uint8_t> physics_override;
+            std::vector<mat4>    physics_model;
+            bool              use_physics = false;
             bool              dirty = true;
             bool              solve_ik = true;
             uint64_t          revision = 0u; // counts 'computeFK' calls (e.g. culling notices a changed pose)
@@ -393,6 +453,10 @@ namespace Simple {
             // Recomputes 'world' and 'world_visible' of the marked nodes and their descendants (the whole tree after
             // 'append', 'clear' or 'markAllDirty'); fills 'changed'. Parents are not required to come before children in 'nodes'
             void updateTransforms();
+
+            // The materials after the material morphs of all skins ('Pose::morph_final', after 'updateSkins'): '_out' gets one per
+            // scene material. Returns false (and leaves '_out' untouched) if no material morph has a weight
+            bool morphMaterials(std::vector<Material> &_out) const;
 
             // Bounds of the visible meshes in the world (after 'updateTransforms')
             AABB bounds() const;
