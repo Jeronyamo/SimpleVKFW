@@ -1,4 +1,5 @@
-#include "physics/physics_world.h"
+#include "systems/physics.h"
+#include "core/engine.h"
 
 #include <cmath>
 #include <algorithm>
@@ -544,6 +545,14 @@ namespace Simple {
             b.prev_rotation = b.frame_rotation = b.rotation;
             updateMass(e);
             return e;
+        }
+
+        void World::attach(Core::Engine &_engine) { events = &_engine.events; }
+
+        void World::detach(Core::Engine &_engine) { if (events == &_engine.events) events = nullptr; }
+
+        void World::update(Core::Phase _phase, const Core::FrameTime &_time) {
+            if (_phase == Core::PHASE_PHYSICS) update(_time.sim_dt);
         }
 
         EntityID World::createJoint(const Joint &_joint) {

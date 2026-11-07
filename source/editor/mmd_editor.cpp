@@ -1,4 +1,4 @@
-#include "main/mmd_editor.h"
+#include "editor/mmd_editor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -80,11 +80,6 @@ namespace Simple {
 
             const char *const CHANNEL_NAMES[6] = { "X", "Y", "Z", "Rotation", "Distance", "FOV" };
         } // anonymous
-
-
-//  == === ==== >  MMDSimulationItf
-
-        MMDSimulationItf::~MMDSimulationItf() {}
 
 
 //  == === ==== >  MMDAudioTrack
@@ -322,17 +317,30 @@ namespace Simple {
             models.push_back(__model);
             applyOffsets_(models.back());
             scene.updateTransforms();
-            if (simulation && models.back().skin != SG::SCENE_NONE) simulation->addModel(scene, models.back().skin);
+            modelAdded_(models.back());
             selected_model = (int32_t)models.size() - 1;
             target_camera = false;
             select_(TRACK_NONE, SG::SCENE_NONE);
-            scene_changed = pose_changed = tracks_dirty = true;
+            sceneChanged_();
+            pose_changed = tracks_dirty = true;
             status = "Loaded " + __model.name;
             return true;
         }
 
+        void MMDStudio::modelAdded_(const MMDModel &_model) {
+            if (!events) return;
+            Event::SceneModelEvent __added;
+            __added.root = _model.root;
+            __added.skin = _model.skin;
+            events->dispatch(Event::Event::make(Event::EV_TYPE_SCENE_MODEL_ADDED, __added));
+        }
+
+        void MMDStudio::sceneChanged_() {
+            if (events) events->write(Event::EV_TYPE_SCENE_CHANGED);
+        }
+
         void MMDStudio::rebuildScene_() {
-            if (simulation) simulation->clear();
+            if (events) events->dispatch(Event::Event(Event::EV_TYPE_SCENE_CLEARED));
             scene = base_scene;
             scene.markAllDirty();
             for (size_t i = 0u; i < models.size(); ++i) {
@@ -348,10 +356,9 @@ namespace Simple {
                 bindMotion_(__model, false);
             }
             scene.updateTransforms();
-            if (simulation)
-                for (size_t i = 0u; i < models.size(); ++i)
-                    if (models[i].skin != SG::SCENE_NONE) simulation->addModel(scene, models[i].skin);
-            scene_changed = pose_changed = tracks_dirty = true;
+            for (size_t i = 0u; i < models.size(); ++i) modelAdded_(models[i]);
+            sceneChanged_();
+            pose_changed = tracks_dirty = true;
         }
 
         void MMDStudio::removeModel(uint32_t _model) {
@@ -448,12 +455,6 @@ namespace Simple {
             pose_changed = true;
         }
 
-        bool MMDStudio::takeSceneChanged() {
-            const bool __res = scene_changed;
-            scene_changed = false;
-            return __res;
-        }
-
         bool MMDStudio::applyCamera(const ProjPerspective &_base, mat4 &_view, mat4 &_proj) const {
             const bool __editing = edit_active && sel_type == TRACK_CAMERA;
             if (!use_camera || (!__editing && (!camera_motion.loaded || camera_motion.camera.empty()))) return false;
@@ -508,10 +509,8 @@ namespace Simple {
             refreshEdit_();
             applyEdit_();
 
-            if (simulation) {
-                if (pose_changed) simulation->reset(scene);
-                simulation->update(scene, playing ? __dt : 0.f);
-            }
+            if (pose_changed && events) events->dispatch(Event::Event(Event::EV_TYPE_SCENE_RESET));
+            sim_dt = playing ? __dt : 0.f;
             pose_changed = false;
             scene.updateTransforms();
         }

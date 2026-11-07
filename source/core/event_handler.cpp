@@ -1,4 +1,4 @@
-#include "main/event_handler.h"
+#include "core/event_handler.h"
 
 #include <cassert>
 #include <algorithm>

@@ -11,24 +11,13 @@
 #include <thread>
 #include <atomic>
 
-#include "main/etcs_base.h"
+#include "core/etcs_base.h"
+#include "core/event_types.h"
 
 
 namespace Simple {
     namespace Event {
-// EventType enum
-
-        // Note: the types the engine writes; game code adds its own from EV_TYPE_USER on
-        enum EventType : uint32_t {
-            EV_TYPE_NONE = 0,
-
-            // Physics ('physics/physics_world.h'): two bodies started / stopped touching; payload: 'Physics::ContactEvent'.
-            // Written for bodies with TAG_PHYSICS_REPORT_CONTACTS
-            EV_TYPE_PHYSICS_CONTACT_BEGIN = 100,
-            EV_TYPE_PHYSICS_CONTACT_END   = 101,
-
-            EV_TYPE_USER = 1024
-        }; // EventType END
+// Note: the event types of the engine and their payloads are in 'core/event_types.h'
 
 
         // Note: an event is a type, an optional entity and a small payload (any trivially copyable struct up to 'PAYLOAD_SIZE')

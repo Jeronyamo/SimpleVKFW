@@ -13,10 +13,11 @@
 #include "sound/tracker.h"
 #include "interface/rtaudio_wrap.h"
 #include "data/codecs.h"
-#include "main/etcs_base.h"
-#include "main/event_handler.h"
-#include "physics/physics_world.h"
-#include "scene/scene_physics.h"
+#include "core/etcs_base.h"
+#include "core/event_handler.h"
+#include "systems/physics.h"
+#include "systems/physics_scene.h"
+#include "core/engine.h"
 
 
 
@@ -848,10 +849,23 @@ namespace Simple {
         const uint32_t skin = scene.addSkin(scene.addSkeleton(sk), node);
         scene.nodes[node].skin = skin;
 
-        MMDPhysics physics;
-        physics.addModel(scene, skin);
-        physics.reset(scene);
-        for (int f = 0; f < 180; ++f) physics.update(scene, 1.f / 60.f);
+        // Through the engine: the model comes with the scene event, the phases run the systems
+        Core::Engine engine;
+        Physics::World world(engine.ecs);
+        Physics::SceneBodies bodies(scene, world);
+        engine.addSystem(&world);
+        engine.addSystem(&bodies);
+        Event::SceneModelEvent added;
+        added.root = node; added.skin = skin;
+        engine.events.dispatch(Event::Event::make(Event::EV_TYPE_SCENE_MODEL_ADDED, added));
+        Test::testAssert(bodies.modelCount() == 1u && world.ecs.count() == 8u, "the model entity, 4 bodies and 3 joints");
+        Core::FrameTime time;
+        time.dt = time.sim_dt = 1.f / 60.f;
+        for (int f = 0; f < 180; ++f) {
+            engine.runPhase(Core::PHASE_ANIMATION, time);
+            engine.runPhase(Core::PHASE_PHYSICS, time);
+            engine.runPhase(Core::PHASE_SCENE, time);
+        }
         const Pose &pose = scene.skins[skin].pose;
         const vec3 tip = { pose.model[3].M[3][0], pose.model[3].M[3][1], pose.model[3].M[3][2] };
         Test::testAssert(tip.y < 8.f, "the hair chain falls under gravity, tip y " + std::to_string(tip.y));
@@ -861,9 +875,89 @@ namespace Simple {
                          std::to_string((b1 - vec3{0.f, 10.f, 0.f}).norm()));
         // Moving the model node moves the kinematic body with it
         scene.setLocal(node, translation({5.f, 0.f, 0.f}));
-        for (int f = 0; f < 60; ++f) physics.update(scene, 1.f / 60.f);
+        for (int f = 0; f < 60; ++f) bodies.simulate(1.f / 60.f);
         const vec3 b1m = { pose.model[1].M[3][0], pose.model[1].M[3][1], pose.model[1].M[3][2] };
         Test::testAssert(std::fabs((b1m - vec3{0.f, 10.f, 0.f}).norm() - 1.f) < 0.05f, "bones stay in the skeleton space after moving the model");
+    }
+
+    SVKFW_ADD_TEST(PhysicsSceneNodes, "Physics: colliders of nodes from mesh bounds") {
+        using namespace SceneGraph;
+        // A model without a skeleton: a node with a 2x2x2 box mesh at y = 10, scaled by 0.5
+        Scene scene;
+        Mesh mesh;
+        mesh.bounds.add(vec3{-1.f, -1.f, -1.f});
+        mesh.bounds.add(vec3{ 1.f,  1.f,  1.f});
+        scene.meshes.push_back(mesh);
+        const uint32_t root = scene.addNode("model", SCENE_NONE, scaling({0.5f, 0.5f, 0.5f}) & translation({0.f, 10.f, 0.f}));
+        const uint32_t part = scene.addNode("part", root);
+        scene.nodes[part].meshes.push_back(0u);
+        scene.updateTransforms();
+
+        ComponentStorage ecs;
+        Physics::World world(ecs);
+        world.settings.gravity = {0.f, -10.f, 0.f};
+        Physics::SceneBodies bodies(scene, world);
+        Test::testAssert(bodies.addModel(root, SCENE_NONE).isNone(), "no bodies without 'auto_colliders'");
+        bodies.auto_colliders = true;
+        bodies.auto_fit = Physics::FIT_BOX;
+        bodies.auto_motion = TagID::TAG_PHYSICS_DYNAMIC;
+        const EntityID model = bodies.addModel(root, SCENE_NONE);
+        Test::testAssert(!model.isNone() && ecs.get<Physics::PhysicsModel>(model)->bodies.size() == 1u, "one body for the node with a mesh");
+        const EntityID body = ecs.get<Physics::PhysicsModel>(model)->bodies[0];
+        const Physics::Collider *col = ecs.get<Physics::Collider>(body);
+        Test::testAssert(col && std::fabs(col->size.x - 0.5f) < 1e-4f, "box half extents scaled by the node, " + std::to_string(col ? col->size.x : 0.f));
+        world.createBody(Physics::Body(), Physics::Collider::plane(), TagID::TAG_PHYSICS_STATIC);
+        for (int f = 0; f < 240; ++f) bodies.simulate(1.f / 60.f);
+        const vec3 p = transformPoint(scene.world[part], vec3{0.f, 0.f, 0.f});
+        Test::testAssert(std::fabs(p.y - 0.5f) < 0.1f, "the node fell onto the ground, y " + std::to_string(p.y));
+        Test::testAssert(std::fabs(scene.world[part].M[0][0] * scene.world[part].M[0][0] + scene.world[part].M[0][1] * scene.world[part].M[0][1] +
+                                   scene.world[part].M[0][2] * scene.world[part].M[0][2] - 0.25f) < 1e-3f, "the node keeps its scale");
+        bodies.clear();
+        Test::testAssert(!ecs.isValid(body) && !ecs.isValid(model) && bodies.modelCount() == 0u, "'clear' removes the model and its bodies");
+    }
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "Engine"
+
+    SVKFW_ADD_TEST(EngineApps, "Engine: apps by events, systems by phases") {
+        struct CountingApp : Core::AppItf {
+            Core::Engine *engine = nullptr;
+            int frames = 0, started = 0, stopped = 0, *runs;
+            explicit CountingApp(int *_runs) : runs(_runs) {}
+            const char *name() const override { return "counting"; }
+            bool start(Core::Engine &_engine) override { engine = &_engine; ++started; ++*runs; return true; }
+            bool frame() override {
+                // Another app's event while this one runs: ignored
+                if (++frames == 2) engine->events.write(Event::EV_TYPE_RUN_GAME);
+                return frames < 5;
+            }
+            void stop() override { ++stopped; }
+        };
+        struct PhaseSystem : Core::System {
+            std::vector<uint32_t> seen;
+            const char *name() const override { return "phases"; }
+            uint32_t phases() const override { return Core::phaseBit(Core::PHASE_PHYSICS) | Core::phaseBit(Core::PHASE_SCENE); }
+            void update(Core::Phase _phase, const Core::FrameTime &) override { seen.push_back((uint32_t)_phase); }
+        };
+        int runs_editor = 0, runs_game = 0;
+        Core::Engine engine;
+        engine.registerApp(Event::EV_TYPE_RUN_EDITOR, [&]() -> Core::AppItf* { return new CountingApp(&runs_editor); });
+        engine.registerApp(Event::EV_TYPE_RUN_GAME,   [&]() -> Core::AppItf* { return new CountingApp(&runs_game);   });
+        Test::testAssert(engine.run() != 0, "nothing to run without an event");
+        engine.events.write(Event::EV_TYPE_RUN_EDITOR);
+        Test::testAssert(engine.run() == 0 && engine.frame() == 5u, "the app ran until it quit, frames " + std::to_string(engine.frame()));
+        Test::testAssert(runs_editor == 1 && runs_game == 0, "the game event was ignored while the editor ran");
+
+        engine.max_frames = 3u;
+        engine.events.write(Event::EV_TYPE_RUN_GAME);
+        Test::testAssert(engine.run() == 0 && engine.frame() == 3u && runs_game == 1, "'max_frames' stops the app");
+
+        PhaseSystem sys;
+        engine.addSystem(&sys);
+        Core::FrameTime t;
+        for (uint32_t p = 0u; p < Core::PHASE_COUNT; ++p) engine.runPhase((Core::Phase)p, t);
+        Test::testAssert(sys.seen.size() == 2u && sys.seen[0] == Core::PHASE_PHYSICS && sys.seen[1] == Core::PHASE_SCENE, "systems run in their phases");
+        Test::testAssert(engine.removeSystem(&sys) && !engine.removeSystem(&sys), "removeSystem");
     }
 }; // Simple END
 

@@ -7,7 +7,7 @@
 #include "volk.h"
 #include "GLFW/glfw3.h"
 #include "common/basic_math.h"
-#include "main/event_handler.h"
+#include "core/event_handler.h"
 #include "math/vectors.h"
 #include "main/image.h"
 

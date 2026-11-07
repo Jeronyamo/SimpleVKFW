@@ -3,14 +3,15 @@
         {
             "name": "Win32",
             "includePath": [
+                "${VULKAN_SDK}/Include",
                 "${workspaceFolder}/include/**",
                 "${workspaceFolder}/ext_includes",
                 "${workspaceFolder}/ext_includes/STBI",
+                "${workspaceFolder}/ext_sources",
                 "${workspaceFolder}/ext_sources/glfw/include",
                 "${workspaceFolder}/ext_sources/imgui",
                 "${workspaceFolder}/ext_sources/volk",
-                "${VULKAN_SDK}/Include",
-                "${workspaceFolder}/ext_sources"
+                "${workspaceFolder}/ext_sources/rtaudio"
             ],
             "defines": [
                 "_DEBUG",

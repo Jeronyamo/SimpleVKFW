@@ -1,4 +1,4 @@
-#include "main/music_editor.h"
+#include "editor/music_editor.h"
 
 #include "data/codecs.h"
 

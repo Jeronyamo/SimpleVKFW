@@ -13,6 +13,7 @@
 #include "scene/scene_graph.h"
 #include "scene/scene_animation.h"
 #include "sound/sampler.h"
+#include "core/event_handler.h"
 
 
 namespace Simple {
@@ -30,25 +31,19 @@ namespace Simple {
         //       rebuilt from it), so a modified motion is saved as a VMD again.
         //
         //       MMDStudio mmd(scene);                                    // after the lights are added (kept on rebuilds)
+        //       mmd.events = &engine.events;                             // the scene events ('core/event_types.h')
         //       mmd.attachAudio(&audio_handler.stream_config.audio_sampler, sample_rate); // optional, plays the audio track
         //       imgui_handler.widgets.push_back(&mmd);
         //       ...
-        //       mmd.update(frame_time);                                  // each frame, before 'scene.updateSkins'
-        //       if (mmd.takeSceneChanged()) { ... re-upload the scene renderer, rebuild the culling ... }
+        //       mmd.update(frame_time);                                  // each frame, before the animation phase
+        //       ... time.sim_dt = mmd.sim_dt; engine.runPhase(...) ...   // simulations follow the playback
         //       mmd.applyCamera(camera.proj_class, view, proj);          // the VMD camera, if one is loaded and on
-
-        // Physics (or any other simulation) driven by the MMD playback
-        struct MMDSimulationItf {
-            virtual ~MMDSimulationItf();
-            // After a model with a skin was added to the scene
-            virtual void addModel(SG::Scene &_scene, uint32_t _skin) = 0;
-            // After a jump in time (seek, stop, edits, offset changes): back to the animated pose
-            virtual void reset(SG::Scene &_scene) = 0;
-            // Before the scene is rebuilt (a model was removed); 'addModel' follows for each remaining model
-            virtual void clear() = 0;
-            // Each frame after the animations are applied ('_dt': seconds of playback, 0 when paused)
-            virtual void update(SG::Scene &_scene, float _dt) = 0;
-        }; // MMDSimulationItf END
+        //
+        //       Events (simulations such as 'Physics::SceneBodies' listen to them, no direct calls):
+        //         EV_TYPE_SCENE_MODEL_ADDED  a model was loaded (or added again by a rebuild), dispatched immediately;
+        //         EV_TYPE_SCENE_CLEARED      before a rebuild (a model was removed), dispatched immediately;
+        //         EV_TYPE_SCENE_RESET        a jump in time (seek, stop, edits, offsets), dispatched by 'update';
+        //         EV_TYPE_SCENE_CHANGED      queued: the renderer must upload the scene again (new meshes, materials, skins).
 
 
         // Audio track of the timeline: stereo 16-bit PCM played from 'position' while 'playing' (the timeline seeks it).
@@ -135,7 +130,7 @@ namespace Simple {
             std::vector<MMDModel>   models;
             MMDMotion               camera_motion;
             bool                    use_camera = true;
-            MMDSimulationItf       *simulation = nullptr;
+            Event::EventHandler    *events = nullptr;   // the scene events go here (none: nobody is told)
 
         // Audio
             MMDAudioTrack           audio;
@@ -182,8 +177,8 @@ namespace Simple {
             int32_t edit_track = -1;
             float   edit_frame = -1.f;
 
-            bool scene_changed = false;       // the renderer must upload the scene again
-            bool pose_changed  = true;        // the poses must be applied again (seek, edit)
+            bool  pose_changed = true;        // the poses must be applied again (seek, edit)
+            float sim_dt = 0.f;               // seconds of playback of the last 'update' (0 when paused): simulation time
 
             explicit MMDStudio(SG::Scene &_scene);
             virtual ~MMDStudio() override;
@@ -191,10 +186,8 @@ namespace Simple {
             // Plays the audio track through '_sampler' (e.g. the one of the music editor's stream)
             void attachAudio(Audio::AudioSampler *_sampler, uint32_t _output_rate);
 
-            // Playback, animations, simulation; call each frame before 'scene.updateSkins'
+            // Playback and animations (then the transforms); call each frame before the animation phase
             void update(double _dt);
-            // True once after the scene got new meshes, materials or skins (the renderer must upload it again)
-            bool takeSceneChanged();
             // With a camera motion loaded and on: the view and the projection (the fov of the VMD; near, far and the size from '_base')
             bool applyCamera(const ProjPerspective &_base, mat4 &_view, mat4 &_proj) const;
 
@@ -222,6 +215,8 @@ namespace Simple {
             MMDMotion *targetMotion_();
             void scanAssets_();
             void rebuildScene_();
+            void modelAdded_(const MMDModel &_model);
+            void sceneChanged_();
             void applyOffsets_(MMDModel &_model);
             void bindMotion_(MMDModel &_model, bool _warn);
             void motionChanged_(MMDMotion &_motion);

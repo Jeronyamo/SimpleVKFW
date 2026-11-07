@@ -9,7 +9,7 @@
 #include <string>
 
 #include "common/terminal.h"
-#include "fun/etcs_tags.h"
+#include "core/etcs_tags.h"
 
 
 namespace Simple {

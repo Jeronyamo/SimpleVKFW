@@ -23,7 +23,7 @@ namespace Simple {
         //       all PMX bones with their names (parents first, so the indices may differ from the file: see 'findBone').
         //       Used options: scale, detect_alpha, hide_zero_opacity. Morphs: vertex, UV, bone, group and material ones (the
         //       material morphs change diffuse, specular and the texture tint, see 'Scene::morphMaterials'). Rigid bodies and
-        //       joints go to the skeleton ('Skeleton::rigid_bodies', 'joints'; simulated by 'scene/scene_physics.h').
+        //       joints go to the skeleton ('Skeleton::rigid_bodies', 'joints'; simulated by 'systems/physics_scene.h').
         //       Not converted yet: edges, sphere and toon textures
 
         // Loads a PMX file and appends it to '_scene' under '_parent'; returns the root node of the model.

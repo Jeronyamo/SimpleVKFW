@@ -6,9 +6,9 @@
 
 namespace Simple {
     // Note: tags are flags without data: an entity has a tag or not. They are stored as bits ('TagMask'), so there can be
-    //       at most 64 of them. Data goes into components (any C++ type, see 'ComponentStorage::add' in 'main/etcs_base.h')
+    //       at most 64 of them. Data goes into components (any C++ type, see 'ComponentStorage::add' in 'core/etcs_base.h')
     enum struct TagID : uint32_t {
-        // Physics ('physics/physics_world.h'): the motion type of a body (exactly one of them)
+        // Physics ('systems/physics.h'): the motion type of a body (exactly one of them)
         TAG_PHYSICS_STATIC = 0,   // never moves (ground, walls)
         TAG_PHYSICS_KINEMATIC,    // moved by the game (e.g. follows a bone), pushes dynamic bodies, isn't pushed
         TAG_PHYSICS_DYNAMIC,      // simulated

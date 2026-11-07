@@ -8,8 +8,9 @@
 
 #include "math/vectors.h"
 #include "math/linalg.h"
-#include "main/etcs_base.h"
-#include "main/event_handler.h"
+#include "core/etcs_base.h"
+#include "core/event_handler.h"
+#include "core/system.h"
 
 
 namespace Simple {
@@ -36,6 +37,12 @@ namespace Simple {
         //       world.createBody(Physics::Body(), Physics::Collider::plane(), TagID::TAG_PHYSICS_STATIC);  // the ground
         //       ...
         //       world.update(frame_dt); // fixed steps (settings.fixed_step) with an accumulator
+        //
+        //       As a system of the engine ('core/system.h') it uses the engine's components and events and steps in
+        //       PHASE_PHYSICS by 'FrameTime::sim_dt':
+        //
+        //       Physics::World world(engine.ecs);
+        //       engine.addSystem(&world);
 
         typedef Affine::Rotation::Quaternion Quat;
 
@@ -101,7 +108,7 @@ namespace Simple {
             bool  collide_connected = false; // contacts between the two bodies
         }; // Joint END
 
-        // Payload of EV_TYPE_PHYSICS_CONTACT_BEGIN / END ('main/event_handler.h'); 'point' and 'normal' (from B to A) are
+        // Payload of EV_TYPE_PHYSICS_CONTACT_BEGIN / END ('core/event_handler.h'); 'point' and 'normal' (from B to A) are
         // zero for END events
         struct ContactEvent {
             EntityID body_a, body_b;
@@ -133,7 +140,7 @@ namespace Simple {
             float depth;
         }; // ShapeContact END
 
-        class World {
+        class World : public Core::System {
         public:
             ComponentStorage    &ecs;
             Event::EventHandler *events = nullptr; // optional: contact events go here
@@ -141,6 +148,13 @@ namespace Simple {
             WorldStats           stats;
 
             explicit World(ComponentStorage &_ecs);
+
+        // System: steps by 'sim_dt' in PHASE_PHYSICS; contact events go to the engine's handler
+            const char *name() const override { return "physics"; }
+            uint32_t phases() const override { return Core::phaseBit(Core::PHASE_PHYSICS); }
+            void attach(Core::Engine &_engine) override;
+            void detach(Core::Engine &_engine) override;
+            void update(Core::Phase _phase, const Core::FrameTime &_time) override;
 
             // Creates a body entity; dynamic bodies get 'inv_mass' and the inertia from the collider (mass <= 0: 1)
             EntityID createBody(const Body &_body, const Collider &_collider, TagID _motion);

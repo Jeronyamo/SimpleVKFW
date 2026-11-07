@@ -292,7 +292,7 @@ namespace Simple {
 
         // Note: a rigid body of the skeleton (MMD physics), in the skeleton space and the bind pose. Shapes: sphere
         //       (size.x radius), box (size = half extents), capsule along the local Y (size.x radius, size.y length of the
-        //       cylinder part). 'collision_mask' bit i: collides with the bodies of group i. Simulated by 'scene/scene_physics.h'
+        //       cylinder part). 'collision_mask' bit i: collides with the bodies of group i. Simulated by 'systems/physics_scene.h'
         struct RigidBodyDesc {
             std::string name;
             uint32_t    bone  = SCENE_NONE;
@@ -324,7 +324,7 @@ namespace Simple {
             std::vector<Bone>    bones;
             std::vector<IKChain> iks;
             std::vector<Morph>   morphs;
-            std::vector<RigidBodyDesc> rigid_bodies; // physics (MMD), see 'scene/scene_physics.h'
+            std::vector<RigidBodyDesc> rigid_bodies; // physics (MMD), see 'systems/physics_scene.h'
             std::vector<JointDesc>     joints;
 
             // Computed by 'finalize'
@@ -357,7 +357,7 @@ namespace Simple {
             std::vector<float>   morph_weights;            // per morph of the skeleton (input)
             std::vector<float>   morph_final;              // computed: the weights with the groups resolved (the renderer reads them)
             std::vector<TRS>     morphed;                  // computed: 'local' with the bone morphs
-            // Physics ('scene/scene_physics.h'): with 'use_physics' the bones with 'physics_override' take 'physics_model'
+            // Physics ('systems/physics_scene.h'): with 'use_physics' the bones with 'physics_override' take 'physics_model'
             // (their model matrix) instead of their local transform; their descendants follow them
             std::vector<uint8_t> physics_override;
             std::vector<mat4>    physics_model;
