@@ -95,7 +95,8 @@ namespace Simple {
 
         // Note: a 6DOF joint (like Bullet's 'btGeneric6DofSpringConstraint', which MMD uses). The joint frame is fixed in
         //       both bodies ('anchor_*', 'frame_*' in the body spaces); the limits are for body B's frame in body A's frame:
-        //       translation per axis and rotation as Euler XYZ angles (radians, q = qX * qY * qZ). Per axis: min == max locks it,
+        //       translation per axis and rotation as Euler XYZ angles (radians, q = qX * qY * qZ,
+        //       'Affine::Rotation::eulerXYZ'). Per axis: min == max locks it,
         //       min < max limits it, min > max frees it. Springs (stiffness per axis, 0: none) pull towards zero offset / angle
         struct Joint {
             EntityID body_a, body_b;
@@ -180,15 +181,14 @@ namespace Simple {
             void     removeBrokenJoints();
 
             // The solver's dense copy of a body state (internal)
-            struct Qf { float s, i, j, k; };
             struct SolverState {
                 vec3  x, px, v, w;   // position, previous position, velocities
-                Qf    q, pq;         // rotation, previous rotation
+                Quat  q, pq;         // rotation, previous rotation
                 float im;            // inverse mass (0: not dynamic)
                 vec3  ii;            // local inverse inertia
                 float iw[9];         // world inverse inertia (row-major), updated once per substep
                 vec3  fx, tx;        // kinematic: the pose at the start of the update and the target
-                Qf    fq, tq;
+                Quat  fq, tq;
                 bool  has_target;
             };
 
@@ -243,10 +243,6 @@ namespace Simple {
         // Fills '_out' with the contacts of two colliders at the given poses (the normal points from B to A)
         void collideShapes(const Collider &_ca, const vec3 &_pa, const Quat &_qa,
                            const Collider &_cb, const vec3 &_pb, const Quat &_qb, std::vector<ShapeContact> &_out);
-
-        // Euler XYZ (q = qX * qY * qZ) of a rotation and back, as Bullet's 6DOF constraint uses them
-        vec3 eulerXYZ(const Quat &_q);
-        Quat fromEulerXYZ(const vec3 &_angles);
     }; // Physics END
 }; // Simple END
 

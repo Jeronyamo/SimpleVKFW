@@ -47,6 +47,12 @@ namespace Simple {
         }
 
 
+        mat4 rigidTransform(const Quat &_q, const vec3 &_p) {
+            mat4 __m = rotation(_q);
+            __m.M[3][0] = _p.x; __m.M[3][1] = _p.y; __m.M[3][2] = _p.z;
+            return __m;
+        }
+
         mat4 rotation(const Quat &_q) {
             const Quat  __q = _q.normalize();
             const float s = __q.s, i = __q.i, j = __q.j, k = __q.k;
@@ -96,7 +102,7 @@ namespace Simple {
 
         TRS TRS::fromMatrix(const mat4 &_m) {
             TRS __trs;
-            __trs.translation = { _m.M[3][0], _m.M[3][1], _m.M[3][2] };
+            __trs.translation = translationOf(_m);
             float __s[3];
             for (int r = 0; r < 3; ++r) __s[r] = std::sqrt(_m.M[r][0] * _m.M[r][0] + _m.M[r][1] * _m.M[r][1] + _m.M[r][2] * _m.M[r][2]);
             // A mirroring matrix: the mirror goes into the X scale
@@ -135,9 +141,23 @@ namespace Simple {
         AABB AABB::transformed(const mat4 &_m) const {
             AABB __res;
             if (!valid()) return __res;
-            for (uint32_t i = 0u; i < 8u; ++i)
-                __res.add(transformPoint(_m, { (i & 1u) ? max.x : min.x, (i & 2u) ? max.y : min.y, (i & 4u) ? max.z : min.z }));
+            const float __min[3] = { min.x, min.y, min.z }, __max[3] = { max.x, max.y, max.z };
+            float __out_min[3], __out_max[3];
+            transformBounds(__min, __max, _m, __out_min, __out_max);
+            __res.min = { __out_min[0], __out_min[1], __out_min[2] };
+            __res.max = { __out_max[0], __out_max[1], __out_max[2] };
             return __res;
+        }
+
+        void transformBounds(const float _min[3], const float _max[3], const mat4 &_m, float _out_min[3], float _out_max[3]) {
+            float c[3], e[3];
+            for (int i = 0; i < 3; ++i) { c[i] = 0.5f * (_min[i] + _max[i]); e[i] = 0.5f * (_max[i] - _min[i]); }
+            for (int j = 0; j < 3; ++j) {
+                const float __c = _m.M[3][j] + c[0] * _m.M[0][j] + c[1] * _m.M[1][j] + c[2] * _m.M[2][j];
+                const float __e = e[0] * std::fabs(_m.M[0][j]) + e[1] * std::fabs(_m.M[1][j]) + e[2] * std::fabs(_m.M[2][j]);
+                _out_min[j] = __c - __e;
+                _out_max[j] = __c + __e;
+            }
         }
 
 
@@ -240,22 +260,13 @@ namespace Simple {
         namespace {
             // '_t' of the rotation (any real '_t': negative ratios give the inverse direction, like MMD grants)
             Quat scaleRotation(const Quat &_q, float _t) {
-                Quat __q = _q.normalize();
-                if (__q.s < 0.f) __q = Quat(-__q.s, -__q.i, -__q.j, -__q.k);
-                const float __v = std::sqrt(__q.i * __q.i + __q.j * __q.j + __q.k * __q.k);
-                if (__v < 1e-7f) return Quat();
-                const float __angle = 2.f * std::atan2(__v, __q.s) * _t;
-                return Quat(vec3{__q.i / __v, __q.j / __v, __q.k / __v}, __angle);
+                return Affine::Rotation::fromRotationVector(Affine::Rotation::rotationVector(Affine::Rotation::unitOrIdentity(_q)) * _t);
             }
-
-            vec3 origin(const mat4 &_m) { return { _m.M[3][0], _m.M[3][1], _m.M[3][2] }; }
-
-            float clampf(float _v, float _min, float _max) { return _v < _min ? _min : (_v > _max ? _max : _v); }
 
             // Euler angles of 'q = qx * qy * qz' (Z is applied first); '_near' picks the solution closest to it
             vec3 eulerXYZ(const Quat &_q, const vec3 &_near) {
                 const mat4 m = rotation(_q); // row style: m.M[r][c] is the usual c(c, r)
-                const float __sy = clampf(m.M[2][0], -1.f, 1.f);
+                const float __sy = Math::clampCL(m.M[2][0], -1.f, 1.f);
                 vec3 __a, __b;
                 if (std::fabs(__sy) > 0.99999f) { // gimbal lock: keep X
                     __a.x = _near.x;
@@ -274,10 +285,6 @@ namespace Simple {
                 __b.z = __a.z + (__a.z > 0.f ? -__pi : __pi);
                 const vec3 __da = __a - _near, __db = __b - _near;
                 return Math::dot(__da, __da) <= Math::dot(__db, __db) ? __a : __b;
-            }
-
-            Quat fromEulerXYZ(const vec3 &_a) {
-                return Quat(vec3{1.f, 0.f, 0.f}, _a.x) * Quat(vec3{0.f, 1.f, 0.f}, _a.y) * Quat(vec3{0.f, 0.f, 1.f}, _a.z);
             }
         } // anonymous namespace END
 
@@ -346,14 +353,14 @@ namespace Simple {
             const Quat __animated = morphed[_link.bone].rotation;
             const Quat __total = ik_rotation[_link.bone] * __animated;
             vec3 __angles = eulerXYZ(__total, _previous);
-            __angles = { clampf(__angles.x, _link.limit_min.x, _link.limit_max.x),
-                         clampf(__angles.y, _link.limit_min.y, _link.limit_max.y),
-                         clampf(__angles.z, _link.limit_min.z, _link.limit_max.z) };
-            __angles = { _previous.x + clampf(__angles.x - _previous.x, -_limit_angle, _limit_angle),
-                         _previous.y + clampf(__angles.y - _previous.y, -_limit_angle, _limit_angle),
-                         _previous.z + clampf(__angles.z - _previous.z, -_limit_angle, _limit_angle) };
+            __angles = { Math::clampCL(__angles.x, _link.limit_min.x, _link.limit_max.x),
+                         Math::clampCL(__angles.y, _link.limit_min.y, _link.limit_max.y),
+                         Math::clampCL(__angles.z, _link.limit_min.z, _link.limit_max.z) };
+            __angles = { _previous.x + Math::clampCL(__angles.x - _previous.x, -_limit_angle, _limit_angle),
+                         _previous.y + Math::clampCL(__angles.y - _previous.y, -_limit_angle, _limit_angle),
+                         _previous.z + Math::clampCL(__angles.z - _previous.z, -_limit_angle, _limit_angle) };
             _previous = __angles;
-            ik_rotation[_link.bone] = (fromEulerXYZ(__angles) * __animated.inverse()).normalize();
+            ik_rotation[_link.bone] = (Affine::Rotation::fromEulerXYZ(__angles) * __animated.inverse()).normalize();
             updateModel_(_skeleton, _link.bone);
         }
 
@@ -368,12 +375,12 @@ namespace Simple {
                     const IKLink &__link = _ik.links[l];
                     if (__link.bone == _ik.effector) continue;
                     const mat4 __inverse = model[__link.bone].inverse<float>();
-                    vec3 __to_goal     = transformPoint(__inverse, origin(model[_ik.goal]));
-                    vec3 __to_effector = transformPoint(__inverse, origin(model[_ik.effector]));
+                    vec3 __to_goal     = transformPoint(__inverse, translationOf(model[_ik.goal]));
+                    vec3 __to_effector = transformPoint(__inverse, translationOf(model[_ik.effector]));
                     if (__to_goal.norm() < 1e-7f || __to_effector.norm() < 1e-7f) continue;
                     __to_goal = __to_goal.normalize();
                     __to_effector = __to_effector.normalize();
-                    float __angle = std::acos(clampf(Math::dot(__to_effector, __to_goal), -1.f, 1.f));
+                    float __angle = std::acos(Math::clampCL(Math::dot(__to_effector, __to_goal), -1.f, 1.f));
 
                     // A link limited around one axis only (knees): rotate in that plane, within the limits
                     int __axis = -1;
@@ -387,7 +394,7 @@ namespace Simple {
                         const vec3  __a   = { __axis == 0 ? 1.f : 0.f, __axis == 1 ? 1.f : 0.f, __axis == 2 ? 1.f : 0.f };
                         const float __min = __axis == 0 ? __link.limit_min.x : __axis == 1 ? __link.limit_min.y : __link.limit_min.z;
                         const float __max = __axis == 0 ? __link.limit_max.x : __axis == 1 ? __link.limit_max.y : __link.limit_max.z;
-                        __angle = clampf(__angle, -_ik.limit_angle, _ik.limit_angle);
+                        __angle = Math::clampCL(__angle, -_ik.limit_angle, _ik.limit_angle);
                         // Which direction brings the effector closer
                         const float __plus  = Math::dot(Quat(__a,  __angle).rotate(__to_effector), __to_goal);
                         const float __minus = Math::dot(Quat(__a, -__angle).rotate(__to_effector), __to_goal);
@@ -399,7 +406,7 @@ namespace Simple {
                                 if (std::fabs(__half - __new) > std::fabs(__half + __new)) __new = -__new;
                             }
                         }
-                        __new = clampf(__new, __min, __max);
+                        __new = Math::clampCL(__new, __min, __max);
                         __plane_angle[l] = __new;
                         ik_rotation[__link.bone] = (Quat(__a, __new) * morphed[__link.bone].rotation.inverse()).normalize();
                         updateModel_(_skeleton, __link.bone);
@@ -407,14 +414,14 @@ namespace Simple {
                     }
 
                     if (__angle < 1e-5f) continue;
-                    __angle = clampf(__angle, -_ik.limit_angle, _ik.limit_angle);
+                    __angle = Math::clampCL(__angle, -_ik.limit_angle, _ik.limit_angle);
                     vec3 __axis_v = Math::cross(__to_effector, __to_goal);
                     if (__axis_v.norm() < 1e-7f) continue;
                     rotateLink_(_skeleton, __link.bone, __axis_v.normalize(), __angle);
                     if (__link.limited) limitLink_(_skeleton, __link, _ik.limit_angle, __previous[l]);
                 }
                 // Keep the best iteration (MMD): stop when the distance doesn't improve
-                const vec3  __d = origin(model[_ik.goal]) - origin(model[_ik.effector]);
+                const vec3  __d = translationOf(model[_ik.goal]) - translationOf(model[_ik.effector]);
                 const float __distance = Math::dot(__d, __d);
                 if (__distance < __best_distance) {
                     __best_distance = __distance;
@@ -433,14 +440,14 @@ namespace Simple {
         void Pose::solveTwoBone_(const Skeleton &_skeleton, const IKChain &_ik) {
             if (_ik.links.size() != 2u) { solveCCD_(_skeleton, _ik); return; }
             const uint32_t __mid = _ik.links[0].bone, __root = _ik.links[1].bone;
-            const vec3 a = origin(model[__root]), b = origin(model[__mid]), c = origin(model[_ik.effector]), t = origin(model[_ik.goal]);
+            const vec3 a = translationOf(model[__root]), b = translationOf(model[__mid]), c = translationOf(model[_ik.effector]), t = translationOf(model[_ik.goal]);
             const float __upper = (b - a).norm(), __lower = (c - b).norm();
             if (__upper < 1e-7f || __lower < 1e-7f) return;
             // 1. The middle joint: the angle that makes the root-effector distance equal to the root-goal distance
-            const float __d = clampf((t - a).norm(), std::fabs(__upper - __lower) + 1e-5f, __upper + __lower - 1e-5f);
+            const float __d = Math::clampCL((t - a).norm(), std::fabs(__upper - __lower) + 1e-5f, __upper + __lower - 1e-5f);
             const vec3  __u = (a - b).normalize(), __w = (c - b).normalize();
-            const float __current = std::acos(clampf(Math::dot(__u, __w), -1.f, 1.f));
-            const float __wanted  = std::acos(clampf((__upper * __upper + __lower * __lower - __d * __d) / (2.f * __upper * __lower), -1.f, 1.f));
+            const float __current = std::acos(Math::clampCL(Math::dot(__u, __w), -1.f, 1.f));
+            const float __wanted  = std::acos(Math::clampCL((__upper * __upper + __lower * __lower - __d * __d) / (2.f * __upper * __lower), -1.f, 1.f));
             vec3 __bend = Math::cross(__w, __u); // the bend plane of the current pose
             if (__bend.norm() < 1e-6f) __bend = Math::cross(__w, t - a);    // a straight limb: bend towards the goal
             if (__bend.norm() < 1e-6f) __bend = Math::cross(__w, vec3{0.f, 0.f, 1.f});
@@ -450,13 +457,13 @@ namespace Simple {
             }
             // 2. The root joint: turn the effector onto the goal
             const mat4 __inverse = model[__root].inverse<float>();
-            vec3 __to_effector = transformPoint(__inverse, origin(model[_ik.effector])), __to_goal = transformPoint(__inverse, t);
+            vec3 __to_effector = transformPoint(__inverse, translationOf(model[_ik.effector])), __to_goal = transformPoint(__inverse, t);
             if (__to_effector.norm() < 1e-7f || __to_goal.norm() < 1e-7f) return;
             __to_effector = __to_effector.normalize();
             __to_goal = __to_goal.normalize();
             const vec3 __axis = Math::cross(__to_effector, __to_goal);
             if (__axis.norm() < 1e-7f) return;
-            rotateLink_(_skeleton, __root, __axis.normalize(), std::acos(clampf(Math::dot(__to_effector, __to_goal), -1.f, 1.f)));
+            rotateLink_(_skeleton, __root, __axis.normalize(), std::acos(Math::clampCL(Math::dot(__to_effector, __to_goal), -1.f, 1.f)));
         }
 
         void Pose::addMorph_(const Skeleton &_skeleton, uint32_t _morph, float _weight, uint32_t _depth) {

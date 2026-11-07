@@ -18,6 +18,7 @@
 #include "systems/physics.h"
 #include "systems/physics_scene.h"
 #include "core/engine.h"
+#include "scene/scene_graph.h"
 
 
 
@@ -61,6 +62,80 @@ namespace Simple {
                                                                     + std::to_string(tmp2.y) + "!=8.0");
     }
 
+
+    SVKFW_ADD_TEST(VecMathTypes, "Vector functions: result types, subvectors, op[] range check") {
+        // Result types: long double / double are kept, other types give flt_t
+        static_assert(std::is_same<decltype(Math::dot(vec3d{}, vec3d{})), double>::value, "dot(vec3d) must be double");
+        static_assert(std::is_same<decltype(Math::dot(vec3i{}, vec3i{})), flt_t >::value, "dot(vec3i) must be flt_t");
+        static_assert(std::is_same<decltype(Math::cross(vec3d{}, vec3d{})), vec3d>::value, "cross(vec3d) must be vec3d");
+        static_assert(std::is_same<decltype(Math::dist(vec2u{}, vec2u{})), flt_t>::value, "dist(vec2u) must be flt_t");
+        static_assert(std::is_same<decltype(vec3d{}.norm()), double>::value, "vec3d::norm must be double");
+        static_assert(std::is_same<decltype(Vec3Base<long double>{}.normalize()), Vec3Base<long double>>::value, "normalize must keep long double");
+
+        // Computed in the result type: no integer overflow or unsigned wrap-around
+        Test::testAssert(Math::dot(vec3i{100000, 0, 0}, vec3i{100000, 0, 0}) == 1e10f, "dot(vec3i) is computed in flt_t");
+        Test::testAssert(Math::dist(vec2u{1u, 5u}, vec2u{4u, 1u}) == 5.f, "dist(vec2u) is computed in flt_t");
+
+        // Subvectors (references) mix with values of the same base type
+        vec4 v{1.f, 2.f, 3.f, 4.f};
+        const vec3 u{1.f, 0.f, 2.f};
+        Test::testAssert(Math::dot(v["xyz"], u) == 7.f, "dot of a subvector and a vector");
+        Test::testAssert((Math::cross(u, v["zyx"]) == vec3{-4.f, 5.f, 2.f}).all(), "cross of a vector and a subvector");
+
+        // op[]: mutable for values and subvectors, out of range indices throw
+        v[1] = 5.f;
+        v["wzy"][0] = 9.f;
+        Test::testAssert(v.y == 5.f && v.w == 9.f, "op[] assignment through a vector and a subvector");
+        bool __thrown_val = false, __thrown_ref = false;
+        try { (void)v[4u]; }        catch (const std::invalid_argument &) { __thrown_val = true; }
+        try { (void)v["xyz"][3u]; } catch (const std::invalid_argument &) { __thrown_ref = true; }
+        Test::testAssert(__thrown_val && __thrown_ref, "op[] out of range must throw for vectors and subvectors");
+    }
+
+
+    SVKFW_ADD_TEST(QuaternionOps, "Quaternions: rotation vectors, Euler XYZ, nlerp") {
+        using namespace Affine::Rotation;
+        static_assert(std::is_trivially_copyable<Quaternion>::value, "Quaternion must stay trivially copyable");
+        const Quaternion q(vec3{0.3f, -0.8f, 0.5f}, 2.1f);
+        // The rotation vector of a rotation and its negated quaternion (the same rotation) is the same, |v| = angle
+        const vec3 v = rotationVector(q), vn = rotationVector(-1.f * q);
+        Test::testAssert(std::fabs(v.norm() - 2.1f) < 1e-4f && (v - vn).norm() < 1e-5f, "rotationVector: angle " + std::to_string(v.norm()));
+        const Quaternion back = fromRotationVector(v);
+        Test::testAssert(std::fabs(std::fabs(Math::dot(back, q)) - 1.f) < 1e-5f, "fromRotationVector(rotationVector(q)) == q");
+        Test::testAssert(rotationVector(Quaternion()).norm() < 1e-7f && std::fabs(fromRotationVector({0.f, 0.f, 0.f}).s - 1.f) < 1e-7f, "identity");
+        // Euler XYZ round trip and the order (Z first)
+        const vec3 e{0.4f, -0.9f, 1.3f};
+        Test::testAssert((eulerXYZ(fromEulerXYZ(e)) - e).norm() < 1e-4f, "eulerXYZ(fromEulerXYZ(e)) == e");
+        const vec3 p{0.f, 1.f, 0.f};
+        const vec3 r1 = fromEulerXYZ(e).rotateByUnit(p);
+        const vec3 r2 = Quaternion(vec3{1.f, 0.f, 0.f}, e.x).rotateByUnit(Quaternion(vec3{0.f, 1.f, 0.f}, e.y).rotateByUnit(Quaternion(vec3{0.f, 0.f, 1.f}, e.z).rotateByUnit(p)));
+        Test::testAssert((r1 - r2).norm() < 1e-5f, "fromEulerXYZ: q = qX * qY * qZ");
+        // rotateByUnit == rotate (normalizing) for a unit quaternion; nlerp ends and the shorter arc
+        Test::testAssert((q.rotateByUnit(p) - q.rotate(p)).norm() < 1e-5f, "rotateByUnit");
+        const Quaternion a = unitOrIdentity(q), b(vec3{0.f, 1.f, 0.f}, 0.4f);
+        Test::testAssert(std::fabs(Math::dot(Interpolation::nlerp(a, b, 0.f), a) - 1.f) < 1e-5f &&
+                         std::fabs(std::fabs(Math::dot(Interpolation::nlerp(a, -1.f * b, 1.f), b)) - 1.f) < 1e-5f, "nlerp ends");
+        Test::testAssert(std::fabs(unitOrIdentity(Quaternion(0.f, 0.f, 0.f, 0.f)).s - 1.f) < 1e-7f, "unitOrIdentity of zero");
+    }
+
+    SVKFW_ADD_TEST(BoundsTransform, "AABB: transformed box, matrix helpers") {
+        using namespace SceneGraph;
+        AABB box;
+        box.add(vec3{-1.f, 0.f, -2.f});
+        box.add(vec3{ 3.f, 1.f,  2.f});
+        const mat4 m = scaling({0.5f, 0.5f, 0.5f}) & rotation(Quat(vec3{0.2f, 1.f, -0.4f}, 0.9f)) & translation({4.f, -2.f, 7.f});
+        // The exact box: around the 8 transformed corners
+        AABB corners;
+        for (uint32_t i = 0u; i < 8u; ++i)
+            corners.add(transformPoint(m, { (i & 1u) ? box.max.x : box.min.x, (i & 2u) ? box.max.y : box.min.y, (i & 4u) ? box.max.z : box.min.z }));
+        const AABB t = box.transformed(m);
+        Test::testAssert((t.min - corners.min).norm() < 1e-5f && (t.max - corners.max).norm() < 1e-5f, "transformed == the box of the corners");
+        Test::testAssert(!AABB().transformed(m).valid(), "an empty box stays empty");
+        Test::testAssert((translationOf(m) - vec3{4.f, -2.f, 7.f}).norm() < 1e-6f && std::fabs(uniformScaleOf(m) - 0.5f) < 1e-6f, "translationOf, uniformScaleOf");
+        const Quat q(vec3{0.f, 0.f, 1.f}, 0.7f);
+        const mat4 r = rigidTransform(q, {1.f, 2.f, 3.f});
+        Test::testAssert((transformPoint(r, {1.f, 0.f, 0.f}) - (q.rotateByUnit({1.f, 0.f, 0.f}) + vec3{1.f, 2.f, 3.f})).norm() < 1e-5f, "rigidTransform");
+    }
 
 #undef  SVKFW_TEST_GROUP
 #define SVKFW_TEST_GROUP "Image"
@@ -749,7 +824,7 @@ namespace Simple {
 
     SVKFW_ADD_TEST(PhysicsShapes, "Physics: resting shapes, stacking, Euler angles") {
         using namespace Physics;
-        const vec3 __angles{0.3f, -0.7f, 1.1f}, __back = eulerXYZ(fromEulerXYZ(__angles));
+        const vec3 __angles{0.3f, -0.7f, 1.1f}, __back = Affine::Rotation::eulerXYZ(Affine::Rotation::fromEulerXYZ(__angles));
         Test::testAssert((__back - __angles).norm() < 1e-4f, "Euler XYZ round trip");
 
         ComponentStorage ecs;

@@ -37,30 +37,6 @@ namespace Simple {
 
             float axisOf(const vec3 &_v, int _axis) { return _axis == 0 ? _v.x : _axis == 1 ? _v.y : _v.z; }
 
-            // The box around a transformed box (Arvo): the center is transformed, the half size goes through |M|.
-            // Plain floats: it runs for every bone box of every moving skinned mesh
-            void transformBox(const float _min[3], const float _max[3], const mat4 &_m, float _out_min[3], float _out_max[3]) {
-                float c[3], e[3];
-                for (int i = 0; i < 3; ++i) { c[i] = 0.5f * (_min[i] + _max[i]); e[i] = 0.5f * (_max[i] - _min[i]); }
-                for (int j = 0; j < 3; ++j) {
-                    const float __c = _m.M[3][j] + c[0] * _m.M[0][j] + c[1] * _m.M[1][j] + c[2] * _m.M[2][j];
-                    const float __e = e[0] * std::fabs(_m.M[0][j]) + e[1] * std::fabs(_m.M[1][j]) + e[2] * std::fabs(_m.M[2][j]);
-                    _out_min[j] = __c - __e;
-                    _out_max[j] = __c + __e;
-                }
-            }
-
-            AABB transformedBox(const AABB &_bounds, const mat4 &_m) {
-                AABB __res;
-                if (!_bounds.valid()) return __res;
-                const float __min[3] = { _bounds.min.x, _bounds.min.y, _bounds.min.z }, __max[3] = { _bounds.max.x, _bounds.max.y, _bounds.max.z };
-                float __out_min[3], __out_max[3];
-                transformBox(__min, __max, _m, __out_min, __out_max);
-                __res.min = { __out_min[0], __out_min[1], __out_min[2] };
-                __res.max = { __out_max[0], __out_max[1], __out_max[2] };
-                return __res;
-            }
-
             bool sameMatrix(const mat4 &_a, const mat4 &_b) { return std::memcmp(&_a, &_b, sizeof(mat4)) == 0; }
         } // anonymous
 
@@ -369,7 +345,7 @@ namespace Simple {
 
         AABB SceneCulling::worldBounds_(const Scene &_scene, const Instance &_instance) const {
             const Mesh &__mesh = _scene.meshes[_instance.mesh];
-            if (_instance.skin == SCENE_NONE) return transformedBox(__mesh.bounds, _scene.world[_instance.node]);
+            if (_instance.skin == SCENE_NONE) return __mesh.bounds.transformed(_scene.world[_instance.node]);
             const Skin &__skin = _scene.skins[_instance.skin];
             const std::vector<BoneBounds> &__bones = bone_bounds[_instance.mesh];
             float __lo[3] = { 1e30f, 1e30f, 1e30f }, __hi[3] = { -1e30f, -1e30f, -1e30f };
@@ -378,7 +354,7 @@ namespace Simple {
                 const AABB &__src = __bones[b].bounds;
                 const float __min[3] = { __src.min.x, __src.min.y, __src.min.z }, __max[3] = { __src.max.x, __src.max.y, __src.max.z };
                 float __out_min[3], __out_max[3];
-                transformBox(__min, __max, __skin.pose.skinning[__bones[b].bone], __out_min, __out_max);
+                transformBounds(__min, __max, __skin.pose.skinning[__bones[b].bone], __out_min, __out_max);
                 for (int i = 0; i < 3; ++i) { __lo[i] = std::min(__lo[i], __out_min[i]); __hi[i] = std::max(__hi[i], __out_max[i]); }
             }
             AABB __posed;
@@ -388,7 +364,7 @@ namespace Simple {
             }
             // Note: like the renderer, a skinned mesh is placed by its skin's node
             const uint32_t __space = __skin.node != SCENE_NONE ? __skin.node : _instance.node;
-            return transformedBox(__posed, _scene.world[__space]);
+            return __posed.transformed(_scene.world[__space]);
         }
 
         void SceneCulling::build(const Scene &_scene) {

@@ -12,73 +12,28 @@ namespace Simple {
 
             inline vec3  rot   (const Quat &_q, const vec3 &_v) { return _q.rotateByUnit(_v); }
             inline vec3  invRot(const Quat &_q, const vec3 &_v) { return _q.conjugate().rotateByUnit(_v); }
-            inline float dot3  (const vec3 &_a, const vec3 &_b) { return _a.x * _b.x + _a.y * _b.y + _a.z * _b.z; }
-            inline vec3  cross3(const vec3 &_a, const vec3 &_b) { return { _a.y * _b.z - _a.z * _b.y, _a.z * _b.x - _a.x * _b.z, _a.x * _b.y - _a.y * _b.x }; }
-            inline float len3  (const vec3 &_a) { return std::sqrt(dot3(_a, _a)); }
-            inline vec3  mul3  (const vec3 &_a, const vec3 &_b) { return { _a.x * _b.x, _a.y * _b.y, _a.z * _b.z }; }
-            inline vec3  lerp3 (const vec3 &_a, const vec3 &_b, float _t) { return _a + (_b - _a) * _t; }
-            inline float clampf(float _v, float _lo, float _hi) { return _v < _lo ? _lo : (_v > _hi ? _hi : _v); }
-            inline vec3  axisOf(uint32_t _i) { return { _i == 0u ? 1.f : 0.f, _i == 1u ? 1.f : 0.f, _i == 2u ? 1.f : 0.f }; }
-            inline float comp  (const vec3 &_v, uint32_t _i) { return _i == 0u ? _v.x : (_i == 1u ? _v.y : _v.z); }
-            inline void  setComp(vec3 &_v, uint32_t _i, float _x) { if (_i == 0u) _v.x = _x; else if (_i == 1u) _v.y = _x; else _v.z = _x; }
 
-            Quat normalized(const Quat &_q) {
-                const float __n = std::sqrt(_q.s * _q.s + _q.i * _q.i + _q.j * _q.j + _q.k * _q.k);
-                return __n > EPS ? Quat(_q.s / __n, _q.i / __n, _q.j / __n, _q.k / __n) : Quat();
-            }
+            using Affine::Rotation::unitOrIdentity;
+            using Affine::Rotation::rotationVector;
+            using Affine::Rotation::eulerXYZ;
+            using Affine::Rotation::fromEulerXYZ;
+            using Interpolation::nlerp;
 
-            Quat nlerp(const Quat &_a, const Quat &_b, float _t) {
-                const float __d = _a.s * _b.s + _a.i * _b.i + _a.j * _b.j + _a.k * _b.k;
-                const float __sb = __d < 0.f ? -_t : _t, __sa = 1.f - _t;
-                return normalized(Quat(_a.s * __sa + _b.s * __sb, _a.i * __sa + _b.i * __sb, _a.j * __sa + _b.j * __sb, _a.k * __sa + _b.k * __sb));
-            }
-
-            // q += 0.5 * [w, 0] * q (a world space rotation vector)
-            void addRotation(Quat &_q, const vec3 &_w) {
+            // q += 0.5 * [w, 0] * q (a world space rotation vector, first order)
+            inline void addRotation(Quat &_q, const vec3 &_w) {
                 const Quat __dq = Quat(0.f, _w.x, _w.y, _w.z) * _q;
-                _q = normalized(Quat(_q.s + 0.5f * __dq.s, _q.i + 0.5f * __dq.i, _q.j + 0.5f * __dq.j, _q.k + 0.5f * __dq.k));
-            }
-
-            // The rotation from '_from' to '_to' as a world rotation vector (axis * angle)
-            vec3 rotationDelta(const Quat &_to, const Quat &_from) {
-                Quat __d = _to * _from.conjugate();
-                if (__d.s < 0.f) __d = Quat(-__d.s, -__d.i, -__d.j, -__d.k);
-                const float __sin = std::sqrt(__d.i * __d.i + __d.j * __d.j + __d.k * __d.k);
-                if (__sin < EPS) return { 2.f * __d.i, 2.f * __d.j, 2.f * __d.k };
-                const float __angle = 2.f * std::atan2(__sin, __d.s);
-                return vec3{__d.i, __d.j, __d.k} * (__angle / __sin);
+                _q = unitOrIdentity(Quat(_q.s + 0.5f * __dq.s, _q.i + 0.5f * __dq.i, _q.j + 0.5f * __dq.j, _q.k + 0.5f * __dq.k));
             }
 
             float boundingRadius(const Collider &_c) {
                 switch (_c.shape) {
                     case SHAPE_SPHERE:  return _c.size.x;
-                    case SHAPE_BOX:     return len3(_c.size);
+                    case SHAPE_BOX:     return _c.size.norm();
                     case SHAPE_CAPSULE: return _c.size.x + 0.5f * _c.size.y;
                     default:            return 0.f;
                 }
             }
         } // anonymous namespace END
-
-
-//  == === ==== >  Euler angles
-
-        vec3 eulerXYZ(const Quat &_q) {
-            const Quat q = normalized(_q);
-            // Column-vector matrix of 'v' -> q v q*
-            const float m00 = 1.f - 2.f * (q.j * q.j + q.k * q.k), m01 = 2.f * (q.i * q.j - q.s * q.k), m02 = 2.f * (q.i * q.k + q.s * q.j);
-            const float m10 = 2.f * (q.i * q.j + q.s * q.k), m11 = 1.f - 2.f * (q.i * q.i + q.k * q.k), m12 = 2.f * (q.j * q.k - q.s * q.i);
-            const float m22 = 1.f - 2.f * (q.i * q.i + q.j * q.j);
-            // Bullet 'matrixToEulerXYZ': M = Rx * Ry * Rz
-            if (m02 < 1.f) {
-                if (m02 > -1.f) return { std::atan2(-m12, m22), std::asin(m02), std::atan2(-m01, m00) };
-                return { -std::atan2(m10, m11), -1.5707963f, 0.f };
-            }
-            return { std::atan2(m10, m11), 1.5707963f, 0.f };
-        }
-
-        Quat fromEulerXYZ(const vec3 &_a) {
-            return Quat(vec3{1.f, 0.f, 0.f}, _a.x) * Quat(vec3{0.f, 1.f, 0.f}, _a.y) * Quat(vec3{0.f, 0.f, 1.f}, _a.z);
-        }
 
 
 //  == === ==== >  Colliders, bodies
@@ -103,19 +58,19 @@ namespace Simple {
             // Closest points of the segments p1-q1 and p2-q2 (Ericson, Real-Time Collision Detection 5.1.9)
             void closestSegments(const vec3 &_p1, const vec3 &_q1, const vec3 &_p2, const vec3 &_q2, vec3 &_c1, vec3 &_c2) {
                 const vec3 d1 = _q1 - _p1, d2 = _q2 - _p2, r = _p1 - _p2;
-                const float a = dot3(d1, d1), e = dot3(d2, d2), f = dot3(d2, r);
+                const float a = Math::dot(d1, d1), e = Math::dot(d2, d2), f = Math::dot(d2, r);
                 float s = 0.f, t = 0.f;
                 if (a <= EPS && e <= EPS) { _c1 = _p1; _c2 = _p2; return; }
-                if (a <= EPS) t = clampf(f / e, 0.f, 1.f);
+                if (a <= EPS) t = Math::clampCL(f / e, 0.f, 1.f);
                 else {
-                    const float c = dot3(d1, r);
-                    if (e <= EPS) s = clampf(-c / a, 0.f, 1.f);
+                    const float c = Math::dot(d1, r);
+                    if (e <= EPS) s = Math::clampCL(-c / a, 0.f, 1.f);
                     else {
-                        const float b = dot3(d1, d2), denom = a * e - b * b;
-                        s = denom > EPS ? clampf((b * f - c * e) / denom, 0.f, 1.f) : 0.f;
+                        const float b = Math::dot(d1, d2), denom = a * e - b * b;
+                        s = denom > EPS ? Math::clampCL((b * f - c * e) / denom, 0.f, 1.f) : 0.f;
                         t = (b * s + f) / e;
-                        if (t < 0.f)      { t = 0.f; s = clampf(-c / a, 0.f, 1.f); }
-                        else if (t > 1.f) { t = 1.f; s = clampf((b - c) / a, 0.f, 1.f); }
+                        if (t < 0.f)      { t = 0.f; s = Math::clampCL(-c / a, 0.f, 1.f); }
+                        else if (t > 1.f) { t = 1.f; s = Math::clampCL((b - c) / a, 0.f, 1.f); }
                     }
                 }
                 _c1 = _p1 + d1 * s;
@@ -124,8 +79,8 @@ namespace Simple {
 
             vec3 closestOnSegment(const vec3 &_p, const vec3 &_a, const vec3 &_b) {
                 const vec3 ab = _b - _a;
-                const float l2 = dot3(ab, ab);
-                return l2 <= EPS ? _a : _a + ab * clampf(dot3(_p - _a, ab) / l2, 0.f, 1.f);
+                const float l2 = Math::dot(ab, ab);
+                return l2 <= EPS ? _a : _a + ab * Math::clampCL(Math::dot(_p - _a, ab) / l2, 0.f, 1.f);
             }
 
             // A sphere or a capsule: a segment with a radius
@@ -143,7 +98,7 @@ namespace Simple {
 
             void addSphereContact(const vec3 &_ca, float _ra, const vec3 &_cb, float _rb, std::vector<ShapeContact> &_out) {
                 const vec3 d = _ca - _cb;
-                const float dist = len3(d);
+                const float dist = d.norm();
                 if (dist >= _ra + _rb) return;
                 ShapeContact c;
                 c.normal  = dist > EPS ? d * (1.f / dist) : vec3{0.f, 1.f, 0.f};
@@ -155,8 +110,8 @@ namespace Simple {
 
             void sweptSwept(const Swept &_a, const Swept &_b, std::vector<ShapeContact> &_out) {
                 const vec3 da = _a.p1 - _a.p0, db = _b.p1 - _b.p0;
-                const float la = len3(da), lb = len3(db);
-                if (la > EPS && lb > EPS && std::fabs(dot3(da, db)) > 0.95f * la * lb) {
+                const float la = da.norm(), lb = db.norm();
+                if (la > EPS && lb > EPS && std::fabs(Math::dot(da, db)) > 0.95f * la * lb) {
                     // Nearly parallel capsules: the end points against the other segment (up to 4 contacts, a capsule can lie
                     // on another one without rocking)
                     const size_t __first = _out.size();
@@ -167,7 +122,7 @@ namespace Simple {
                     // Drop duplicates (the same points from both sides)
                     for (size_t i = _out.size(); i-- > __first + 1u; )
                         for (size_t j = __first; j < i; ++j)
-                            if (len3(_out[i].point_a - _out[j].point_a) < 0.1f * _a.r) { _out.erase(_out.begin() + i); break; }
+                            if ((_out[i].point_a - _out[j].point_a).norm() < 0.1f * _a.r) { _out.erase(_out.begin() + i); break; }
                     if (_out.size() > __first) return;
                 }
                 vec3 c1, c2;
@@ -177,9 +132,9 @@ namespace Simple {
 
             // A point with a radius (box local space) against a box with half extents '_h'
             bool pointBox(const vec3 &_s, float _r, const vec3 &_h, vec3 &_n, vec3 &_pb, float &_depth) {
-                const vec3 c = { clampf(_s.x, -_h.x, _h.x), clampf(_s.y, -_h.y, _h.y), clampf(_s.z, -_h.z, _h.z) };
+                const vec3 c = { Math::clampCL(_s.x, -_h.x, _h.x), Math::clampCL(_s.y, -_h.y, _h.y), Math::clampCL(_s.z, -_h.z, _h.z) };
                 const vec3 d = _s - c;
-                const float dist = len3(d);
+                const float dist = d.norm();
                 if (dist > EPS) {
                     if (dist >= _r) return false;
                     _n = d * (1.f / dist);
@@ -191,14 +146,14 @@ namespace Simple {
                 uint32_t __axis = 0u;
                 float __best = 1e30f;
                 for (uint32_t i = 0u; i < 3u; ++i) {
-                    const float __gap = comp(_h, i) - std::fabs(comp(_s, i));
+                    const float __gap = _h[i] - std::fabs(_s[i]);
                     if (__gap < __best) { __best = __gap; __axis = i; }
                 }
-                const float __sign = comp(_s, __axis) < 0.f ? -1.f : 1.f;
-                _n = axisOf(__axis) * __sign;
+                const float __sign = _s[__axis] < 0.f ? -1.f : 1.f;
+                _n = Mat::Eye3[__axis] * __sign;
                 _depth = _r + __best;
                 _pb = _s;
-                setComp(_pb, __axis, __sign * comp(_h, __axis));
+                _pb[__axis] = __sign * _h[__axis];
                 return true;
             }
 
@@ -210,14 +165,14 @@ namespace Simple {
                 uint32_t __count = 0u;
                 __cand[__count++] = e0;
                 const vec3 __d = e1 - e0;
-                const float __l2 = dot3(__d, __d);
+                const float __l2 = Math::dot(__d, __d);
                 if (__l2 > EPS) {
                     __cand[__count++] = e1;
                     float t = 0.5f;
                     for (uint32_t it = 0u; it < 4u; ++it) {
                         const vec3 s = e0 + __d * t;
-                        const vec3 c = { clampf(s.x, -h.x, h.x), clampf(s.y, -h.y, h.y), clampf(s.z, -h.z, h.z) };
-                        t = clampf(dot3(c - e0, __d) / __l2, 0.f, 1.f);
+                        const vec3 c = { Math::clampCL(s.x, -h.x, h.x), Math::clampCL(s.y, -h.y, h.y), Math::clampCL(s.z, -h.z, h.z) };
+                        t = Math::clampCL(Math::dot(c - e0, __d) / __l2, 0.f, 1.f);
                     }
                     if (t > 0.02f && t < 0.98f) __cand[__count++] = e0 + __d * t;
                 }
@@ -248,7 +203,7 @@ namespace Simple {
                 uint32_t __inc_axis = 0u;
                 float __inc_sign = 1.f, __best = 1e30f;
                 for (uint32_t i = 0u; i < 3u; ++i) {
-                    const float d = dot3(rot(_inc_q, axisOf(i)), _n);
+                    const float d = Math::dot(rot(_inc_q, Mat::Eye3[i]), _n);
                     if ( d < __best) { __best =  d; __inc_axis = i; __inc_sign =  1.f; }
                     if (-d < __best) { __best = -d; __inc_axis = i; __inc_sign = -1.f; }
                 }
@@ -257,9 +212,9 @@ namespace Simple {
                 const float __su[4] = { -1.f, 1.f, 1.f, -1.f }, __sv[4] = { -1.f, -1.f, 1.f, 1.f };
                 for (uint32_t c = 0u; c < 4u; ++c) {
                     vec3 l;
-                    setComp(l, __inc_axis, __inc_sign * comp(_inc_h, __inc_axis));
-                    setComp(l, u, __su[c] * comp(_inc_h, u));
-                    setComp(l, v, __sv[c] * comp(_inc_h, v));
+                    l[__inc_axis] = __inc_sign * _inc_h[__inc_axis];
+                    l[u] = __su[c] * _inc_h[u];
+                    l[v] = __sv[c] * _inc_h[v];
                     __poly.push_back(invRot(_ref_q, _inc_p + rot(_inc_q, l) - _ref_p)); // reference box space
                 }
                 // Clip against the 4 side planes: |x_j| <= h_j for the other two axes
@@ -267,10 +222,10 @@ namespace Simple {
                     if (j == _axis) continue;
                     for (int side = -1; side <= 1; side += 2) {
                         __tmp.clear();
-                        const float lim = comp(_ref_h, j);
+                        const float lim = _ref_h[j];
                         for (size_t k = 0u; k < __poly.size(); ++k) {
                             const vec3 &a = __poly[k], &b = __poly[(k + 1u) % __poly.size()];
-                            const float da = side * comp(a, j) - lim, db = side * comp(b, j) - lim; // <= 0: inside
+                            const float da = side * a[j] - lim, db = side * b[j] - lim; // <= 0: inside
                             if (da <= 0.f) __tmp.push_back(a);
                             if ((da <= 0.f) != (db <= 0.f)) __tmp.push_back(a + (b - a) * (da / (da - db)));
                         }
@@ -279,10 +234,10 @@ namespace Simple {
                     }
                 }
                 const vec3 __n_local = invRot(_ref_q, _n);
-                const float __face = comp(_ref_h, _axis);
+                const float __face = _ref_h[_axis];
                 uint32_t __added = 0u;
                 for (const vec3 &l : __poly) {
-                    const float __depth = __face - dot3(l, __n_local);
+                    const float __depth = __face - Math::dot(l, __n_local);
                     if (__depth <= 0.f) continue;
                     const vec3 __p = _ref_p + rot(_ref_q, l);
                     ShapeContact c;
@@ -299,7 +254,7 @@ namespace Simple {
                         std::vector<ShapeContact> &_out) {
                 const vec3 ha = _ca.size, hb = _cb.size;
                 vec3 A[3], B[3];
-                for (uint32_t i = 0u; i < 3u; ++i) { A[i] = rot(_qa, axisOf(i)); B[i] = rot(_qb, axisOf(i)); }
+                for (uint32_t i = 0u; i < 3u; ++i) { A[i] = rot(_qa, Mat::Eye3[i]); B[i] = rot(_qb, Mat::Eye3[i]); }
                 const vec3 T = _pa - _pb;
                 float __best = 1e30f;
                 vec3  __best_axis;
@@ -309,20 +264,20 @@ namespace Simple {
                     if (k < 3u) L = A[k];
                     else if (k < 6u) L = B[k - 3u];
                     else {
-                        L = cross3(A[(k - 6u) / 3u], B[(k - 6u) % 3u]);
-                        const float __l = len3(L);
+                        L = Math::cross(A[(k - 6u) / 3u], B[(k - 6u) % 3u]);
+                        const float __l = L.norm();
                         if (__l < 1e-4f) continue;
                         L = L * (1.f / __l);
                     }
                     float ra = 0.f, rb = 0.f;
-                    for (uint32_t i = 0u; i < 3u; ++i) { ra += comp(ha, i) * std::fabs(dot3(A[i], L)); rb += comp(hb, i) * std::fabs(dot3(B[i], L)); }
-                    const float __overlap = ra + rb - std::fabs(dot3(T, L));
+                    for (uint32_t i = 0u; i < 3u; ++i) { ra += ha[i] * std::fabs(Math::dot(A[i], L)); rb += hb[i] * std::fabs(Math::dot(B[i], L)); }
+                    const float __overlap = ra + rb - std::fabs(Math::dot(T, L));
                     if (__overlap < 0.f) return; // a separating axis
                     // Faces are preferred (stable contacts) unless an edge axis is clearly better
                     const bool __better = k < 6u ? __overlap < __best : __overlap < __best * 0.95f - 1e-3f;
                     if (__better) {
                         __best = __overlap;
-                        __best_axis = dot3(T, L) < 0.f ? L * -1.f : L; // from B to A
+                        __best_axis = Math::dot(T, L) < 0.f ? L * -1.f : L; // from B to A
                         __best_kind = k < 3u ? (int)k : (k < 6u ? (int)k : 6);
                     }
                 }
@@ -339,8 +294,8 @@ namespace Simple {
                 // Edges (or no vertex inside the face): one contact between the deepest vertices
                 uint32_t __ia = 0u, __ib = 0u;
                 for (uint32_t i = 1u; i < 8u; ++i) {
-                    if (dot3(va[i], __best_axis) < dot3(va[__ia], __best_axis)) __ia = i;
-                    if (dot3(vb[i], __best_axis) > dot3(vb[__ib], __best_axis)) __ib = i;
+                    if (Math::dot(va[i], __best_axis) < Math::dot(va[__ia], __best_axis)) __ia = i;
+                    if (Math::dot(vb[i], __best_axis) > Math::dot(vb[__ib], __best_axis)) __ib = i;
                 }
                 ShapeContact c;
                 c.normal = __best_axis;
@@ -357,7 +312,7 @@ namespace Simple {
                     vec3 v[8];
                     boxVertices(_pa, _qa, _ca.size, v);
                     for (uint32_t i = 0u; i < 8u; ++i) {
-                        const float s = dot3(v[i] - _pb, n);
+                        const float s = Math::dot(v[i] - _pb, n);
                         if (s >= 0.f) continue;
                         ShapeContact c;
                         c.normal = n; c.depth = -s; c.point_a = v[i]; c.point_b = v[i] - n * s;
@@ -369,7 +324,7 @@ namespace Simple {
                 const vec3 ends[2] = { sw.p0, sw.p1 };
                 const uint32_t __count = _ca.shape == SHAPE_CAPSULE ? 2u : 1u;
                 for (uint32_t i = 0u; i < __count; ++i) {
-                    const float s = dot3(ends[i] - _pb, n);
+                    const float s = Math::dot(ends[i] - _pb, n);
                     if (s >= sw.r) continue;
                     ShapeContact c;
                     c.normal = n; c.depth = sw.r - s; c.point_a = ends[i] - n * sw.r; c.point_b = ends[i] - n * s;
@@ -407,75 +362,7 @@ namespace Simple {
 //  == === ==== >  World
 
         namespace {
-            // Note: the solver works on a dense copy of the body states with an inlined quaternion (the engine's
-            //       'Quaternion' methods are out of line): the joint loop runs thousands of times per step for MMD models
-            typedef World::Qf Qf;
-
-            inline Qf   toQf  (const Quat &_q) { Qf r = { _q.s, _q.i, _q.j, _q.k }; return r; }
-            inline Quat toQuat(const Qf &_q)   { return Quat(_q.s, _q.i, _q.j, _q.k); }
-            inline Qf   qmul  (const Qf &a, const Qf &b) {
-                Qf r = { a.s * b.s - a.i * b.i - a.j * b.j - a.k * b.k,
-                         a.s * b.i + a.i * b.s + a.j * b.k - a.k * b.j,
-                         a.s * b.j - a.i * b.k + a.j * b.s + a.k * b.i,
-                         a.s * b.k + a.i * b.j - a.j * b.i + a.k * b.s };
-                return r;
-            }
-            inline Qf   qconj (const Qf &a) { Qf r = { a.s, -a.i, -a.j, -a.k }; return r; }
-            inline Qf   qnorm (const Qf &a) {
-                const float n2 = a.s * a.s + a.i * a.i + a.j * a.j + a.k * a.k;
-                if (n2 <= EPS * EPS) { Qf r = { 1.f, 0.f, 0.f, 0.f }; return r; }
-                const float inv = 1.f / std::sqrt(n2);
-                Qf r = { a.s * inv, a.i * inv, a.j * inv, a.k * inv };
-                return r;
-            }
-            // v' = q v q* (unit q)
-            inline vec3 qrot(const Qf &q, const vec3 &v) {
-                const float tx = 2.f * (q.j * v.z - q.k * v.y), ty = 2.f * (q.k * v.x - q.i * v.z), tz = 2.f * (q.i * v.y - q.j * v.x);
-                return { v.x + q.s * tx + (q.j * tz - q.k * ty), v.y + q.s * ty + (q.k * tx - q.i * tz), v.z + q.s * tz + (q.i * ty - q.j * tx) };
-            }
-            inline vec3 qinvrot(const Qf &q, const vec3 &v) { return qrot(qconj(q), v); }
-            // q += 0.5 * [w, 0] * q
-            inline void qaddRotation(Qf &q, const vec3 &w) {
-                const Qf wq = { 0.f, w.x, w.y, w.z };
-                const Qf d = qmul(wq, q);
-                Qf r = { q.s + 0.5f * d.s, q.i + 0.5f * d.i, q.j + 0.5f * d.j, q.k + 0.5f * d.k };
-                q = qnorm(r);
-            }
-            inline Qf qnlerp(const Qf &a, const Qf &b, float t) {
-                const float d = a.s * b.s + a.i * b.i + a.j * b.j + a.k * b.k;
-                const float sb = d < 0.f ? -t : t, sa = 1.f - t;
-                Qf r = { a.s * sa + b.s * sb, a.i * sa + b.i * sb, a.j * sa + b.j * sb, a.k * sa + b.k * sb };
-                return qnorm(r);
-            }
-            // Rotation vector (axis * angle) from '_from' to '_to'
-            inline vec3 qdelta(const Qf &_to, const Qf &_from) {
-                Qf d = qmul(_to, qconj(_from));
-                if (d.s < 0.f) { d.s = -d.s; d.i = -d.i; d.j = -d.j; d.k = -d.k; }
-                const float sn = std::sqrt(d.i * d.i + d.j * d.j + d.k * d.k);
-                if (sn < 1e-4f) return { 2.f * d.i, 2.f * d.j, 2.f * d.k };
-                const float k = 2.f * std::atan2(sn, d.s) / sn;
-                return { d.i * k, d.j * k, d.k * k };
-            }
-            inline vec3 qeulerXYZ(const Qf &q) {
-                const float m00 = 1.f - 2.f * (q.j * q.j + q.k * q.k), m01 = 2.f * (q.i * q.j - q.s * q.k), m02 = 2.f * (q.i * q.k + q.s * q.j);
-                const float m10 = 2.f * (q.i * q.j + q.s * q.k), m11 = 1.f - 2.f * (q.i * q.i + q.k * q.k), m12 = 2.f * (q.j * q.k - q.s * q.i);
-                const float m22 = 1.f - 2.f * (q.i * q.i + q.j * q.j);
-                if (m02 < 1.f) {
-                    if (m02 > -1.f) return { std::atan2(-m12, m22), std::asin(m02), std::atan2(-m01, m00) };
-                    return { -std::atan2(m10, m11), -1.5707963f, 0.f };
-                }
-                return { std::atan2(m10, m11), 1.5707963f, 0.f };
-            }
-            inline Qf qfromEulerXYZ(const vec3 &a) {
-                const float cx = std::cos(0.5f * a.x), sx = std::sin(0.5f * a.x), cy = std::cos(0.5f * a.y), sy = std::sin(0.5f * a.y);
-                const float cz = std::cos(0.5f * a.z), sz = std::sin(0.5f * a.z);
-                const Qf qx = { cx, sx, 0.f, 0.f }, qy = { cy, 0.f, sy, 0.f }, qz = { cz, 0.f, 0.f, sz };
-                return qmul(qmul(qx, qy), qz);
-            }
-
-            vec3 mulInvI(const Body &_b, const vec3 &_v) {
-                return rot(_b.rotation, mul3(_b.inv_inertia, invRot(_b.rotation, _v)));
-            }
+            // Note: the solver works on a dense copy of the body states (the quaternion operations are inline in 'linalg.h')
         } // anonymous namespace END
 
         namespace {
@@ -483,7 +370,7 @@ namespace Simple {
 
             // World inverse inertia R * diag(ii) * R^T; the solver keeps it for a substep (the rotation changes little in one)
             inline void updateInvInertia(SS &_s) {
-                const vec3 c0 = qrot(_s.q, vec3{1.f, 0.f, 0.f}), c1 = qrot(_s.q, vec3{0.f, 1.f, 0.f}), c2 = qrot(_s.q, vec3{0.f, 0.f, 1.f});
+                const vec3 c0 = rot(_s.q, vec3{1.f, 0.f, 0.f}), c1 = rot(_s.q, vec3{0.f, 1.f, 0.f}), c2 = rot(_s.q, vec3{0.f, 0.f, 1.f});
                 const float R[3][3] = { { c0.x, c1.x, c2.x }, { c0.y, c1.y, c2.y }, { c0.z, c1.z, c2.z } };
                 const float d[3] = { _s.ii.x, _s.ii.y, _s.ii.z };
                 for (int r = 0; r < 3; ++r)
@@ -497,14 +384,14 @@ namespace Simple {
 
             inline float genInvMass(const SS &_s, const vec3 &_r, const vec3 &_n) {
                 if (_s.im <= 0.f) return 0.f;
-                const vec3 rn = cross3(_r, _n);
-                return _s.im + dot3(rn, invI(_s, rn));
+                const vec3 rn = Math::cross(_r, _n);
+                return _s.im + Math::dot(rn, invI(_s, rn));
             }
 
             inline void applyPositional(SS &_s, const vec3 &_p, const vec3 &_r, float _sign) {
                 if (_s.im <= 0.f) return;
                 _s.x += _p * (_s.im * _sign);
-                qaddRotation(_s.q, invI(_s, cross3(_r, _p)) * _sign);
+                addRotation(_s.q, invI(_s, Math::cross(_r, _p)) * _sign);
             }
 
             // XPBD positional constraint: moves the point '_r1' of body 1 by -C along '_dir' (shared with body 2 by the
@@ -521,17 +408,17 @@ namespace Simple {
 
             // XPBD angular constraint: rotates body 1 by -C around '_axis' (unit)
             float angular(SS &_b1, SS &_b2, const vec3 &_axis, float _c, float _alpha) {
-                const float w = (_b1.im > 0.f ? dot3(_axis, invI(_b1, _axis)) : 0.f) + (_b2.im > 0.f ? dot3(_axis, invI(_b2, _axis)) : 0.f);
+                const float w = (_b1.im > 0.f ? Math::dot(_axis, invI(_b1, _axis)) : 0.f) + (_b2.im > 0.f ? Math::dot(_axis, invI(_b2, _axis)) : 0.f);
                 if (w + _alpha <= EPS) return 0.f;
                 const float dl = -_c / (w + _alpha);
                 const vec3 p = _axis * dl;
-                if (_b1.im > 0.f) qaddRotation(_b1.q, invI(_b1, p));
-                if (_b2.im > 0.f) qaddRotation(_b2.q, invI(_b2, p) * -1.f);
+                if (_b1.im > 0.f) addRotation(_b1.q, invI(_b1, p));
+                if (_b2.im > 0.f) addRotation(_b2.q, invI(_b2, p) * -1.f);
                 return dl;
             }
 
             // Per axis: min > max: free; else clamped
-            inline float limitAxis(float _v, float _min, float _max) { return _min > _max ? _v : clampf(_v, _min, _max); }
+            inline float limitAxis(float _v, float _min, float _max) { return _min > _max ? _v : Math::clampCL(_v, _min, _max); }
         } // anonymous namespace END
 
         World::World(ComponentStorage &_ecs) : ecs(_ecs) {}
@@ -540,7 +427,7 @@ namespace Simple {
             const EntityID e = ecs.create(tagMask(_motion));
             Body &b = ecs.add<Body>(e, _body);
             ecs.add<Collider>(e, _collider);
-            b.rotation = normalized(b.rotation);
+            b.rotation = unitOrIdentity(b.rotation);
             b.prev_position = b.frame_position = b.position;
             b.prev_rotation = b.frame_rotation = b.rotation;
             updateMass(e);
@@ -597,7 +484,7 @@ namespace Simple {
             Body *b = ecs.get<Body>(_e);
             if (!b) return;
             b->position = b->prev_position = b->frame_position = b->target_position = _p;
-            b->rotation = b->prev_rotation = b->frame_rotation = b->target_rotation = normalized(_q);
+            b->rotation = b->prev_rotation = b->frame_rotation = b->target_rotation = unitOrIdentity(_q);
             b->has_target = false;
             if (_reset_velocity) { b->velocity = {0.f, 0.f, 0.f}; b->angular_velocity = {0.f, 0.f, 0.f}; }
         }
@@ -606,7 +493,7 @@ namespace Simple {
             Body *b = ecs.get<Body>(_e);
             if (!b) return;
             b->target_position = _p;
-            b->target_rotation = normalized(_q);
+            b->target_rotation = unitOrIdentity(_q);
             b->has_target = true;
         }
 
@@ -637,13 +524,13 @@ namespace Simple {
                 s.radius    = boundingRadius(_c);
                 SolverState st;
                 st.x = st.px = _b.position;
-                st.q = st.pq = toQf(_b.rotation);
+                st.q = st.pq = _b.rotation;
                 st.v = _b.velocity;
                 st.w = _b.angular_velocity;
                 st.im = s.dynamic ? _b.inv_mass : 0.f;
                 st.ii = s.dynamic ? _b.inv_inertia : vec3{0.f, 0.f, 0.f};
                 st.fx = _b.frame_position;   st.tx = _b.target_position;
-                st.fq = toQf(_b.frame_rotation); st.tq = toQf(_b.target_rotation);
+                st.fq = _b.frame_rotation; st.tq = _b.target_rotation;
                 st.has_target = s.kinematic && _b.has_target;
                 updateInvInertia(st);
                 if (slot_.size() <= _e.index) slot_.resize(_e.index + 1u, UINT32_MAX);
@@ -680,7 +567,7 @@ namespace Simple {
                 const SolverBody &s = bodies_[i];
                 const SolverState &st = states_[i];
                 if (s.collider->shape == SHAPE_PLANE) { __planes.push_back(i); continue; }
-                const float r = s.radius + len3(st.v) * _h + settings.contact_margin + (st.has_target ? len3(st.tx - st.x) : 0.f);
+                const float r = s.radius + st.v.norm() * _h + settings.contact_margin + (st.has_target ? (st.tx - st.x).norm() : 0.f);
                 Item it;
                 it.lo = st.x.x - r; it.hi = st.x.x + r; it.body = i;
                 __items.push_back(it);
@@ -697,7 +584,7 @@ namespace Simple {
                     // Full bounding sphere test
                     const float ra = 0.5f * (__items[i].hi - __items[i].lo), rb = 0.5f * (__items[j].hi - __items[j].lo);
                     const vec3 d = states_[__items[i].body].x - states_[__items[j].body].x;
-                    if (dot3(d, d) > (ra + rb) * (ra + rb)) continue;
+                    if (Math::dot(d, d) > (ra + rb) * (ra + rb)) continue;
                     if (accept(__items[i].body, __items[j].body)) pairs_.push_back(std::make_pair(__items[i].body, __items[j].body));
                 }
             }
@@ -717,24 +604,24 @@ namespace Simple {
                 const float __reach = A.radius + B.radius + settings.contact_margin;
                 if (A.collider->shape != SHAPE_PLANE && B.collider->shape != SHAPE_PLANE) {
                     const vec3 d = a.x - b.x;
-                    if (dot3(d, d) > __reach * __reach) continue;
+                    if (Math::dot(d, d) > __reach * __reach) continue;
                 }
                 __found.clear();
-                collideShapes(*A.collider, a.x, toQuat(a.q), *B.collider, b.x, toQuat(b.q), __found);
+                collideShapes(*A.collider, a.x, a.q, *B.collider, b.x, b.q, __found);
                 for (const ShapeContact &f : __found) {
                     Contact c;
                     c.a = pair.first; c.b = pair.second;
                     c.normal = f.normal;
                     // Body-local points: the solver follows them while the bodies move
-                    c.ra = qinvrot(a.q, f.point_a - a.x);
-                    c.rb = qinvrot(b.q, f.point_b - b.x);
+                    c.ra = invRot(a.q, f.point_a - a.x);
+                    c.rb = invRot(b.q, f.point_b - b.x);
                     c.depth = f.depth;
                     c.lambda_n = 0.f;
                     c.friction    = A.collider->friction * B.collider->friction;
                     c.restitution = A.collider->restitution * B.collider->restitution;
                     const vec3 __ra = f.point_a - a.x, __rb = f.point_b - b.x;
-                    const vec3 __v = (a.v + cross3(a.w, __ra)) - (b.v + cross3(b.w, __rb));
-                    c.vn = dot3(c.normal, __v);
+                    const vec3 __v = (a.v + Math::cross(a.w, __ra)) - (b.v + Math::cross(b.w, __rb));
+                    c.vn = Math::dot(c.normal, __v);
                     contacts_.push_back(c);
                 }
             }
@@ -745,53 +632,53 @@ namespace Simple {
             const Joint &J = *_sj.joint;
             SS &A = states_[_sj.a], &B = states_[_sj.b];
             const float __h2 = _h * _h;
-            const Qf __frame_a = toQf(J.frame_a), __frame_b = toQf(J.frame_b);
+            const Quat __frame_a = J.frame_a, __frame_b = J.frame_b;
             const bool __angular_springs = J.angular_spring.x > 0.f || J.angular_spring.y > 0.f || J.angular_spring.z > 0.f;
             const bool __linear_springs  = J.linear_spring.x  > 0.f || J.linear_spring.y  > 0.f || J.linear_spring.z  > 0.f;
 
             // Rotation limits: clamp the Euler angles of B's frame in A's frame, rotate B's frame towards the clamped rotation
             {
-                const Qf FA = qmul(A.q, __frame_a), FB = qmul(B.q, __frame_b);
-                const vec3 e = qeulerXYZ(qmul(qconj(FA), FB));
+                const Quat FA = A.q * __frame_a, FB = B.q * __frame_b;
+                const vec3 e = eulerXYZ(FA.conjugate() * FB);
                 const vec3 t = { limitAxis(e.x, J.angular_min.x, J.angular_max.x),
                                  limitAxis(e.y, J.angular_min.y, J.angular_max.y),
                                  limitAxis(e.z, J.angular_min.z, J.angular_max.z) };
                 if (std::fabs(e.x - t.x) + std::fabs(e.y - t.y) + std::fabs(e.z - t.z) > EPS) {
-                    const vec3 dphi = qdelta(FB, qmul(FA, qfromEulerXYZ(t)));
-                    const float angle = len3(dphi);
+                    const vec3 dphi = rotationVector(FB * (FA * fromEulerXYZ(t)).conjugate());
+                    const float angle = dphi.norm();
                     if (angle > EPS) angular(B, A, dphi * (1.f / angle), angle, 0.f);
                 }
                 // Angular springs (towards zero angles), per axis of A's frame
                 if (__angular_springs) {
-                    const Qf FA2 = qmul(A.q, __frame_a), FB2 = qmul(B.q, __frame_b);
-                    const vec3 e2 = qeulerXYZ(qmul(qconj(FA2), FB2));
+                    const Quat FA2 = A.q * __frame_a, FB2 = B.q * __frame_b;
+                    const vec3 e2 = eulerXYZ(FA2.conjugate() * FB2);
                     for (uint32_t i = 0u; i < 3u; ++i) {
-                        const float k = comp(J.angular_spring, i);
-                        if (k <= 0.f || std::fabs(comp(e2, i)) < EPS) continue;
-                        angular(B, A, qrot(FA2, axisOf(i)), comp(e2, i), 1.f / (k * __h2));
+                        const float k = J.angular_spring[i];
+                        if (k <= 0.f || std::fabs(e2[i]) < EPS) continue;
+                        angular(B, A, rot(FA2, Mat::Eye3[i]), e2[i], 1.f / (k * __h2));
                     }
                 }
             }
             // Translation limits: B's anchor in A's frame
             {
-                const Qf FA = qmul(A.q, __frame_a);
-                const vec3 rA = qrot(A.q, J.anchor_a), rB = qrot(B.q, J.anchor_b);
-                const vec3 d = qinvrot(FA, (B.x + rB) - (A.x + rA));
+                const Quat FA = A.q * __frame_a;
+                const vec3 rA = rot(A.q, J.anchor_a), rB = rot(B.q, J.anchor_b);
+                const vec3 d = invRot(FA, (B.x + rB) - (A.x + rA));
                 const vec3 t = { limitAxis(d.x, J.linear_min.x, J.linear_max.x),
                                  limitAxis(d.y, J.linear_min.y, J.linear_max.y),
                                  limitAxis(d.z, J.linear_min.z, J.linear_max.z) };
-                const vec3 err = qrot(FA, d - t);
-                const float c = len3(err);
+                const vec3 err = rot(FA, d - t);
+                const float c = err.norm();
                 if (c > EPS) positional(B, rB, A, rA, err * (1.f / c), c, 0.f);
             }
             if (__linear_springs) {
-                const Qf FA = qmul(A.q, __frame_a);
-                const vec3 rA = qrot(A.q, J.anchor_a), rB = qrot(B.q, J.anchor_b);
-                const vec3 d = qinvrot(FA, (B.x + rB) - (A.x + rA));
+                const Quat FA = A.q * __frame_a;
+                const vec3 rA = rot(A.q, J.anchor_a), rB = rot(B.q, J.anchor_b);
+                const vec3 d = invRot(FA, (B.x + rB) - (A.x + rA));
                 for (uint32_t i = 0u; i < 3u; ++i) {
-                    const float k = comp(J.linear_spring, i);
-                    if (k <= 0.f || std::fabs(comp(d, i)) < EPS) continue;
-                    positional(B, rB, A, rA, qrot(FA, axisOf(i)), comp(d, i), 1.f / (k * __h2));
+                    const float k = J.linear_spring[i];
+                    if (k <= 0.f || std::fabs(d[i]) < EPS) continue;
+                    positional(B, rB, A, rA, rot(FA, Mat::Eye3[i]), d[i], 1.f / (k * __h2));
                 }
             }
         }
@@ -801,8 +688,8 @@ namespace Simple {
             for (Contact &c : contacts_) {
                 const SolverBody &SA = bodies_[c.a], &SB_ = bodies_[c.b];
                 SS &A = states_[c.a], &B = states_[c.b];
-                vec3 ra = qrot(A.q, c.ra), rb = qrot(B.q, c.rb);
-                const float d = dot3((B.x + rb) - (A.x + ra), c.normal);
+                vec3 ra = rot(A.q, c.ra), rb = rot(B.q, c.rb);
+                const float d = Math::dot((B.x + rb) - (A.x + ra), c.normal);
                 if (d <= 0.f) continue;
                 // Normal: push A along the normal
                 c.lambda_n = -positional(A, ra, B, rb, c.normal * -1.f, d, 0.f);
@@ -811,13 +698,13 @@ namespace Simple {
                     touching_.insert(std::make_pair(std::min(ha, hb), std::max(ha, hb)));
                 }
                 // Static friction: undo the tangential sliding of the contact points during this substep
-                ra = qrot(A.q, c.ra); rb = qrot(B.q, c.rb);
+                ra = rot(A.q, c.ra); rb = rot(B.q, c.rb);
                 const vec3 p1 = A.x + ra, p2 = B.x + rb;
-                const vec3 p1_prev = A.px + qrot(A.pq, c.ra);
-                const vec3 p2_prev = B.px + qrot(B.pq, c.rb);
+                const vec3 p1_prev = A.px + rot(A.pq, c.ra);
+                const vec3 p2_prev = B.px + rot(B.pq, c.rb);
                 const vec3 dp = (p1 - p1_prev) - (p2 - p2_prev);
-                const vec3 dpt = dp - c.normal * dot3(dp, c.normal);
-                const float lt = len3(dpt);
+                const vec3 dpt = dp - c.normal * Math::dot(dp, c.normal);
+                const float lt = dpt.norm();
                 if (lt <= EPS) continue;
                 const vec3 dir = dpt * (1.f / lt);
                 const float w = genInvMass(A, ra, dir) + genInvMass(B, rb, dir);
@@ -827,15 +714,15 @@ namespace Simple {
         }
 
         void World::solveVelocities_(float _h) {
-            const float __g = len3(settings.gravity);
+            const float __g = settings.gravity.norm();
             for (const Contact &c : contacts_) {
                 if (c.lambda_n <= 0.f) continue;
                 SS &A = states_[c.a], &B = states_[c.b];
-                const vec3 ra = qrot(A.q, c.ra), rb = qrot(B.q, c.rb);
-                const vec3 v = (A.v + cross3(A.w, ra)) - (B.v + cross3(B.w, rb));
-                const float vn = dot3(c.normal, v);
+                const vec3 ra = rot(A.q, c.ra), rb = rot(B.q, c.rb);
+                const vec3 v = (A.v + Math::cross(A.w, ra)) - (B.v + Math::cross(B.w, rb));
+                const float vn = Math::dot(c.normal, v);
                 const vec3 vt = v - c.normal * vn;
-                const float lvt = len3(vt);
+                const float lvt = vt.norm();
                 vec3 dv = {0.f, 0.f, 0.f};
                 // Dynamic friction
                 if (lvt > EPS) {
@@ -845,14 +732,14 @@ namespace Simple {
                 // Restitution (none for slow contacts: resting bodies don't jitter)
                 const float e = std::fabs(c.vn) <= 2.f * __g * _h ? 0.f : c.restitution;
                 dv += c.normal * (-vn + std::max(-e * c.vn, 0.f));
-                const float ldv = len3(dv);
+                const float ldv = dv.norm();
                 if (ldv <= EPS) continue;
                 const vec3 dir = dv * (1.f / ldv);
                 const float w = genInvMass(A, ra, dir) + genInvMass(B, rb, dir);
                 if (w <= EPS) continue;
                 const vec3 p = dv * (1.f / w);
-                if (A.im > 0.f) { A.v += p * A.im; A.w += invI(A, cross3(ra, p)); }
-                if (B.im > 0.f) { B.v -= p * B.im; B.w -= invI(B, cross3(rb, p)); }
+                if (A.im > 0.f) { A.v += p * A.im; A.w += invI(A, Math::cross(ra, p)); }
+                if (B.im > 0.f) { B.v -= p * B.im; B.w -= invI(B, Math::cross(rb, p)); }
             }
         }
 
@@ -869,7 +756,7 @@ namespace Simple {
                             const uint64_t ha = bodies_[c.a].entity.hash(), hb = bodies_[c.b].entity.hash();
                             if (std::make_pair(std::min(ha, hb), std::max(ha, hb)) != pair || c.depth <= __best) continue;
                             __best = c.depth;
-                            const vec3 p = states_[c.a].x + qrot(states_[c.a].q, c.ra);
+                            const vec3 p = states_[c.a].x + rot(states_[c.a].q, c.ra);
                             const vec3 n = ha == pair.first ? c.normal : c.normal * -1.f;
                             ev.point[0] = p.x; ev.point[1] = p.y; ev.point[2] = p.z;
                             ev.normal[0] = n.x; ev.normal[1] = n.y; ev.normal[2] = n.z;
@@ -919,8 +806,8 @@ namespace Simple {
             std::vector<float> &__ld = damping_;
             __ld.resize(bodies_.size() * 2u);
             for (size_t i = 0u; i < bodies_.size(); ++i) {
-                __ld[2u * i]      = std::pow(clampf(1.f - bodies_[i].body->linear_damping,  0.f, 1.f), h);
-                __ld[2u * i + 1u] = std::pow(clampf(1.f - bodies_[i].body->angular_damping, 0.f, 1.f), h);
+                __ld[2u * i]      = std::pow(Math::clampCL(1.f - bodies_[i].body->linear_damping,  0.f, 1.f), h);
+                __ld[2u * i + 1u] = std::pow(Math::clampCL(1.f - bodies_[i].body->angular_damping, 0.f, 1.f), h);
             }
             for (uint32_t sub = 0u; sub < __n; ++sub) {
                 const float __f = ((float)stepFraction_.first + (float)(sub + 1u) / (float)__n) / (float)stepFraction_.second;
@@ -937,11 +824,11 @@ namespace Simple {
                         st.v *= __ld[2u * i];
                         st.w *= __ld[2u * i + 1u];
                         st.x += st.v * h;
-                        qaddRotation(st.q, st.w * h);
+                        addRotation(st.q, st.w * h);
                         updateInvInertia(st);
                     } else if (st.has_target) {
-                        st.x = lerp3(st.fx, st.tx, __f);
-                        st.q = qnlerp(st.fq, st.tq, __f);
+                        st.x = Interpolation::BezierLinear<vec3>::Interpolate(__f, st.fx, st.tx);
+                        st.q = nlerp(st.fq, st.tq, __f);
                     }
                 }
                 collide_();
@@ -955,9 +842,9 @@ namespace Simple {
                     SolverState &st = states_[i];
                     if (!s.dynamic && !s.kinematic) { st.v = {0.f, 0.f, 0.f}; st.w = {0.f, 0.f, 0.f}; continue; }
                     st.v = (st.x - st.px) * __inv_h;
-                    st.w = qdelta(st.q, st.pq) * __inv_h;
+                    st.w = rotationVector(st.q * st.pq.conjugate()) * __inv_h;
                     if (s.dynamic) {
-                        const float lv = len3(st.v), lw = len3(st.w);
+                        const float lv = st.v.norm(), lw = st.w.norm();
                         if (lv > settings.max_velocity) st.v *= settings.max_velocity / lv;
                         if (lw > settings.max_angular_velocity) st.w *= settings.max_angular_velocity / lw;
                     }
@@ -968,8 +855,8 @@ namespace Simple {
             for (size_t i = 0u; i < bodies_.size(); ++i) {
                 Body &b = *bodies_[i].body;
                 const SolverState &st = states_[i];
-                b.position = st.x;           b.rotation = toQuat(st.q);
-                b.prev_position = st.px;     b.prev_rotation = toQuat(st.pq);
+                b.position = st.x;           b.rotation = st.q;
+                b.prev_position = st.px;     b.prev_rotation = st.pq;
                 b.velocity = st.v;           b.angular_velocity = st.w;
                 b.force  = {0.f, 0.f, 0.f};
                 b.torque = {0.f, 0.f, 0.f};

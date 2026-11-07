@@ -894,8 +894,8 @@ namespace Simple {
                             if (__m->modified) confirm_("The motion has unsaved changes. Unload it anyway?", __unload);
                             else __unload();
                         }
+                        ImGui::SameLine();
                     }
-                    ImGui::SameLine();
                     if (ImGui::Button("Remove model")) {
                         const uint32_t __index = (uint32_t)selected_model;
                         confirm_("Remove '" + __model->name + "' from the scene?" + (__model->motion.modified ? "\nIts motion has unsaved changes." : ""),

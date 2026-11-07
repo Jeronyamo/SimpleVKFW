@@ -4,16 +4,6 @@ namespace Simple {
     namespace Affine {
         namespace Rotation {
 
-            Quaternion::Quaternion() {}
-
-            Quaternion::Quaternion(const Quaternion &_quat) : s{_quat.s}, i{_quat.i}, j{_quat.j}, k{_quat.k} {}
-
-            Quaternion::Quaternion(float _s, float _i, float _j, float _k)   : s{_s  }, i{_i  }, j{_j  }, k{_k  } {}
-
-            vec3 Quaternion::vecPart() const { return { i, j, k }; }
-
-            Quaternion Quaternion::conjugate() const { return { s,-i,-j,-k }; }
-
             Quaternion Quaternion::scalar()    const { return { s, 0, 0, 0 }; }
 
             Quaternion Quaternion::vector()    const { return { 0, i, j, k }; }
@@ -24,9 +14,6 @@ namespace Simple {
 
             void Quaternion::toVector()    { s  =  0.f; }
 
-            float Quaternion::norm () const { return sqrt(s * s + i * i + j * j + k * k); }
-
-            float Quaternion::norm2() const { return      s * s + i * i + j * j + k * k ; }
 
             Quaternion Quaternion::normalize() const {
                 float __n = norm();
@@ -83,11 +70,6 @@ namespace Simple {
                 return (__tmp * _vec * __tmp.conjugate()).vecPart();
             }
 
-            vec3 Quaternion::rotateByUnit(const vec3 &_vec) const {
-                return _vec + Math::cross(vec3{ 2 * i, 2 * j, 2 * k },
-                              Math::cross(vec3{ i, j, k }, _vec) + s * _vec);
-            }
-
             vec3 Quaternion::rotate(const vec3 &_vec) const {
                 Quaternion __n = this->normalize();
                 return _vec + Math::cross(vec3{ 2 * __n.i, 2 * __n.j, 2 * __n.k },
@@ -121,32 +103,43 @@ namespace Simple {
                 return { i / __n, j / __n, k / __n, (2 * Math::atan2(__n, s)) };
             }
 
-            Quaternion Quaternion::operator+(const Quaternion &op2) const
-                { return { s + op2.s, i + op2.i, j + op2.j, k + op2.k }; }
 
-            Quaternion Quaternion::operator-(const Quaternion &op2) const
-                { return { s - op2.s, i - op2.i, j - op2.j, k - op2.k }; }
-
-            Quaternion Quaternion::operator*(const Quaternion &op2) const {
-                return { s * op2.s - i * op2.i - j * op2.j - k * op2.k,
-                         s * op2.i + i * op2.s + j * op2.k - k * op2.j,
-                         s * op2.j - i * op2.k + j * op2.s + k * op2.i,
-                         s * op2.k + i * op2.j - j * op2.i + k * op2.s };
+            vec3 rotationVector(const Quaternion &_q) {
+                const Quaternion __q = _q.s < 0.f ? Quaternion(-_q.s, -_q.i, -_q.j, -_q.k) : _q;
+                const float __sin = std::sqrt(__q.i * __q.i + __q.j * __q.j + __q.k * __q.k);
+                // Small angles: angle / sin(angle / 2) -> 2
+                if (__sin < 1e-6f) return { 2.f * __q.i, 2.f * __q.j, 2.f * __q.k };
+                const float __k = 2.f * std::atan2(__sin, __q.s) / __sin;
+                return { __q.i * __k, __q.j * __k, __q.k * __k };
             }
 
-            Quaternion operator+(float _s, const Quaternion &_q) { return {_s + _q.s,  _q.i,  _q.j,  _q.k}; }
+            Quaternion fromRotationVector(const vec3 &_v) {
+                const float __angle = std::sqrt(_v.x * _v.x + _v.y * _v.y + _v.z * _v.z);
+                if (__angle < 1e-7f) return unitOrIdentity({ 1.f, 0.5f * _v.x, 0.5f * _v.y, 0.5f * _v.z });
+                const float __k = std::sin(0.5f * __angle) / __angle;
+                return { std::cos(0.5f * __angle), _v.x * __k, _v.y * __k, _v.z * __k };
+            }
 
-            Quaternion operator-(float _s, const Quaternion &_q) { return {_s - _q.s, -_q.i, -_q.j, -_q.k}; }
+            vec3 eulerXYZ(const Quaternion &_q) {
+                const Quaternion q = unitOrIdentity(_q);
+                // The column-vector matrix of 'v -> q v q*'
+                const float m00 = 1.f - 2.f * (q.j * q.j + q.k * q.k), m01 = 2.f * (q.i * q.j - q.s * q.k), m02 = 2.f * (q.i * q.k + q.s * q.j);
+                const float m10 = 2.f * (q.i * q.j + q.s * q.k), m11 = 1.f - 2.f * (q.i * q.i + q.k * q.k), m12 = 2.f * (q.j * q.k - q.s * q.i);
+                const float m22 = 1.f - 2.f * (q.i * q.i + q.j * q.j);
+                // Bullet 'matrixToEulerXYZ': M = Rx * Ry * Rz
+                if (m02 < 1.f) {
+                    if (m02 > -1.f) return { std::atan2(-m12, m22), std::asin(m02), std::atan2(-m01, m00) };
+                    return { -std::atan2(m10, m11), -1.5707963f, 0.f };
+                }
+                return { std::atan2(m10, m11), 1.5707963f, 0.f };
+            }
 
-            Quaternion operator*(float _s, const Quaternion &_q) { return {_s * _q.s, _s * _q.i, _s * _q.j, _s * _q.k}; }
+            Quaternion fromEulerXYZ(const vec3 &_a) {
+                const float cx = std::cos(0.5f * _a.x), sx = std::sin(0.5f * _a.x), cy = std::cos(0.5f * _a.y), sy = std::sin(0.5f * _a.y);
+                const float cz = std::cos(0.5f * _a.z), sz = std::sin(0.5f * _a.z);
+                return Quaternion(cx, sx, 0.f, 0.f) * Quaternion(cy, 0.f, sy, 0.f) * Quaternion(cz, 0.f, 0.f, sz);
+            }
 
-            Quaternion operator+(const Quaternion &_q, float _s) { return {_q.s + _s, _q.i, _q.j, _q.k}; }
-
-            Quaternion operator-(const Quaternion &_q, float _s) { return {_q.s - _s, _q.i, _q.j, _q.k}; }
-
-            Quaternion operator*(const Quaternion &_q, float _s) { return {_q.s * _s, _q.i * _s, _q.j * _s, _q.k * _s}; }
-
-            Quaternion operator/(const Quaternion &_q, float _s) { return {_q.s / _s, _q.i / _s, _q.j / _s, _q.k / _s}; }
 
             EulerAngles::EulerAngles() {}
 
@@ -565,9 +558,6 @@ namespace Simple {
 
 
     namespace Math {
-
-        float dot(const Affine::Rotation::Quaternion &_q1, const Affine::Rotation::Quaternion &_q2)
-            { return _q1.s * _q2.s + _q1.i * _q2.i + _q1.j * _q2.j + _q1.k * _q2.k; }
 
         Affine::Rotation::Quaternion pow(const Affine::Rotation::Quaternion &_q, float _p) {
             vec3 __v = _q.vecPart();

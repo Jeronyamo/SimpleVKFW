@@ -7,21 +7,6 @@
 namespace Simple {
     namespace Physics {
 
-        namespace {
-            vec3 rowTranslation(const mat4 &_m) { return { _m.M[3][0], _m.M[3][1], _m.M[3][2] }; }
-
-            float uniformScale(const mat4 &_m) {
-                return std::sqrt(_m.M[0][0] * _m.M[0][0] + _m.M[0][1] * _m.M[0][1] + _m.M[0][2] * _m.M[0][2]);
-            }
-
-            // Rotation then translation (row-vector style)
-            mat4 rigid(const Quat &_q, const vec3 &_p) {
-                mat4 __m = SG::rotation(_q);
-                __m.M[3][0] = _p.x; __m.M[3][1] = _p.y; __m.M[3][2] = _p.z;
-                return __m;
-            }
-        } // anonymous namespace END
-
         SceneBodies::SceneBodies(SG::Scene &_scene, World &_world) : scene(_scene), world(_world), ecs(_world.ecs) {}
 
         SceneBodies::~SceneBodies() {}
@@ -70,7 +55,7 @@ namespace Simple {
             if (_link.target == LINK_NODE) {
                 if (_link.node >= scene.world.size()) return false;
                 const mat4 &W = scene.world[_link.node];
-                _position = SG::transformPoint(W, rowTranslation(_link.offset));
+                _position = SG::transformPoint(W, SG::translationOf(_link.offset));
                 _rotation = SG::rotationOf(W).normalize();
                 return true;
             }
@@ -79,7 +64,7 @@ namespace Simple {
             const mat4 __bone = _link.bone == SG::SCENE_NONE || _link.bone >= __skin.pose.model.size() ? Mat::Eye4 : __skin.pose.model[_link.bone];
             const mat4 __skel = _link.offset & __bone;
             const mat4 &W = scene.world[__skin.node];
-            _position = SG::transformPoint(W, rowTranslation(__skel));
+            _position = SG::transformPoint(W, SG::translationOf(__skel));
             _rotation = (SG::rotationOf(W) * SG::rotationOf(__skel)).normalize();
             return true;
         }
@@ -95,7 +80,7 @@ namespace Simple {
             std::vector<mat4> __bind(__sk.rigid_bodies.size());
             for (size_t i = 0u; i < __sk.rigid_bodies.size(); ++i) {
                 const SG::RigidBodyDesc &d = __sk.rigid_bodies[i];
-                __bind[i] = rigid(d.rotation, d.position);
+                __bind[i] = SG::rigidTransform(d.rotation, d.position);
 
                 SceneLink __link;
                 __link.target = LINK_BONE;
@@ -131,15 +116,15 @@ namespace Simple {
             for (size_t i = 0u; i < __sk.joints.size(); ++i) {
                 const SG::JointDesc &d = __sk.joints[i];
                 if (d.body_a >= _model.bodies.size() || d.body_b >= _model.bodies.size()) continue;
-                const mat4 __joint = rigid(d.rotation, d.position);
+                const mat4 __joint = SG::rigidTransform(d.rotation, d.position);
                 // The joint frame in the body spaces (bind pose); positions scaled like the world
                 const mat4 __in_a = __joint & __bind[d.body_a].inverse<float>();
                 const mat4 __in_b = __joint & __bind[d.body_b].inverse<float>();
                 Joint j;
                 j.body_a   = _model.bodies[d.body_a];
                 j.body_b   = _model.bodies[d.body_b];
-                j.anchor_a = rowTranslation(__in_a) * s;
-                j.anchor_b = rowTranslation(__in_b) * s;
+                j.anchor_a = SG::translationOf(__in_a) * s;
+                j.anchor_b = SG::translationOf(__in_b) * s;
                 j.frame_a  = SG::rotationOf(__in_a).normalize();
                 j.frame_b  = SG::rotationOf(__in_b).normalize();
                 j.linear_min  = d.linear_min * s;  j.linear_max  = d.linear_max * s;
@@ -160,7 +145,7 @@ namespace Simple {
             __model.root = _root;
             __model.skin = __skinned ? _skin : SG::SCENE_NONE;
             const uint32_t __node = __skinned ? scene.skins[_skin].node : _root;
-            __model.scale = __node < scene.world.size() ? uniformScale(scene.world[__node]) : 1.f;
+            __model.scale = __node < scene.world.size() ? SG::uniformScaleOf(scene.world[__node]) : 1.f;
             if (__model.scale <= 0.f) __model.scale = 1.f;
             const EntityID __entity = ecs.create();
 
@@ -202,7 +187,7 @@ namespace Simple {
             __link.mode   = _motion == TagID::TAG_PHYSICS_DYNAMIC ? SG::SCENE_RIGID_PHYSICS : SG::SCENE_RIGID_FOLLOW_BONE;
             __link.offset = SG::translation(_center);
             __link.inverse_offset = SG::translation(-_center);
-            __link.scale  = uniformScale(scene.world[_node]);
+            __link.scale  = SG::uniformScaleOf(scene.world[_node]);
             if (__link.scale <= 0.f) __link.scale = 1.f;
 
             Body __body;
@@ -228,7 +213,7 @@ namespace Simple {
                 for (size_t m = 0u; m < __node.meshes.size(); ++m)
                     if (__node.meshes[m] < scene.meshes.size()) __box.add(scene.meshes[__node.meshes[m]].bounds);
                 if (!__box.valid()) continue;
-                const float __scale = std::max(uniformScale(scene.world[n]), 1e-6f);
+                const float __scale = std::max(SG::uniformScaleOf(scene.world[n]), 1e-6f);
                 if (!addBody(n, fitCollider(__box, _fit, __scale), _motion, __box.center(), _model).isNone()) ++__count;
             }
             return __count;
@@ -309,10 +294,10 @@ namespace Simple {
                     const Body *__body = ecs.get<Body>(e);
                     if (!__link || !__body || __link->target != LINK_BONE || __link->bone == SG::SCENE_NONE ||
                         !ecs.hasTag(e, TagID::TAG_PHYSICS_DYNAMIC) || ecs.hasTag(e, TagID::TAG_PHYSICS_DISABLED)) continue;
-                    const mat4 __skel = rigid((__inv_qw * __body->rotation).normalize(), SG::transformPoint(__inv_w, __body->position));
+                    const mat4 __skel = SG::rigidTransform((__inv_qw * __body->rotation).normalize(), SG::transformPoint(__inv_w, __body->position));
                     mat4 __bone = __link->inverse_offset & __skel;
                     if (__link->mode == SG::SCENE_RIGID_PHYSICS_BONE_POSITION) {
-                        const vec3 __animated = rowTranslation(__pose.model[__link->bone]);
+                        const vec3 __animated = SG::translationOf(__pose.model[__link->bone]);
                         __bone.M[3][0] = __animated.x; __bone.M[3][1] = __animated.y; __bone.M[3][2] = __animated.z;
                     }
                     __pose.physics_model[__link->bone] = __bone;
@@ -332,8 +317,8 @@ namespace Simple {
                 if (!__link || !__body || __link->node >= scene.nodes.size() || !ecs.hasTag(e, TagID::TAG_PHYSICS_DYNAMIC) ||
                     ecs.hasTag(e, TagID::TAG_PHYSICS_DISABLED)) continue;
                 const float s = __link->scale;
-                const vec3 __center = SG::transformDir(SG::rotation(__body->rotation), rowTranslation(__link->offset) * s);
-                const mat4 __world = SG::scaling({s, s, s}) & rigid(__body->rotation, __body->position - __center);
+                const vec3 __center = SG::transformDir(SG::rotation(__body->rotation), SG::translationOf(__link->offset) * s);
+                const mat4 __world = SG::scaling({s, s, s}) & SG::rigidTransform(__body->rotation, __body->position - __center);
                 const uint32_t __parent = scene.nodes[__link->node].parent;
                 scene.setLocal(__link->node, __parent < scene.world.size() ? (__world & scene.world[__parent].inverse<float>()) : __world);
                 __moved = true;

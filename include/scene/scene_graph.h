@@ -51,6 +51,13 @@ namespace Simple {
         mat4 rotation(const Quat &_q);
         // The rotation of the upper 3x3 part (the scale is removed first); the inverse of 'rotation'
         Quat rotationOf(const mat4 &_m);
+        // Rotation, then translation: 'rotation(_q) & translation(_p)'
+        mat4 rigidTransform(const Quat &_q, const vec3 &_p);
+        // The translation part (M[3][0..2]) and the uniform scale (the length of the first row) of a matrix
+        inline vec3  translationOf (const mat4 &_m) { return { _m.M[3][0], _m.M[3][1], _m.M[3][2] }; }
+        inline float uniformScaleOf(const mat4 &_m) {
+            return std::sqrt(_m.M[0][0] * _m.M[0][0] + _m.M[0][1] * _m.M[0][1] + _m.M[0][2] * _m.M[0][2]);
+        }
 
         // Note: translation, rotation, scale; the matrix is 'scale & rotation & translation' (scale first)
         struct TRS {
@@ -72,9 +79,13 @@ namespace Simple {
             void add(const AABB &_box);
             vec3 center() const;
             vec3 size() const;
-            // The box around the transformed corners
+            // The box around the transformed box (exact for affine matrices)
             AABB transformed(const mat4 &_m) const;
         }; // AABB END
+
+        // 'AABB::transformed' on plain floats (Arvo: the center is transformed, the half size goes through |M|), for hot
+        // loops (e.g. the bone boxes of skinned meshes in the culling)
+        void transformBounds(const float _min[3], const float _max[3], const mat4 &_m, float _out_min[3], float _out_max[3]);
 
         // Note: one interleaved vertex layout for all meshes (48 bytes); 'tangent.w' is the handedness of the bitangent
         //       (bitangent = cross(normal, tangent.xyz) * tangent.w). Meshes without UVs get zero tangents

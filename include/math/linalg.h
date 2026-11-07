@@ -1,6 +1,8 @@
 #ifndef SVKFW_LINALG_H
 #define SVKFW_LINALG_H
 
+#include <cmath>
+
 #include "math/vectors.h"
 
 
@@ -71,12 +73,15 @@ namespace Simple {
 
     // Quaternion class
 
+            // Note: trivially copyable (event payloads, solver arrays); the small operations are inline (they run in the
+            //       inner loops of the physics solver and the skinning)
             struct Quaternion {
                 float s = 1.f, i = 0.f, j = 0.f, k = 0.f; // Default - zero rotation quaternion
 
-                Quaternion();
-                Quaternion(const Quaternion &_quat);
-                Quaternion(float _s, float _i, float _j, float _k);
+                Quaternion() = default;
+                Quaternion(const Quaternion &_quat) = default;
+                Quaternion &operator=(const Quaternion &_quat) = default;
+                Quaternion(float _s, float _i, float _j, float _k) : s{_s}, i{_i}, j{_j}, k{_k} {}
                 template <class Y> Quaternion(const Vec3Base<Y> &_v) : s{ 0.f}, i{_v.x}, j{_v.y}, k{_v.z} {}
                 template <class Y> Quaternion(const Vec4Base<Y> &_v) : s{_v.x}, i{_v.y}, j{_v.z}, k{_v.w} {}
                 template <class Y> Quaternion(float _scal, const Vec3Base<Y> &_vec)
@@ -93,16 +98,16 @@ namespace Simple {
                 }
 
 
-                vec3 vecPart() const;
-                Quaternion conjugate() const;
+                vec3 vecPart() const { return { i, j, k }; }
+                Quaternion conjugate() const { return { s, -i, -j, -k }; }
                 Quaternion scalar()    const;
                 Quaternion vector()    const;
                 void toConjugate();
                 void toScalar();
                 void toVector();
 
-                float norm () const;
-                float norm2() const;
+                float norm () const { return std::sqrt(norm2()); }
+                float norm2() const { return s * s + i * i + j * j + k * k; }
 
                 Quaternion normalize() const;
 
@@ -114,7 +119,11 @@ namespace Simple {
 
                 vec3 rotateCanonical(const vec3 &_vec) const;
 
-                vec3 rotateByUnit(const vec3 &_vec) const;
+                // '_vec' rotated by this unit quaternion (q v q*)
+                vec3 rotateByUnit(const vec3 &_vec) const {
+                    const float tx = 2.f * (j * _vec.z - k * _vec.y), ty = 2.f * (k * _vec.x - i * _vec.z), tz = 2.f * (i * _vec.y - j * _vec.x);
+                    return { _vec.x + s * tx + (j * tz - k * ty), _vec.y + s * ty + (k * tx - i * tz), _vec.z + s * tz + (i * ty - j * tx) };
+                }
 
                 vec3 rotate(const vec3 &_vec) const;
 
@@ -128,9 +137,14 @@ namespace Simple {
 
                 vec4 axisAngle() const;
 
-                Quaternion operator+(const Quaternion &op2) const;
-                Quaternion operator-(const Quaternion &op2) const;
-                Quaternion operator*(const Quaternion &op2) const;
+                Quaternion operator+(const Quaternion &op2) const { return { s + op2.s, i + op2.i, j + op2.j, k + op2.k }; }
+                Quaternion operator-(const Quaternion &op2) const { return { s - op2.s, i - op2.i, j - op2.j, k - op2.k }; }
+                Quaternion operator*(const Quaternion &op2) const {
+                    return { s * op2.s - i * op2.i - j * op2.j - k * op2.k,
+                             s * op2.i + i * op2.s + j * op2.k - k * op2.j,
+                             s * op2.j - i * op2.k + j * op2.s + k * op2.i,
+                             s * op2.k + i * op2.j - j * op2.i + k * op2.s };
+                }
                 template <class C> Quaternion operator*(const Vec3Base <C> &op2) const {
                     return { -i * op2.x - j * op2.y - k * op2.z,
                               s * op2.x + j * op2.z - k * op2.y,
@@ -140,14 +154,32 @@ namespace Simple {
             }; // Quaternion END
 
             // Note: a scalar is a quaternion with zero vector part, so only the scalar part is affected by +/-
-            Quaternion operator+(float _s, const Quaternion &_q);
-            Quaternion operator-(float _s, const Quaternion &_q);
-            Quaternion operator*(float _s, const Quaternion &_q);
+            inline Quaternion operator+(float _s, const Quaternion &_q) { return {_s + _q.s,  _q.i,  _q.j,  _q.k}; }
+            inline Quaternion operator-(float _s, const Quaternion &_q) { return {_s - _q.s, -_q.i, -_q.j, -_q.k}; }
+            inline Quaternion operator*(float _s, const Quaternion &_q) { return {_s * _q.s, _s * _q.i, _s * _q.j, _s * _q.k}; }
 
-            Quaternion operator+(const Quaternion &_q, float _s);
-            Quaternion operator-(const Quaternion &_q, float _s);
-            Quaternion operator*(const Quaternion &_q, float _s);
-            Quaternion operator/(const Quaternion &_q, float _s);
+            inline Quaternion operator+(const Quaternion &_q, float _s) { return {_q.s + _s, _q.i, _q.j, _q.k}; }
+            inline Quaternion operator-(const Quaternion &_q, float _s) { return {_q.s - _s, _q.i, _q.j, _q.k}; }
+            inline Quaternion operator*(const Quaternion &_q, float _s) { return {_q.s * _s, _q.i * _s, _q.j * _s, _q.k * _s}; }
+            inline Quaternion operator/(const Quaternion &_q, float _s) { return {_q.s / _s, _q.i / _s, _q.j / _s, _q.k / _s}; }
+
+            // Normalized; the identity for a (near) zero quaternion, without the warning of 'normalize' (solvers, accumulated
+            // rotations)
+            inline Quaternion unitOrIdentity(const Quaternion &_q) {
+                const float __n2 = _q.norm2();
+                if (__n2 <= 1e-12f) return Quaternion();
+                const float __inv = 1.f / std::sqrt(__n2);
+                return { _q.s * __inv, _q.i * __inv, _q.j * __inv, _q.k * __inv };
+            }
+
+            // The rotation vector (axis * angle in radians) of the shorter of the two rotations of '_q' (the log map)
+            vec3 rotationVector(const Quaternion &_q);
+            // The rotation by |_v| radians around '_v' (the exp map, the inverse of 'rotationVector')
+            Quaternion fromRotationVector(const vec3 &_v);
+
+            // Euler XYZ angles of 'q = qX * qY * qZ' (Z is applied first; Bullet's 6DOF constraint convention) and back
+            vec3 eulerXYZ(const Quaternion &_q);
+            Quaternion fromEulerXYZ(const vec3 &_angles);
 
 
 //  ============  Euler (Tait–Bryan) angles  ============  \\
@@ -393,7 +425,8 @@ namespace Simple {
 //  General quaternion functions
 
     namespace Math {
-        float dot(const Affine::Rotation::Quaternion &_q1, const Affine::Rotation::Quaternion &_q2);
+        inline float dot(const Affine::Rotation::Quaternion &_q1, const Affine::Rotation::Quaternion &_q2)
+            { return _q1.s * _q2.s + _q1.i * _q2.i + _q1.j * _q2.j + _q1.k * _q2.k; }
 
         Affine::Rotation::Quaternion pow(const Affine::Rotation::Quaternion &_q, float _p);
 
@@ -491,6 +524,13 @@ namespace Simple {
 
 
 //  ============  SLERP  ============  \\
+
+        // Normalized linear interpolation along the shorter arc (cheaper than 'Slerp', close to it for small angles)
+        inline Affine::Rotation::Quaternion nlerp(const Affine::Rotation::Quaternion &_q1, const Affine::Rotation::Quaternion &_q2, float _t) {
+            const float __sb = Math::dot(_q1, _q2) < 0.f ? -_t : _t, __sa = 1.f - _t;
+            return Affine::Rotation::unitOrIdentity({ _q1.s * __sa + _q2.s * __sb, _q1.i * __sa + _q2.i * __sb,
+                                                      _q1.j * __sa + _q2.j * __sb, _q1.k * __sa + _q2.k * __sb });
+        }
 
         struct Slerp {
             Affine::Rotation::Quaternion Q1, Q2;

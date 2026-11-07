@@ -16,6 +16,15 @@ namespace Simple {
 
     typedef float flt_t; // Generic floating-point type for vectors/matrices
 
+    namespace Util {
+        // Floating-point result type of the vector functions (norm, dot, dist, ...): long double and double are kept, other types give flt_t
+        template <class C> struct flt_result_sct              { using type = flt_t; };
+        template <>        struct flt_result_sct<double>      { using type = double; };
+        template <>        struct flt_result_sct<long double> { using type = long double; };
+        template <class C>
+        using flt_result = typename flt_result_sct<remove_ref_c<C>>::type;
+    }; // Util END
+
 
 //  ============  Vector classes declaration  ============  \\
 
@@ -120,14 +129,19 @@ namespace Simple {
         template <class Y> Vec2Base(Y _x, Y _y) : x{_x}, y{_y} {}
         template <class Y> Vec2Base(const Vec2Base<Y> &_vec) : x{_vec.x}, y{_vec.y} {}
 
-        inline flt_t norm()  const { return sqrt(x * x + y * y); }
-        inline flt_t norm2() const { return      x * x + y * y ; }
-        inline Vec2Base<flt_t> inverse() const
-            { return { Math::notZero(x) ? 1. / x : x, Math::notZero(y) ? 1. / y : y }; }
-        inline Vec2Base<flt_t> normalize() const {
-            flt_t __norm = norm();
-            if (Math::notZero(__norm)) __norm = 1. / __norm;
-            return { x * __norm, y * __norm };
+        // Result type: Util::flt_result<C> (long double / double are kept, other types give flt_t)
+        inline Util::flt_result<C> norm2() const { using R = Util::flt_result<C>; return R(x) * R(x) + R(y) * R(y); }
+        inline Util::flt_result<C> norm()  const { return std::sqrt(norm2()); }
+        inline Vec2Base<Util::flt_result<C>> inverse() const {
+            using R = Util::flt_result<C>;
+            const R __x = R(x), __y = R(y);
+            return { Math::notZero(__x) ? R(1) / __x : __x, Math::notZero(__y) ? R(1) / __y : __y };
+        }
+        inline Vec2Base<Util::flt_result<C>> normalize() const {
+            using R = Util::flt_result<C>;
+            R __norm = norm();
+            if (Math::notZero(__norm)) __norm = R(1) / __norm;
+            return { R(x) * __norm, R(y) * __norm };
         }
 
         template <typename AllT = C>
@@ -272,22 +286,21 @@ namespace Simple {
         }
 
     private:
-        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { return *((Util::remove_ref<C>*)this + index); }
-        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { return *((Util::remove_ref<C>*)this + index); }
+        // Values are indexed directly, references (subvectors) by a switch. The index is checked by SVKFW_ASSERT
+        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { SVKFW_ASSERT(index < 2u, std::invalid_argument, "vec2 :: op[] (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
+        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { SVKFW_ASSERT(index < 2u, std::invalid_argument, "vec2 :: op[] const (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
         Util::remove_ref<C>& getElem(uint32_t index, std:: true_type) {
+            SVKFW_ASSERT(index < 2u, std::invalid_argument, "vec2 :: op[] (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
-                case 1: return y;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec2 :: op[] (1)","index out of bounds"));
+                default: return y;
             }
         }
         Util::remove_ref<C>  getElem(uint32_t index, std:: true_type) const {
+            SVKFW_ASSERT(index < 2u, std::invalid_argument, "vec2 :: op[] const (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
-                case 1: return y;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec2 :: op[] const (1)","index out of bounds"));
+                default: return y;
             }
         }
     }; // Vec2Base END
@@ -374,14 +387,19 @@ namespace Simple {
         template <class X, class Y> Vec3Base(const Vec2Base<X> &_vec, Y _val) : x{_vec.x}, y{_vec.y}, z{_val} {}
         template <class X, class Y> Vec3Base(Y _val, const Vec2Base<X> &_vec) : x{_val}, y{_vec.x}, z{_vec.y} {}
 
-        flt_t norm() const  { return sqrt(x * x + y * y + z * z); }
-        flt_t norm2() const { return      x * x + y * y + z * z ; }
-        Vec3Base<flt_t> inverse() const
-            { return { Math::notZero(x) ? 1. / x : x, Math::notZero(y) ? 1. / y : y, Math::notZero(z) ? 1. / z : z }; }
-        Vec3Base<flt_t> normalize() const {
-            flt_t __norm = norm();
-            if (Math::notZero(__norm)) __norm = 1. / __norm;
-            return { x * __norm, y * __norm, z * __norm };
+        // Result type: Util::flt_result<C> (long double / double are kept, other types give flt_t)
+        Util::flt_result<C> norm2() const { using R = Util::flt_result<C>; return R(x) * R(x) + R(y) * R(y) + R(z) * R(z); }
+        Util::flt_result<C> norm()  const { return std::sqrt(norm2()); }
+        Vec3Base<Util::flt_result<C>> inverse() const {
+            using R = Util::flt_result<C>;
+            const R __x = R(x), __y = R(y), __z = R(z);
+            return { Math::notZero(__x) ? R(1) / __x : __x, Math::notZero(__y) ? R(1) / __y : __y, Math::notZero(__z) ? R(1) / __z : __z };
+        }
+        Vec3Base<Util::flt_result<C>> normalize() const {
+            using R = Util::flt_result<C>;
+            R __norm = norm();
+            if (Math::notZero(__norm)) __norm = R(1) / __norm;
+            return { R(x) * __norm, R(y) * __norm, R(z) * __norm };
         }
 
         template <typename AllT = C>
@@ -524,24 +542,23 @@ namespace Simple {
         }
 
     private:
-        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { return *((Util::remove_ref<C>*)this + index); }
-        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { return *((Util::remove_ref<C>*)this + index); }
+        // Values are indexed directly, references (subvectors) by a switch. The index is checked by SVKFW_ASSERT
+        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { SVKFW_ASSERT(index < 3u, std::invalid_argument, "vec3 :: op[] (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
+        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { SVKFW_ASSERT(index < 3u, std::invalid_argument, "vec3 :: op[] const (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
         Util::remove_ref<C>& getElem(uint32_t index, std:: true_type) {
+            SVKFW_ASSERT(index < 3u, std::invalid_argument, "vec3 :: op[] (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
                 case 1: return y;
-                case 2: return z;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec3 :: op[] (1)","index out of bounds"));
+                default: return z;
             }
         }
         Util::remove_ref<C>  getElem(uint32_t index, std:: true_type) const {
+            SVKFW_ASSERT(index < 3u, std::invalid_argument, "vec3 :: op[] const (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
                 case 1: return y;
-                case 2: return z;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec3 :: op[] const (1)","index out of bounds"));
+                default: return z;
             }
         }
     }; // Vec3Base END
@@ -632,15 +649,19 @@ namespace Simple {
         template <class X, class Y> Vec4Base(Y _x, const Vec3Base<X> &_vec) : x{_x}, y{_vec.x}, z{_vec.y}, w{_vec.z} {}
         template <class Y> Vec4Base(const Vec4Base<Y> &_vec) : x{_vec.x}, y{_vec.y}, z{_vec.z}, w{_vec.w} {}
 
-        flt_t norm()  const { return sqrt(x * x + y * y + z * z + w * w); }
-        flt_t norm2() const { return      x * x + y * y + z * z + w * w ; }
-        Vec4Base<flt_t> inverse() const
-            { return { Math::notZero(x) ? 1. / x : x, Math::notZero(y) ? 1. / y : y,
-                       Math::notZero(z) ? 1. / z : z, Math::notZero(w) ? 1. / w : w }; }
-        Vec4Base<flt_t> normalize() const {
-            flt_t __norm = norm();
-            if (Math::notZero(__norm)) __norm = 1. / __norm;
-            return { x * __norm, y * __norm, z * __norm, w * __norm };
+        // Result type: Util::flt_result<C> (long double / double are kept, other types give flt_t)
+        Util::flt_result<C> norm2() const { using R = Util::flt_result<C>; return R(x) * R(x) + R(y) * R(y) + R(z) * R(z) + R(w) * R(w); }
+        Util::flt_result<C> norm()  const { return std::sqrt(norm2()); }
+        Vec4Base<Util::flt_result<C>> inverse() const {
+            using R = Util::flt_result<C>;
+            const R __x = R(x), __y = R(y), __z = R(z), __w = R(w);
+            return { Math::notZero(__x) ? R(1) / __x : __x, Math::notZero(__y) ? R(1) / __y : __y, Math::notZero(__z) ? R(1) / __z : __z, Math::notZero(__w) ? R(1) / __w : __w };
+        }
+        Vec4Base<Util::flt_result<C>> normalize() const {
+            using R = Util::flt_result<C>;
+            R __norm = norm();
+            if (Math::notZero(__norm)) __norm = R(1) / __norm;
+            return { R(x) * __norm, R(y) * __norm, R(z) * __norm, R(w) * __norm };
         }
 
         template <typename AllT = C>
@@ -785,26 +806,25 @@ namespace Simple {
         }
 
     private:
-        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { return *((Util::remove_ref<C>*)this + index); }
-        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { return *((Util::remove_ref<C>*)this + index); }
+        // Values are indexed directly, references (subvectors) by a switch. The index is checked by SVKFW_ASSERT
+        Util::remove_ref<C>& getElem(uint32_t index, std::false_type)       { SVKFW_ASSERT(index < 4u, std::invalid_argument, "vec4 :: op[] (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
+        Util::remove_ref<C>  getElem(uint32_t index, std::false_type) const { SVKFW_ASSERT(index < 4u, std::invalid_argument, "vec4 :: op[] const (1)", "index out of bounds"); return *((Util::remove_ref<C>*)this + index); }
         Util::remove_ref<C>& getElem(uint32_t index, std:: true_type) {
+            SVKFW_ASSERT(index < 4u, std::invalid_argument, "vec4 :: op[] (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
                 case 1: return y;
                 case 2: return z;
-                case 3: return w;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec4 :: op[] (1)","index out of bounds"));
+                default: return w;
             }
         }
         Util::remove_ref<C>  getElem(uint32_t index, std:: true_type) const {
+            SVKFW_ASSERT(index < 4u, std::invalid_argument, "vec4 :: op[] const (1)", "index out of bounds");
             switch (index) {
                 case 0: return x;
                 case 1: return y;
                 case 2: return z;
-                case 3: return w;
-                default:
-                    throw std::invalid_argument(SVKFW_WRAPERR("vec4 :: op[] const (1)","index out of bounds"));
+                default: return w;
             }
         }
     }; // Vec4Base END
@@ -991,70 +1011,88 @@ namespace Simple {
                        wh.w ? op2.w : op1.w}; }
 
 
+        // Note: the floating-point functions below return Util::flt_result (long double / double are kept, other types give flt_t)
+        //       and compute in that type. Two-operand functions take one base type: the second template parameter only lets
+        //       subvectors (references, e.g. v["xyz"]) mix with values, as in min/max above
         template <typename C>
-        flt_t sum(const C &op1)
-            { return op1; }
+        inline Util::flt_result<C> sum(const C &op1)
+            { return Util::flt_result<C>(op1); }
         template <typename C>
-        flt_t sum(const Vec2Base<C> &op1)
-            { return op1.x + op1.y; }
+        inline Util::flt_result<C> sum(const Vec2Base<C> &op1)
+            { using R = Util::flt_result<C>; return R(op1.x) + R(op1.y); }
         template <typename C>
-        flt_t sum(const Vec3Base<C> &op1)
-            { return op1.x + op1.y + op1.z; }
+        inline Util::flt_result<C> sum(const Vec3Base<C> &op1)
+            { using R = Util::flt_result<C>; return R(op1.x) + R(op1.y) + R(op1.z); }
         template <typename C>
-        flt_t sum(const Vec4Base<C> &op1)
-            { return op1.x + op1.y + op1.z + op1.w; }
+        inline Util::flt_result<C> sum(const Vec4Base<C> &op1)
+            { using R = Util::flt_result<C>; return R(op1.x) + R(op1.y) + R(op1.z) + R(op1.w); }
 
         template <typename C>
-        flt_t sqrt(const C &op1)
-            { return std::sqrt(op1); }
+        inline Util::flt_result<C> sqrt(const C &op1)
+            { return std::sqrt(Util::flt_result<C>(op1)); }
         template <typename C>
-        Vec2Base<float> sqrt(const Vec2Base<C> &op1)
-            { return {std::sqrt(op1.x), std::sqrt(op1.y)}; }
+        inline Vec2Base<Util::flt_result<C>> sqrt(const Vec2Base<C> &op1)
+            { using R = Util::flt_result<C>; return {std::sqrt(R(op1.x)), std::sqrt(R(op1.y))}; }
         template <typename C>
-        Vec3Base<float> sqrt(const Vec3Base<C> &op1)
-            { return {std::sqrt(op1.x), std::sqrt(op1.y), std::sqrt(op1.z)}; }
+        inline Vec3Base<Util::flt_result<C>> sqrt(const Vec3Base<C> &op1)
+            { using R = Util::flt_result<C>; return {std::sqrt(R(op1.x)), std::sqrt(R(op1.y)), std::sqrt(R(op1.z))}; }
         template <typename C>
-        Vec4Base<float> sqrt(const Vec4Base<C> &op1)
-            { return {std::sqrt(op1.x), std::sqrt(op1.y), std::sqrt(op1.z), std::sqrt(op1.w)}; }
+        inline Vec4Base<Util::flt_result<C>> sqrt(const Vec4Base<C> &op1)
+            { using R = Util::flt_result<C>; return {std::sqrt(R(op1.x)), std::sqrt(R(op1.y)), std::sqrt(R(op1.z)), std::sqrt(R(op1.w))}; }
 
         template <typename C>
-        flt_t pow(const C &op1, float _pow)
-            { return std::pow(op1, _pow); }
+        inline Util::flt_result<C> pow(const C &op1, Util::flt_result<C> _pow)
+            { return std::pow(Util::flt_result<C>(op1), _pow); }
         template <typename C>
-        Vec2Base<float> pow(const Vec2Base<C> &op1, float _pow)
-            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow)}; }
+        inline Vec2Base<Util::flt_result<C>> pow(const Vec2Base<C> &op1, Util::flt_result<C> _pow)
+            { using R = Util::flt_result<C>; return {std::pow(R(op1.x), _pow), std::pow(R(op1.y), _pow)}; }
         template <typename C>
-        Vec3Base<float> pow(const Vec3Base<C> &op1, float _pow)
-            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow), std::pow(op1.z, _pow)}; }
+        inline Vec3Base<Util::flt_result<C>> pow(const Vec3Base<C> &op1, Util::flt_result<C> _pow)
+            { using R = Util::flt_result<C>; return {std::pow(R(op1.x), _pow), std::pow(R(op1.y), _pow), std::pow(R(op1.z), _pow)}; }
         template <typename C>
-        Vec4Base<float> pow(const Vec4Base<C> &op1, float _pow)
-            { return {std::pow(op1.x, _pow), std::pow(op1.y, _pow), std::pow(op1.z, _pow), std::pow(op1.w, _pow)}; }
+        inline Vec4Base<Util::flt_result<C>> pow(const Vec4Base<C> &op1, Util::flt_result<C> _pow)
+            { using R = Util::flt_result<C>; return {std::pow(R(op1.x), _pow), std::pow(R(op1.y), _pow), std::pow(R(op1.z), _pow), std::pow(R(op1.w), _pow)}; }
 
         template <typename C, typename Y>
-        flt_t dot(const C &op1, const Y &op2)
-            { return op1 * op2; }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dot(const C &op1, const Y &op2)
+            { using R = Util::flt_result<C>; return R(op1) * R(op2); }
         template <typename C, typename Y>
-        flt_t dot(const Vec2Base<C> &op1, const Vec2Base<Y> &op2)
-            { return op1.x * op2.x + op1.y * op2.y; }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dot(const Vec2Base<C> &op1, const Vec2Base<Y> &op2)
+            { using R = Util::flt_result<C>; return R(op1.x) * R(op2.x) + R(op1.y) * R(op2.y); }
         template <typename C, typename Y>
-        flt_t dot(const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
-            { return op1.x * op2.x + op1.y * op2.y + op1.z * op2.z; }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dot(const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
+            { using R = Util::flt_result<C>; return R(op1.x) * R(op2.x) + R(op1.y) * R(op2.y) + R(op1.z) * R(op2.z); }
         template <typename C, typename Y>
-        flt_t dot(const Vec4Base<C> &op1, const Vec4Base<Y> &op2)
-            { return op1.x * op2.x + op1.y * op2.y + op1.z * op2.z + op1.w * op2.w; }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dot(const Vec4Base<C> &op1, const Vec4Base<Y> &op2)
+            { using R = Util::flt_result<C>; return R(op1.x) * R(op2.x) + R(op1.y) * R(op2.y) + R(op1.z) * R(op2.z) + R(op1.w) * R(op2.w); }
 
         template <typename C, typename Y>
-        flt_t dist(const C &op1, const Y &op2) { return std::abs(op1 - op2); }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dist(const C &op1, const Y &op2)
+            { using R = Util::flt_result<C>; return std::abs(R(op1) - R(op2)); }
         template <typename C, typename Y>
-        flt_t dist(const Vec2Base<C> &op1, const Vec2Base<Y> &op2) { return (op1 - op2).norm(); }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dist(const Vec2Base<C> &op1, const Vec2Base<Y> &op2)
+            { using R = Util::flt_result<C>; return Vec2Base<R>{R(op1.x) - R(op2.x), R(op1.y) - R(op2.y)}.norm(); }
         template <typename C, typename Y>
-        flt_t dist(const Vec3Base<C> &op1, const Vec3Base<Y> &op2) { return (op1 - op2).norm(); }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dist(const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
+            { using R = Util::flt_result<C>; return Vec3Base<R>{R(op1.x) - R(op2.x), R(op1.y) - R(op2.y), R(op1.z) - R(op2.z)}.norm(); }
         template <typename C, typename Y>
-        flt_t dist(const Vec4Base<C> &op1, const Vec4Base<Y> &op2) { return (op1 - op2).norm(); }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Util::flt_result<C>>::type
+        dist(const Vec4Base<C> &op1, const Vec4Base<Y> &op2)
+            { using R = Util::flt_result<C>; return Vec4Base<R>{R(op1.x) - R(op2.x), R(op1.y) - R(op2.y), R(op1.z) - R(op2.z), R(op1.w) - R(op2.w)}.norm(); }
 
         template <typename C, typename Y>
-        Vec3Base<Util::comm_vecsub_type<C,Y>> cross(const Vec3Base<C> &op1, const Vec3Base<Y> &op2)
-            { return {op1.y * op2.z - op1.z * op2.y, op1.z * op2.x - op1.x * op2.z, op1.x * op2.y - op1.y * op2.x}; }
+        inline typename std::enable_if<Util::is_same_base<C, Y>::value, Vec3Base<Util::flt_result<C>>>::type
+        cross(const Vec3Base<C> &op1, const Vec3Base<Y> &op2) {
+            using R = Util::flt_result<C>;
+            return {R(op1.y) * R(op2.z) - R(op1.z) * R(op2.y), R(op1.z) * R(op2.x) - R(op1.x) * R(op2.z), R(op1.x) * R(op2.y) - R(op1.y) * R(op2.x)};
+        }
 
 
         template <typename T>
