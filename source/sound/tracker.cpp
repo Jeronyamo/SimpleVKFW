@@ -670,11 +670,11 @@ namespace Simple {
                     ChannelState &__state = channels[ch];
                     const ChannelSettings &__settings = song->channels[ch];
                     const float __val = __state.voice.render() + __state.tail.render();
-                    const vec2f __out = (__val * __settings.volume) * Synth::panGains(__settings.pan + __state.pan + __state.voice.params.pan);
-                    __state.peak = vec2f{ std::max(__state.peak.x * __peak_decay, std::fabs(__out.x)), std::max(__state.peak.y * __peak_decay, std::fabs(__out.y)) };
+                    const vec2f __pan_out = (__val * __settings.volume) * Synth::panGains(__settings.pan + __state.pan + __state.voice.params.pan);
+                    __state.peak = vec2f{ std::max(__state.peak.x * __peak_decay, std::fabs(__pan_out.x)), std::max(__state.peak.y * __peak_decay, std::fabs(__pan_out.y)) };
                     if (__settings.muted || (__any_solo && !__settings.solo)) continue;
-                    __mix += __out;
-                    if (__settings.echo) __echo_in += __out;
+                    __mix += __pan_out;
+                    if (__settings.echo) __echo_in += __pan_out;
                 }
 
                 if (echo_buffer.size() > 1u) {

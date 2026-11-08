@@ -23,7 +23,7 @@ namespace Simple {
                 __rule_str += right.term;
             }
 
-            nt_index.emplace_back(NONTERM_START, __rule_str.size() + 1);
+            nt_index.emplace_back(NONTERM_START, uint32_t(__rule_str.size()) + 1u);
             rule_str = new char[__rule_str.size()+1];
             memcpy(rule_str, __rule_str.data(), __rule_str.size());
             rule_str[__rule_str.size()] = '\0';

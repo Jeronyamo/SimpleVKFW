@@ -291,9 +291,9 @@ namespace Simple {
                             float __w[4] = { 0.f, 0.f, 0.f, 0.f };
                             const int __count = __p.deform == PMX::DEFORM_BDEF1 ? 1 : (__p.deform == PMX::DEFORM_BDEF2 || __p.deform == PMX::DEFORM_SDEF) ? 2 : 4;
                             for (int b = 0; b < 4; ++b) {
-                                const bool __valid = b < __count && __p.bones[b] >= 0 && (size_t)__p.bones[b] < pmx.bones.size();
-                                __skin.bones[b] = (uint16_t)(__valid ? bone_map[__p.bones[b]] : 0u);
-                                __w[b] = __valid ? std::max(__p.weights[b], 0.f) : 0.f;
+                                const bool __is_valid = b < __count && __p.bones[b] >= 0 && (size_t)__p.bones[b] < pmx.bones.size();
+                                __skin.bones[b] = (uint16_t)(__is_valid ? bone_map[__p.bones[b]] : 0u);
+                                __w[b] = __is_valid ? std::max(__p.weights[b], 0.f) : 0.f;
                             }
                             const float __sum = __w[0] + __w[1] + __w[2] + __w[3];
                             __skin.weights = __sum > 0.f ? vec4{ __w[0] / __sum, __w[1] / __sum, __w[2] / __sum, __w[3] / __sum } : vec4{1.f, 0.f, 0.f, 0.f};

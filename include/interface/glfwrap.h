@@ -4,12 +4,12 @@
 // Note: volk implementation is compiled in glfwrap.cpp
 #define VK_NO_PROTOTYPES
 
-#include "volk.h"
-#include "GLFW/glfw3.h"
 #include "common/basic_math.h"
 #include "core/event_handler.h"
 #include "math/vectors.h"
 #include "main/image.h"
+#include "volk.h"
+#include "GLFW/glfw3.h"
 
 #include <unordered_set>
 #include <vector>

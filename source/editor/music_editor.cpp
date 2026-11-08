@@ -253,13 +253,13 @@ namespace Simple {
 
             if (ImGui::Button("New"))       { lib_selected = int32_t(library.addDefault());     edit_target = EDIT_LIBRARY; }
             ImGui::SameLine();
-            const bool __valid = lib_selected >= 0 && uint32_t(lib_selected) < library.size();
-            ImGui::BeginDisabled(!__valid);
+            const bool __select_valid = lib_selected >= 0 && uint32_t(lib_selected) < library.size();
+            ImGui::BeginDisabled(!__select_valid);
             if (ImGui::Button("Duplicate")) { lib_selected = int32_t(library.duplicate(uint32_t(lib_selected))); edit_target = EDIT_LIBRARY; }
             ImGui::SameLine();
             if (ImGui::Button("Delete")) ImGui::OpenPopup("Delete instrument?");
             if (ImGui::BeginPopupModal("Delete instrument?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-                ImGui::Text("Delete '%s' from the library?", __valid ? library.instruments[lib_selected].name.c_str() : "");
+                ImGui::Text("Delete '%s' from the library?", __select_valid ? library.instruments[lib_selected].name.c_str() : "");
                 ImGui::TextDisabled("Songs keep their own copies.");
                 if (ImGui::Button("Delete")) {
                     library.remove(uint32_t(lib_selected));
@@ -272,7 +272,7 @@ namespace Simple {
             }
 
             ImGui::SeparatorText("Song");
-            if (ImGui::Button("Copy to song") && __valid) {
+            if (ImGui::Button("Copy to song") && __select_valid) {
                 SongLock __lock(player.mutex);
                 const uint8_t __id = song.setInstrument(library.instruments[lib_selected]);
                 if (__id != Cell::Instrument_None) song_instrument = __id;

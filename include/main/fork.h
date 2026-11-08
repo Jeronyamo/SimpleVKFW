@@ -4,6 +4,8 @@
 // Note: linux-specific, no acceptable way to make it work on Windows.
 // TODO: (?)
 
+#ifndef WIN32
+
 #include <unistd.h>
 
 
@@ -26,5 +28,6 @@ namespace Simple {
         void getDescriptors();
     }; // Pipe END
 }; // Simple END
+#endif
 
 #endif

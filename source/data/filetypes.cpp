@@ -2314,176 +2314,176 @@ namespace Simple {
             SVKFW_WASSERT_CMD(tryHeaders(__file), "File::ReaderWriterPMX :: read", "'" + _fpath + "' is not a PMX file\n", return false);
             ContentPMX &__c = file_content;
             __c = ContentPMX();
-            PMXStream __in(__file);
+            PMXStream __stream_in(__file);
 
         // Header
-            __c.version = __in.get<float>();
-            const uint8_t __globals_count = __in.get<uint8_t>();
+            __c.version = __stream_in.get<float>();
+            const uint8_t __globals_count = __stream_in.get<uint8_t>();
             uint8_t __globals[16]{};
             for (uint8_t i = 0u; i < __globals_count; ++i) {
-                uint8_t __g = __in.get<uint8_t>();
+                uint8_t __g = __stream_in.get<uint8_t>();
                 if (i < 16u) __globals[i] = __g;
             }
-            SVKFW_WASSERT_CMD(__in.ok && __globals_count >= 8u, "File::ReaderWriterPMX :: read", "bad header in '" + _fpath + "'\n", return false);
-            __c.encoding       = __in.encoding = __globals[0];
+            SVKFW_WASSERT_CMD(__stream_in.ok && __globals_count >= 8u, "File::ReaderWriterPMX :: read", "bad header in '" + _fpath + "'\n", return false);
+            __c.encoding       = __stream_in.encoding = __globals[0];
             __c.additional_uvs = std::min<uint8_t>(__globals[1], 4u);
-            __in.vertex_index  = __globals[2];
-            __in.texture_index = __globals[3];
-            __in.material_index = __globals[4];
-            __in.bone_index    = __globals[5];
-            __in.morph_index   = __globals[6];
-            __in.rigid_index   = __globals[7];
-            __c.name       = __in.text();
-            __c.name_en    = __in.text();
-            __c.comment    = __in.text();
-            __c.comment_en = __in.text();
+            __stream_in.vertex_index  = __globals[2];
+            __stream_in.texture_index = __globals[3];
+            __stream_in.material_index = __globals[4];
+            __stream_in.bone_index    = __globals[5];
+            __stream_in.morph_index   = __globals[6];
+            __stream_in.rigid_index   = __globals[7];
+            __c.name       = __stream_in.text();
+            __c.name_en    = __stream_in.text();
+            __c.comment    = __stream_in.text();
+            __c.comment_en = __stream_in.text();
 
         // Vertices
-            int32_t __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad vertex count\n", return false);
+            int32_t __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad vertex count\n", return false);
             __c.vertices.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.vertices.size() && __in.ok; ++i) {
+            for (size_t i = 0u; i < __c.vertices.size() && __stream_in.ok; ++i) {
                 ContentPMX::Vertex &__v = __c.vertices[i];
-                __v.position = __in.vec3();
-                __v.normal   = __in.vec3();
-                __v.uv       = __in.vec2();
-                for (uint8_t u = 0u; u < __c.additional_uvs; ++u) __v.additional_uv[u] = __in.vec4();
-                __v.deform = (ContentPMX::DeformType)__in.get<uint8_t>();
+                __v.position = __stream_in.vec3();
+                __v.normal   = __stream_in.vec3();
+                __v.uv       = __stream_in.vec2();
+                for (uint8_t u = 0u; u < __c.additional_uvs; ++u) __v.additional_uv[u] = __stream_in.vec4();
+                __v.deform = (ContentPMX::DeformType)__stream_in.get<uint8_t>();
                 switch (__v.deform) {
                     case ContentPMX::DEFORM_BDEF1:
-                        __v.bones[0] = __in.index(__in.bone_index);
+                        __v.bones[0] = __stream_in.index(__stream_in.bone_index);
                         __v.weights[0] = 1.f;
                         break;
                     case ContentPMX::DEFORM_BDEF2:
                     case ContentPMX::DEFORM_SDEF:
-                        __v.bones[0] = __in.index(__in.bone_index);
-                        __v.bones[1] = __in.index(__in.bone_index);
-                        __v.weights[0] = __in.get<float>();
+                        __v.bones[0] = __stream_in.index(__stream_in.bone_index);
+                        __v.bones[1] = __stream_in.index(__stream_in.bone_index);
+                        __v.weights[0] = __stream_in.get<float>();
                         __v.weights[1] = 1.f - __v.weights[0];
                         if (__v.deform == ContentPMX::DEFORM_SDEF) {
-                            __v.sdef_c  = __in.vec3();
-                            __v.sdef_r0 = __in.vec3();
-                            __v.sdef_r1 = __in.vec3();
+                            __v.sdef_c  = __stream_in.vec3();
+                            __v.sdef_r0 = __stream_in.vec3();
+                            __v.sdef_r1 = __stream_in.vec3();
                         }
                         break;
                     case ContentPMX::DEFORM_BDEF4:
                     case ContentPMX::DEFORM_QDEF:
-                        for (int b = 0; b < 4; ++b) __v.bones[b] = __in.index(__in.bone_index);
-                        for (int b = 0; b < 4; ++b) __v.weights[b] = __in.get<float>();
+                        for (int b = 0; b < 4; ++b) __v.bones[b] = __stream_in.index(__stream_in.bone_index);
+                        for (int b = 0; b < 4; ++b) __v.weights[b] = __stream_in.get<float>();
                         break;
                     default:
                         SVKFW_WASSERT_CMD(false, "File::ReaderWriterPMX :: read", "unknown deform type " + std::to_string((int)__v.deform) + "\n", return false);
                 }
-                __v.edge_scale = __in.get<float>();
+                __v.edge_scale = __stream_in.get<float>();
             }
 
         // Faces
-            __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad index count\n", return false);
+            __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad index count\n", return false);
             __c.indices.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.indices.size() && __in.ok; ++i) __c.indices[i] = __in.vertexIndex();
+            for (size_t i = 0u; i < __c.indices.size() && __stream_in.ok; ++i) __c.indices[i] = __stream_in.vertexIndex();
 
         // Textures
-            __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad texture count\n", return false);
+            __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad texture count\n", return false);
             __c.textures.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.textures.size() && __in.ok; ++i) __c.textures[i] = __in.text();
+            for (size_t i = 0u; i < __c.textures.size() && __stream_in.ok; ++i) __c.textures[i] = __stream_in.text();
 
         // Materials
-            __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad material count\n", return false);
+            __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad material count\n", return false);
             __c.materials.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.materials.size() && __in.ok; ++i) {
+            for (size_t i = 0u; i < __c.materials.size() && __stream_in.ok; ++i) {
                 ContentPMX::Material &__m = __c.materials[i];
-                __m.name           = __in.text();
-                __m.name_en        = __in.text();
-                __m.diffuse        = __in.vec4();
-                __m.specular       = __in.vec3();
-                __m.specular_power = __in.get<float>();
-                __m.ambient        = __in.vec3();
-                __m.flags          = __in.get<uint8_t>();
-                __m.edge_color     = __in.vec4();
-                __m.edge_size      = __in.get<float>();
-                __m.texture        = __in.index(__in.texture_index);
-                __m.sphere_texture = __in.index(__in.texture_index);
-                __m.sphere_mode    = __in.get<uint8_t>();
-                __m.shared_toon    = __in.get<uint8_t>() != 0u;
-                __m.toon           = __m.shared_toon ? (int32_t)__in.get<uint8_t>() : __in.index(__in.texture_index);
-                __m.memo           = __in.text();
-                __m.index_count    = (uint32_t)__in.get<int32_t>();
+                __m.name           = __stream_in.text();
+                __m.name_en        = __stream_in.text();
+                __m.diffuse        = __stream_in.vec4();
+                __m.specular       = __stream_in.vec3();
+                __m.specular_power = __stream_in.get<float>();
+                __m.ambient        = __stream_in.vec3();
+                __m.flags          = __stream_in.get<uint8_t>();
+                __m.edge_color     = __stream_in.vec4();
+                __m.edge_size      = __stream_in.get<float>();
+                __m.texture        = __stream_in.index(__stream_in.texture_index);
+                __m.sphere_texture = __stream_in.index(__stream_in.texture_index);
+                __m.sphere_mode    = __stream_in.get<uint8_t>();
+                __m.shared_toon    = __stream_in.get<uint8_t>() != 0u;
+                __m.toon           = __m.shared_toon ? (int32_t)__stream_in.get<uint8_t>() : __stream_in.index(__stream_in.texture_index);
+                __m.memo           = __stream_in.text();
+                __m.index_count    = (uint32_t)__stream_in.get<int32_t>();
             }
 
         // Bones
-            __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad bone count\n", return false);
+            __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad bone count\n", return false);
             __c.bones.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.bones.size() && __in.ok; ++i) {
+            for (size_t i = 0u; i < __c.bones.size() && __stream_in.ok; ++i) {
                 ContentPMX::Bone &__b = __c.bones[i];
-                __b.name     = __in.text();
-                __b.name_en  = __in.text();
-                __b.position = __in.vec3();
-                __b.parent   = __in.index(__in.bone_index);
-                __b.layer    = __in.get<int32_t>();
-                __b.flags    = __in.get<uint16_t>();
-                if (__b.flags & ContentPMX::BONE_TAIL_IS_BONE) __b.tail_bone = __in.index(__in.bone_index);
-                else __b.tail_offset = __in.vec3();
+                __b.name     = __stream_in.text();
+                __b.name_en  = __stream_in.text();
+                __b.position = __stream_in.vec3();
+                __b.parent   = __stream_in.index(__stream_in.bone_index);
+                __b.layer    = __stream_in.get<int32_t>();
+                __b.flags    = __stream_in.get<uint16_t>();
+                if (__b.flags & ContentPMX::BONE_TAIL_IS_BONE) __b.tail_bone = __stream_in.index(__stream_in.bone_index);
+                else __b.tail_offset = __stream_in.vec3();
                 if (__b.flags & (ContentPMX::BONE_GRANT_ROTATION | ContentPMX::BONE_GRANT_TRANSLATION)) {
-                    __b.grant_parent = __in.index(__in.bone_index);
-                    __b.grant_ratio  = __in.get<float>();
+                    __b.grant_parent = __stream_in.index(__stream_in.bone_index);
+                    __b.grant_ratio  = __stream_in.get<float>();
                 }
-                if (__b.flags & ContentPMX::BONE_FIXED_AXIS) __b.fixed_axis = __in.vec3();
-                if (__b.flags & ContentPMX::BONE_LOCAL_AXES) { __b.local_x = __in.vec3(); __b.local_z = __in.vec3(); }
-                if (__b.flags & ContentPMX::BONE_EXTERNAL_PARENT) __b.external_key = __in.get<int32_t>();
+                if (__b.flags & ContentPMX::BONE_FIXED_AXIS) __b.fixed_axis = __stream_in.vec3();
+                if (__b.flags & ContentPMX::BONE_LOCAL_AXES) { __b.local_x = __stream_in.vec3(); __b.local_z = __stream_in.vec3(); }
+                if (__b.flags & ContentPMX::BONE_EXTERNAL_PARENT) __b.external_key = __stream_in.get<int32_t>();
                 if (__b.flags & ContentPMX::BONE_IK) {
-                    __b.ik_target      = __in.index(__in.bone_index);
-                    __b.ik_loops       = __in.get<int32_t>();
-                    __b.ik_limit_angle = __in.get<float>();
-                    int32_t __links = __in.get<int32_t>();
-                    if (!__in.ok || __links < 0 || __links > 4096) { __in.ok = false; break; }
+                    __b.ik_target      = __stream_in.index(__stream_in.bone_index);
+                    __b.ik_loops       = __stream_in.get<int32_t>();
+                    __b.ik_limit_angle = __stream_in.get<float>();
+                    int32_t __links = __stream_in.get<int32_t>();
+                    if (!__stream_in.ok || __links < 0 || __links > 4096) { __stream_in.ok = false; break; }
                     __b.ik_links.resize((size_t)__links);
                     for (size_t l = 0u; l < __b.ik_links.size(); ++l) {
-                        __b.ik_links[l].bone    = __in.index(__in.bone_index);
-                        __b.ik_links[l].limited = __in.get<uint8_t>() != 0u;
-                        if (__b.ik_links[l].limited) { __b.ik_links[l].limit_min = __in.vec3(); __b.ik_links[l].limit_max = __in.vec3(); }
+                        __b.ik_links[l].bone    = __stream_in.index(__stream_in.bone_index);
+                        __b.ik_links[l].limited = __stream_in.get<uint8_t>() != 0u;
+                        if (__b.ik_links[l].limited) { __b.ik_links[l].limit_min = __stream_in.vec3(); __b.ik_links[l].limit_max = __stream_in.vec3(); }
                     }
                 }
             }
-            SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "' is cut off\n", return false);
+            SVKFW_WASSERT_CMD(__stream_in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "' is cut off\n", return false);
 
         // Morphs
-            __count = __in.get<int32_t>();
-            SVKFW_WASSERT_CMD(__in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad morph count\n", return false);
+            __count = __stream_in.get<int32_t>();
+            SVKFW_WASSERT_CMD(__stream_in.ok && __count >= 0, "File::ReaderWriterPMX :: read", "bad morph count\n", return false);
             __c.morphs.resize((size_t)__count);
-            for (size_t i = 0u; i < __c.morphs.size() && __in.ok; ++i) {
+            for (size_t i = 0u; i < __c.morphs.size() && __stream_in.ok; ++i) {
                 ContentPMX::Morph &__m = __c.morphs[i];
-                __m.name    = __in.text();
-                __m.name_en = __in.text();
-                __m.panel   = __in.get<uint8_t>();
-                __m.type    = (ContentPMX::MorphType)__in.get<uint8_t>();
-                const int32_t __offsets = __in.get<int32_t>();
-                if (!__in.ok || __offsets < 0 || __offsets > (1 << 24)) { __in.ok = false; break; }
+                __m.name    = __stream_in.text();
+                __m.name_en = __stream_in.text();
+                __m.panel   = __stream_in.get<uint8_t>();
+                __m.type    = (ContentPMX::MorphType)__stream_in.get<uint8_t>();
+                const int32_t __offsets = __stream_in.get<int32_t>();
+                if (!__stream_in.ok || __offsets < 0 || __offsets > (1 << 24)) { __stream_in.ok = false; break; }
                 switch (__m.type) {
                     case ContentPMX::MORPH_GROUP:
                     case ContentPMX::MORPH_FLIP: {
                         __m.group.resize((size_t)__offsets);
                         for (ContentPMX::Morph::GroupOffset &__o : __m.group) {
-                            __o.morph  = __in.index(__in.morph_index);
-                            __o.weight = __in.get<float>();
+                            __o.morph  = __stream_in.index(__stream_in.morph_index);
+                            __o.weight = __stream_in.get<float>();
                         }
                     } break;
                     case ContentPMX::MORPH_VERTEX: {
                         __m.vertices.resize((size_t)__offsets);
                         for (ContentPMX::Morph::VertexOffset &__o : __m.vertices) {
-                            __o.vertex   = __in.vertexIndex();
-                            __o.position = __in.vec3();
+                            __o.vertex   = __stream_in.vertexIndex();
+                            __o.position = __stream_in.vec3();
                         }
                     } break;
                     case ContentPMX::MORPH_BONE: {
                         __m.bones.resize((size_t)__offsets);
                         for (ContentPMX::Morph::BoneOffset &__o : __m.bones) {
-                            __o.bone        = __in.index(__in.bone_index);
-                            __o.translation = __in.vec3();
-                            const vec4f __q = __in.vec4(); // x, y, z, w in the file
+                            __o.bone        = __stream_in.index(__stream_in.bone_index);
+                            __o.translation = __stream_in.vec3();
+                            const vec4f __q = __stream_in.vec4(); // x, y, z, w in the file
                             __o.rotation    = Affine::Rotation::Quaternion(__q.w, __q.x, __q.y, __q.z);
                         }
                     } break;
@@ -2494,94 +2494,94 @@ namespace Simple {
                     case ContentPMX::MORPH_UV4: {
                         __m.uvs.resize((size_t)__offsets);
                         for (ContentPMX::Morph::UVOffset &__o : __m.uvs) {
-                            __o.vertex = __in.vertexIndex();
-                            __o.uv     = __in.vec4();
+                            __o.vertex = __stream_in.vertexIndex();
+                            __o.uv     = __stream_in.vec4();
                         }
                     } break;
                     case ContentPMX::MORPH_MATERIAL: {
                         __m.materials.resize((size_t)__offsets);
                         for (ContentPMX::Morph::MaterialOffset &__o : __m.materials) {
-                            __o.material       = __in.index(__in.material_index);
-                            __o.operation      = __in.get<uint8_t>();
-                            __o.diffuse        = __in.vec4();
-                            __o.specular       = __in.vec3();
-                            __o.specular_power = __in.get<float>();
-                            __o.ambient        = __in.vec3();
-                            __o.edge_color     = __in.vec4();
-                            __o.edge_size      = __in.get<float>();
-                            __o.texture_tint   = __in.vec4();
-                            __o.sphere_tint    = __in.vec4();
-                            __o.toon_tint      = __in.vec4();
+                            __o.material       = __stream_in.index(__stream_in.material_index);
+                            __o.operation      = __stream_in.get<uint8_t>();
+                            __o.diffuse        = __stream_in.vec4();
+                            __o.specular       = __stream_in.vec3();
+                            __o.specular_power = __stream_in.get<float>();
+                            __o.ambient        = __stream_in.vec3();
+                            __o.edge_color     = __stream_in.vec4();
+                            __o.edge_size      = __stream_in.get<float>();
+                            __o.texture_tint   = __stream_in.vec4();
+                            __o.sphere_tint    = __stream_in.vec4();
+                            __o.toon_tint      = __stream_in.vec4();
                         }
                     } break;
                     case ContentPMX::MORPH_IMPULSE: {
                         __m.impulses.resize((size_t)__offsets);
                         for (ContentPMX::Morph::ImpulseOffset &__o : __m.impulses) {
-                            __o.rigid_body = __in.index(__in.rigid_index);
-                            __o.local      = __in.get<uint8_t>() != 0u;
-                            __o.velocity   = __in.vec3();
-                            __o.torque     = __in.vec3();
+                            __o.rigid_body = __stream_in.index(__stream_in.rigid_index);
+                            __o.local      = __stream_in.get<uint8_t>() != 0u;
+                            __o.velocity   = __stream_in.vec3();
+                            __o.torque     = __stream_in.vec3();
                         }
                     } break;
-                    default: __in.ok = false; // unknown type: the size of its offsets is unknown
+                    default: __stream_in.ok = false; // unknown type: the size of its offsets is unknown
                 }
             }
-            SVKFW_WASSERT_CMD(__in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "': bad morphs\n", return false);
+            SVKFW_WASSERT_CMD(__stream_in.ok, "File::ReaderWriterPMX :: read", "'" + _fpath + "': bad morphs\n", return false);
 
             // Display frames (skipped), rigid bodies, joints. A model without them (or a cut file) is still usable: the
             // physics part is dropped with a warning
-            const int32_t __frames = __in.get<int32_t>();
-            for (int32_t f = 0; __in.ok && f < __frames; ++f) {
-                __in.text(); __in.text();
-                __in.get<uint8_t>();
-                const int32_t __elements = __in.get<int32_t>();
-                if (__elements < 0 || __elements > (1 << 24)) { __in.ok = false; break; }
-                for (int32_t e = 0; __in.ok && e < __elements; ++e)
-                    __in.index(__in.get<uint8_t>() == 0u ? __in.bone_index : __in.morph_index);
+            const int32_t __frames = __stream_in.get<int32_t>();
+            for (int32_t f = 0; __stream_in.ok && f < __frames; ++f) {
+                __stream_in.text(); __stream_in.text();
+                __stream_in.get<uint8_t>();
+                const int32_t __elements = __stream_in.get<int32_t>();
+                if (__elements < 0 || __elements > (1 << 24)) { __stream_in.ok = false; break; }
+                for (int32_t e = 0; __stream_in.ok && e < __elements; ++e)
+                    __stream_in.index(__stream_in.get<uint8_t>() == 0u ? __stream_in.bone_index : __stream_in.morph_index);
             }
-            const int32_t __bodies = __in.ok ? __in.get<int32_t>() : 0;
-            if (__in.ok && __bodies >= 0 && __bodies < (1 << 20)) {
+            const int32_t __bodies = __stream_in.ok ? __stream_in.get<int32_t>() : 0;
+            if (__stream_in.ok && __bodies >= 0 && __bodies < (1 << 20)) {
                 file_content.rigid_bodies.resize((size_t)__bodies);
                 for (ContentPMX::RigidBody &__b : file_content.rigid_bodies) {
-                    __b.name            = __in.text();
-                    __b.name_en         = __in.text();
-                    __b.bone            = __in.index(__in.bone_index);
-                    __b.group           = __in.get<uint8_t>();
-                    __b.collision_mask  = __in.get<uint16_t>();
-                    __b.shape           = (ContentPMX::RigidShape)__in.get<uint8_t>();
-                    __b.size            = __in.vec3();
-                    __b.position        = __in.vec3();
-                    __b.rotation        = __in.vec3();
-                    __b.mass            = __in.get<float>();
-                    __b.linear_damping  = __in.get<float>();
-                    __b.angular_damping = __in.get<float>();
-                    __b.restitution     = __in.get<float>();
-                    __b.friction        = __in.get<float>();
-                    __b.mode            = (ContentPMX::RigidMode)__in.get<uint8_t>();
+                    __b.name            = __stream_in.text();
+                    __b.name_en         = __stream_in.text();
+                    __b.bone            = __stream_in.index(__stream_in.bone_index);
+                    __b.group           = __stream_in.get<uint8_t>();
+                    __b.collision_mask  = __stream_in.get<uint16_t>();
+                    __b.shape           = (ContentPMX::RigidShape)__stream_in.get<uint8_t>();
+                    __b.size            = __stream_in.vec3();
+                    __b.position        = __stream_in.vec3();
+                    __b.rotation        = __stream_in.vec3();
+                    __b.mass            = __stream_in.get<float>();
+                    __b.linear_damping  = __stream_in.get<float>();
+                    __b.angular_damping = __stream_in.get<float>();
+                    __b.restitution     = __stream_in.get<float>();
+                    __b.friction        = __stream_in.get<float>();
+                    __b.mode            = (ContentPMX::RigidMode)__stream_in.get<uint8_t>();
                     if (__b.shape > ContentPMX::RIGID_CAPSULE) __b.shape = ContentPMX::RIGID_SPHERE;
                     if (__b.mode  > ContentPMX::RIGID_PHYSICS_BONE_POSITION) __b.mode = ContentPMX::RIGID_PHYSICS;
                 }
-            } else __in.ok = false;
-            const int32_t __joints = __in.ok ? __in.get<int32_t>() : 0;
-            if (__in.ok && __joints >= 0 && __joints < (1 << 20)) {
+            } else __stream_in.ok = false;
+            const int32_t __joints = __stream_in.ok ? __stream_in.get<int32_t>() : 0;
+            if (__stream_in.ok && __joints >= 0 && __joints < (1 << 20)) {
                 file_content.joints.resize((size_t)__joints);
                 for (ContentPMX::Joint &__j : file_content.joints) {
-                    __j.name           = __in.text();
-                    __j.name_en        = __in.text();
-                    __j.type           = __in.get<uint8_t>();
-                    __j.body_a         = __in.index(__in.rigid_index);
-                    __j.body_b         = __in.index(__in.rigid_index);
-                    __j.position       = __in.vec3();
-                    __j.rotation       = __in.vec3();
-                    __j.linear_min     = __in.vec3();
-                    __j.linear_max     = __in.vec3();
-                    __j.angular_min    = __in.vec3();
-                    __j.angular_max    = __in.vec3();
-                    __j.linear_spring  = __in.vec3();
-                    __j.angular_spring = __in.vec3();
+                    __j.name           = __stream_in.text();
+                    __j.name_en        = __stream_in.text();
+                    __j.type           = __stream_in.get<uint8_t>();
+                    __j.body_a         = __stream_in.index(__stream_in.rigid_index);
+                    __j.body_b         = __stream_in.index(__stream_in.rigid_index);
+                    __j.position       = __stream_in.vec3();
+                    __j.rotation       = __stream_in.vec3();
+                    __j.linear_min     = __stream_in.vec3();
+                    __j.linear_max     = __stream_in.vec3();
+                    __j.angular_min    = __stream_in.vec3();
+                    __j.angular_max    = __stream_in.vec3();
+                    __j.linear_spring  = __stream_in.vec3();
+                    __j.angular_spring = __stream_in.vec3();
                 }
-            } else __in.ok = false;
-            if (!__in.ok) {
+            } else __stream_in.ok = false;
+            if (!__stream_in.ok) {
                 if (!file_content.rigid_bodies.empty() || !file_content.joints.empty() || __frames != 0)
                     fprintf(svkfwwarn, "%s", (std::string(SVKFW_WRAPWARN("File::ReaderWriterPMX :: read", "")) + "'" + _fpath +
                                               "': bad display frames / rigid bodies / joints, the model goes without physics\n").c_str());

@@ -345,12 +345,12 @@ namespace Simple {
                 return true;
             }
 
-            std::unordered_map<int64_t, ActionId>::const_iterator __bound = bindings.find(__binding.code64());
-            if (__bound == bindings.end() && __binding.mods != 0)
-                __bound = bindings.find(InputBinding(__binding.device, __binding.code).code64());
-            if (__bound == bindings.end()) return false;
+            std::unordered_map<int64_t, ActionId>::const_iterator __where_bound = bindings.find(__binding.code64());
+            if (__where_bound == bindings.end() && __binding.mods != 0)
+                __where_bound = bindings.find(InputBinding(__binding.device, __binding.code).code64());
+            if (__where_bound == bindings.end()) return false;
 
-            const ActionId __id = __bound->second;
+            const ActionId __id = __where_bound->second;
             if (held_input.count(__input)) return true; // a press without a release (e.g. lost focus), already held
             held_input[__input] = __id;
             ActionState &__action = actions[__id];

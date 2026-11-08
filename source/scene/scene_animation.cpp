@@ -24,12 +24,12 @@ namespace Simple {
             template <class Key>
             void sortKeys(std::vector<Key> &_keys) {
                 std::stable_sort(_keys.begin(), _keys.end(), keyBefore<Key>);
-                size_t __out = 0u;
+                size_t __key_id = 0u;
                 for (size_t i = 0u; i < _keys.size(); ++i) {
-                    if (__out > 0u && _keys[__out - 1u].frame == _keys[i].frame) _keys[__out - 1u] = _keys[i];
-                    else _keys[__out++] = _keys[i];
+                    if (__key_id > 0u && _keys[__key_id - 1u].frame == _keys[i].frame) _keys[__key_id - 1u] = _keys[i];
+                    else _keys[__key_id++] = _keys[i];
                 }
-                _keys.resize(__out);
+                _keys.resize(__key_id);
             }
 
             vec3 lerp3(const vec3 &_a, const vec3 &_b, float _ta, float _tb, float _tc) {

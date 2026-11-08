@@ -26,7 +26,7 @@
         },
 
         {
-            "name": "os-win",
+            "name": "os-win-mingw64",
             "hidden": true,
             "description": "MSYS2 MinGW-w64: its bin directory (gcc, g++, mingw32-make) must be in PATH",
             "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
@@ -35,6 +35,20 @@
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "gcc",
                 "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "os-win-msvc",
+            "hidden": true,
+            "description": "MSVC compilation on Windows",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "generator": "Ninja",
+            "architecture": { "value": "x64", "strategy": "external" },
+            "toolset": { "value": "host=x64", "strategy": "external" },
+            "environment": { "SVKFW_OS": "win" },
+            "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "/wd4010",
+                "CMAKE_CXX_FLAGS_INIT": "/wd4010"
             }
         },
         {
@@ -57,12 +71,14 @@
             "environment": { "SVKFW_OS": "mac" }
         },
 
-        { "name": "win-debug",     "displayName": "Debug",   "inherits": [ "os-win",   "debug",   "base" ] },
-        { "name": "win-release",   "displayName": "Release", "inherits": [ "os-win",   "release", "base" ] },
-        { "name": "linux-debug",   "displayName": "Debug",   "inherits": [ "os-linux", "debug",   "base" ] },
-        { "name": "linux-release", "displayName": "Release", "inherits": [ "os-linux", "release", "base" ] },
-        { "name": "mac-debug",     "displayName": "Debug",   "inherits": [ "os-mac",   "debug",   "base" ] },
-        { "name": "mac-release",   "displayName": "Release", "inherits": [ "os-mac",   "release", "base" ] }
+        { "name": "win-mingw64-debug",     "displayName": "Debug (Win-MinGW64)",   "inherits": [ "os-win-mingw64",   "debug",   "base" ] },
+        { "name": "win-mingw64-release",   "displayName": "Release (Win-MinGW64)", "inherits": [ "os-win-mingw64",   "release", "base" ] },
+        { "name": "win-msvc-debug",     "displayName": "Debug (Win-MSVC)",   "inherits": [ "os-win-msvc",   "debug",   "base" ] },
+        { "name": "win-msvc-release",   "displayName": "Release (Win-MSVC)", "inherits": [ "os-win-msvc",   "release", "base" ] },
+        { "name": "linux-debug",   "displayName": "Debug (Linux)",   "inherits": [ "os-linux", "debug",   "base" ] },
+        { "name": "linux-release", "displayName": "Release (Linux)", "inherits": [ "os-linux", "release", "base" ] },
+        { "name": "mac-debug",     "displayName": "Debug (Mac)",   "inherits": [ "os-mac",   "debug",   "base" ] },
+        { "name": "mac-release",   "displayName": "Release (Mac)", "inherits": [ "os-mac",   "release", "base" ] }
     ],
     "buildPresets": [
         { "name": "base", "hidden": true, "jobs": 8 },
@@ -70,11 +86,13 @@
         { "name": "os-linux", "hidden": true, "inherits": "base", "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux"   } },
         { "name": "os-mac",   "hidden": true, "inherits": "base", "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin"  } },
 
-        { "name": "win-debug",     "displayName": "Debug",   "configurePreset": "win-debug",     "inherits": "os-win" },
-        { "name": "win-release",   "displayName": "Release", "configurePreset": "win-release",   "inherits": "os-win" },
-        { "name": "linux-debug",   "displayName": "Debug",   "configurePreset": "linux-debug",   "inherits": "os-linux" },
-        { "name": "linux-release", "displayName": "Release", "configurePreset": "linux-release", "inherits": "os-linux" },
-        { "name": "mac-debug",     "displayName": "Debug",   "configurePreset": "mac-debug",     "inherits": "os-mac" },
-        { "name": "mac-release",   "displayName": "Release", "configurePreset": "mac-release",   "inherits": "os-mac" }
+        { "name": "win-msvc-debug",      "displayName": "Debug (Win-MSVC)",   "configurePreset": "win-msvc-debug",      "inherits": "os-win" },
+        { "name": "win-msvc-release",    "displayName": "Release (Win-MSVC)", "configurePreset": "win-msvc-release",    "inherits": "os-win" },
+        { "name": "win-mingw64-debug",   "displayName": "Debug (Win-MinGW64)",   "configurePreset": "win-mingw64-debug",   "inherits": "os-win" },
+        { "name": "win-mingw64-release", "displayName": "Release (Win-MinGW64)", "configurePreset": "win-mingw64-release", "inherits": "os-win" },
+        { "name": "linux-debug",   "displayName": "Debug (Linux)",   "configurePreset": "linux-debug",   "inherits": "os-linux" },
+        { "name": "linux-release", "displayName": "Release (Linux)", "configurePreset": "linux-release", "inherits": "os-linux" },
+        { "name": "mac-debug",     "displayName": "Debug (Mac)",   "configurePreset": "mac-debug",     "inherits": "os-mac" },
+        { "name": "mac-release",   "displayName": "Release (Mac)", "configurePreset": "mac-release",   "inherits": "os-mac" }
     ]
 }

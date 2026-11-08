@@ -1,5 +1,5 @@
 #include "main/fork.h"
-
+#ifndef WIN32
 namespace Simple {
 
     Pipe::Pipe(bool _get_fdescriptors) {
@@ -10,3 +10,4 @@ namespace Simple {
         // _pipe();
     }
 }; // Simple END
+#endif
