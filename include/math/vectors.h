@@ -1140,7 +1140,6 @@ namespace Simple {
                                                                                                                        clampOP(_val.z, _left.z, _right.z, _step.z) }; }
         template <typename T>
         Vec4Base<T> clampOP(Vec4Base<T> _val, Vec4Base<T> _left, Vec4Base<T> _right, Vec4Base<T> _step = 1) { return { clampOP(_val.x, _left.x, _right.x, _step.x),
-
                                                                                                                        clampOP(_val.y, _left.y, _right.y, _step.y),
                                                                                                                        clampOP(_val.z, _left.z, _right.z, _step.z),
                                                                                                                        clampOP(_val.w, _left.w, _right.w, _step.w) }; }
