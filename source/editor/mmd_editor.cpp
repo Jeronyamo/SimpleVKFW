@@ -1116,6 +1116,52 @@ namespace Simple {
                         __motion->vmd.reflectMovement();
                         motionChanged_(*__motion);
                     }
+                    // Mocap-like fix, stage B: its settings on the same line
+                    if (!target_camera) {
+                        if (ImGui::Button("Mocap: chain")) {
+                            File::VMDMocap::ChainProfile __profile;
+                            std::string __err;
+                            if (!File::VMDMocap::loadChainProfile(mocap_profile, __profile, __err)) status = __err;
+                            else {
+                                File::VMDMocap::ChainSettings __settings;
+                                __settings.strength = mocap_strength;
+                                __settings.jitter   = mocap_jitter;
+                                __settings.seed     = (uint32_t)std::max(0, mocap_seed);
+                                __motion->beginEdit();
+                                const File::VMDMocap::ChainReport __rep = File::VMDMocap::chainBones(__motion->vmd, __profile, __settings);
+                                motionChanged_(*__motion);
+                                mocap_fit.clear();
+                                char __buf[200];
+                                for (size_t i = 0u; i < __rep.pairs.size(); ++i) {
+                                    const File::VMDMocap::ChainPairReport &__p = __rep.pairs[i];
+                                    snprintf(__buf, sizeof(__buf), "%s > %s: gain %.2f, delay %u, trend %.0f; error %.4f -> %.4f; +%.1f deg rms",
+                                             __p.parent.c_str(), __p.child.c_str(), __p.gain, __p.delay, __p.sigma,
+                                             __p.error_before, __p.error_after, __p.added_deg);
+                                    mocap_fit.push_back(__buf);
+                                }
+                                snprintf(__buf, sizeof(__buf), "Mocap chain: %u pairs, %u bones jittered, %u bones rewritten, bone keys %u -> %u",
+                                         (uint32_t)__rep.pairs.size(), __rep.bones_jittered, __rep.bones_written, __rep.keys_before, __rep.keys_after);
+                                status = __buf;
+                            }
+                        }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Stage B of the mocap-like fix (run after 'Mocap: smooth'): each child bone repeats a part of its\n"
+                                              "parent's motion, a few frames later, fitted to how captured dances do it (profile in\n"
+                                              "resources/motion); then the upper body bones are played slightly ahead or behind (jitter)");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(90.f);
+                        ImGui::SliderFloat("Strength##mocap", &mocap_strength, 0.f, 2.f, "%.2f");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(90.f);
+                        ImGui::SliderFloat("Jitter##mocap", &mocap_jitter, 0.f, 3.f, "%.2f");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(70.f);
+                        ImGui::InputInt("Seed##mocap", &mocap_seed, 0);
+                        if (!mocap_fit.empty() && ImGui::TreeNode("Last chain fit")) {
+                            for (size_t i = 0u; i < mocap_fit.size(); ++i) ImGui::TextDisabled("%s", mocap_fit[i].c_str());
+                            ImGui::TreePop();
+                        }
+                    }
                 }
             }
 

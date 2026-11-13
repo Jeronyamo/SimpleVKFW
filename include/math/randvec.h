@@ -75,16 +75,17 @@ namespace Simple {
             static constexpr float Simplex_G2 = 0.211324865f;
             static constexpr float Simplex_G3 = 1.f / 6;
             static constexpr float Simplex_G4 = 0.138197f;
+            // Output scales: about [-1, 1] with the kernel radius^2 0.5 (3D, 4D measured: max 0.99)
             static constexpr float Simplex_M2 = 32.f;
-            static constexpr float Simplex_M3 = 32.f;
-            static constexpr float Simplex_M4 = 27.f;
+            static constexpr float Simplex_M3 = 76.f;
+            static constexpr float Simplex_M4 = 76.f;
 
             uint32_t noise_seed;
 
             NoiseSimplex(uint32_t _noise_seed = 42u);
 
-            float sample(vec3f _coords);
-            float sample(vec4f _coords);
+            float sample(vec3f _coords) const;
+            float sample(vec4f _coords) const;
         }; // NoiseSimplex END
     }; // Noise END
 }; // Simple END

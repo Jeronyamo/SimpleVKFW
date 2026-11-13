@@ -1,4 +1,5 @@
 #include "math/randvec.h"
+#include <cmath>
 
 namespace Simple {
 
@@ -124,14 +125,14 @@ namespace Simple {
     }; // Hash END
 
     namespace Noise {
-        vec2f getDot2f(uint32_t _val_hash, vec2f _d) {
+        float getDot2f(uint32_t _val_hash, vec2f _d) {
             _val_hash &= 7u;
             _val_hash += 1u;
 
             vec2f __res{ float(_val_hash / 3), float(_val_hash % 3) };
             __res.x = __res.x == 2.f ? -_d.x : __res.x * _d.x;
             __res.y = __res.y == 2.f ? -_d.y : __res.y * _d.y;
-            return __res;
+            return __res.x + __res.y;
         }
         float getDot3f(uint32_t _val_hash, vec3f _d) {
             uint8_t h = _val_hash & 15u;
@@ -158,82 +159,96 @@ namespace Simple {
         NoisePerlin::NoisePerlin(uint32_t _noise_seed) : noise_seed{_noise_seed} {}
 
         float NoisePerlin::sample(vec4f _coords) const {
-            vec4i __ind4d = _coords.cast<int32_t>();
+            // Cell: floor (also for negative coordinates); the gradients are dotted with the offsets from the corners and
+            // blended with the quintic fade of the offset inside the cell
+            const vec4f __floor{ std::floor(_coords.x), std::floor(_coords.y), std::floor(_coords.z), std::floor(_coords.w) };
+            const vec4i __ind4d = __floor.cast<int32_t>();
+            const vec4f __d = _coords - __floor;
+            vec4f __fade;
+            for (int c = 0; c < 4; ++c) __fade[c] = __d[c] * __d[c] * __d[c] * (__d[c] * (__d[c] * 6.f - 15.f) + 10.f);
 
             float points[8];
             for (int i = 0; i < 16; ++i) {
-                vec4i __n_coords = __ind4d + vec4i{(i & 8) != 0, (i & 4) != 0, (i & 2) != 0, (i & 1) != 0};
-                float __curr_pt = getDot4f(Hash::getVecHash4(__n_coords.cast<uint32_t>(), noise_seed), _coords - __n_coords);
-                points[i>>1] = i & 1 ? points[i>>1] + _coords.w * (__curr_pt - points[i>>1]) : __curr_pt;
+                const vec4i __offs{(i & 8) != 0, (i & 4) != 0, (i & 2) != 0, (i & 1) != 0};
+                float __curr_pt = getDot4f(Hash::getVecHash4((__ind4d + __offs).cast<uint32_t>(), noise_seed), __d - __offs);
+                points[i>>1] = i & 1 ? points[i>>1] + __fade.w * (__curr_pt - points[i>>1]) : __curr_pt;
             }
             for (int i = 0; i < 8; i+=2)
-                points[i>>1] = points[i] + _coords.z * (points[i+1] - points[i]);
+                points[i>>1] = points[i] + __fade.z * (points[i+1] - points[i]);
             for (int i = 0; i < 4; i+=2)
-                points[i>>1] = points[i] + _coords.y * (points[i+1] - points[i]);
-            return points[0] + _coords.x * (points[1] - points[0]);
+                points[i>>1] = points[i] + __fade.y * (points[i+1] - points[i]);
+            return points[0] + __fade.x * (points[1] - points[0]);
         }
 
         NoiseSimplex::NoiseSimplex(uint32_t _noise_seed) : noise_seed{_noise_seed} {}
 
-        float NoiseSimplex::sample(vec3f _coords) {
-            vec3f __tformed   =  _coords + Math::sum(_coords) * Simplex_F3;
-            vec3i __ind3d     = __tformed.cast<int32_t>();
-            vec3f __pt_deltas = __tformed - __ind3d;
+        namespace {
+            // Axes by the offset inside the cell, the largest first (ties by the axis index): the order in which a simplex
+            // walks from the cell's origin corner to the opposite one
+            template <int N> void simplexOrder(const float *_deltas, int8_t *_order) {
+                for (int a = 0; a < N; ++a) {
+                    int __rank = 0;
+                    for (int b = 0; b < N; ++b)
+                        if (_deltas[b] > _deltas[a] || (_deltas[b] == _deltas[a] && b < a)) ++__rank;
+                    _order[__rank] = (int8_t)a;
+                }
+            }
+        }; // anonymous END
 
-            vec3i8 __axes_order{(int8_t)Math::amaxOf(__pt_deltas), 0, (int8_t)Math::aminOf(__pt_deltas)}, __p_offs{};
-            __axes_order.y = 3 - __axes_order.x - __axes_order.z;
+        float NoiseSimplex::sample(vec3f _coords) const {
+            // Skew to the cubic lattice, find the cell (floor: negative coordinates too) and the simplex inside it
+            const float __skew = Math::sum(_coords) * Simplex_F3;
+            const vec3f __skewed{ _coords + __skew };
+            const vec3i __ind3d{ (int32_t)std::floor(__skewed.x), (int32_t)std::floor(__skewed.y), (int32_t)std::floor(__skewed.z) };
+            const float __deltas[3] = { __skewed.x - float(__ind3d.x), __skewed.y - float(__ind3d.y), __skewed.z - float(__ind3d.z) };
+            int8_t __axes_order[3];
+            simplexOrder<3>(__deltas, __axes_order);
 
-            vec3f __n_coords = __ind3d + Math::sum(__ind3d) * Simplex_G3,
-                  __v_dir0   =  _coords - __n_coords;
+            // Offset from the origin corner, unskewed back to the input space
+            const float __unskew = float(Math::sum(__ind3d)) * Simplex_G3;
+            const vec3f __v_dir0{ _coords - (__ind3d - __unskew) };
 
             const float r2 = 0.5f;
             float __res = 0.f;
+            vec3i __p_offs{ 0, 0, 0 };
             for (int i = 0; i < 4; ++i) {
                 if (i) __p_offs[__axes_order[i-1]] += 1;
-                vec3f __v_dir = __v_dir0 - __p_offs + Math::sum(__p_offs) * Simplex_G3;
+                const float __corner_unskew = float(i) * Simplex_G3;
+                const vec3f __v_dir{ __v_dir0 - (__p_offs - __corner_unskew) };
                 float t = r2 - __v_dir.norm2();
                 if (t > 0.f) {
                     t *= t; t *= t;
-                    t *= getDot3f(Hash::getVecHash3(__ind3d.cast<uint32_t>(), noise_seed), __v_dir);
+                    t *= getDot3f(Hash::getVecHash3((__ind3d + __p_offs).cast<uint32_t>(), noise_seed), __v_dir);
                     __res += t;
                 }
             }
             return Simplex_M3 * __res;
         }
 
-        float NoiseSimplex::sample(vec4f _coords) {
-            vec4f __tformed   =  _coords + Math::sum(_coords) * Simplex_F4;
-            vec4i __ind4d     = __tformed.cast<int32_t>();
-            vec4f __pt_deltas = __tformed - __ind4d;
+        float NoiseSimplex::sample(vec4f _coords) const {
+            const float __skew = Math::sum(_coords) * Simplex_F4;
+            const vec4f __skewed{ _coords + __skew };
+            const vec4i __ind4d{ (int32_t)std::floor(__skewed.x), (int32_t)std::floor(__skewed.y), (int32_t)std::floor(__skewed.z),
+                                 (int32_t)std::floor(__skewed.w) };
+            const float __deltas[4] = { __skewed.x - float(__ind4d.x), __skewed.y - float(__ind4d.y), __skewed.z - float(__ind4d.z),
+                                        __skewed.w - float(__ind4d.w) };
+            int8_t __axes_order[4];
+            simplexOrder<4>(__deltas, __axes_order);
 
-            vec4i8 __axes_order{(int8_t)Math::amaxOf(__pt_deltas), 0, 0, (int8_t)Math::aminOf(__pt_deltas)}, __p_offs{};
-            if (__axes_order.x == __axes_order.w)
-                __axes_order.x = (__axes_order.x + 1) & 3;
-
-            __axes_order.y = (__axes_order.x + 1) & 3;
-            if (__axes_order.y == __axes_order.w)
-                __axes_order.y = (__axes_order.x + 3) & 3;
-
-            __axes_order.z = (__axes_order.x + 2) & 3;
-            if (__axes_order.z == __axes_order.w)
-                __axes_order.z = (__axes_order.x + 3) & 3;
-
-            if (__pt_deltas[__axes_order.y] < __pt_deltas[__axes_order.z])
-                std::swap(__axes_order.y, __axes_order.z);
-
-
-            vec4f __n_coords = __ind4d + Math::sum(__ind4d) * Simplex_G4,
-                    __v_dir0   = _coords - __n_coords;
+            const float __unskew = float(Math::sum(__ind4d)) * Simplex_G4;
+            const vec4f __v_dir0{ _coords - (__ind4d - __unskew) };
 
             const float r2 = 0.5f;
             float __res = 0.f;
+            vec4i __p_offs{ 0, 0, 0, 0 };
             for (int i = 0; i < 5; ++i) {
                 if (i) __p_offs[__axes_order[i-1]] += 1;
-                vec4f __v_dir = __v_dir0 - __p_offs + Math::sum(__p_offs) * Simplex_G3;
+                const float __corner_unskew = float(i) * Simplex_G4;
+                const vec4f __v_dir{ __v_dir0 - (__p_offs - __corner_unskew) };
                 float t = r2 - __v_dir.norm2();
                 if (t > 0.f) {
                     t *= t; t *= t;
-                    t *= getDot4f(Hash::getVecHash4(__ind4d.cast<uint32_t>(), noise_seed), __v_dir);
+                    t *= getDot4f(Hash::getVecHash4((__ind4d + __p_offs).cast<uint32_t>(), noise_seed), __v_dir);
                     __res += t;
                 }
             }

@@ -193,6 +193,11 @@ namespace Simple {
             int32_t  curve_channel = 0;
             const MMDMotion *save_path_motion = nullptr; // the motion 'save_path' was filled for
             std::string status;
+            // Mocap-like fix, stage B (see 'File::VMDMocap::chainBones')
+            std::string mocap_profile = "resources/motion/mocap_profile.json";
+            float    mocap_strength = 1.f, mocap_jitter = 1.f;
+            int32_t  mocap_seed = 1;
+            std::vector<std::string> mocap_fit; // the last fit, one line per pair
             std::string confirm_text;
             std::function<void()> confirm_action;
 

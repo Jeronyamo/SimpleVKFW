@@ -2,8 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <map>
+#include <sstream>
+
+#include "math/randvec.h"
 
 
 namespace Simple {
@@ -35,6 +40,153 @@ namespace Simple {
                     const float h4 = -4.f * u3 + 7.f * u4 - 3.f * u5;
                     const float h5 = 10.f * u3 - 15.f * u4 + 6.f * u5;
                     return h0 * _x0 + h1 * _v0 + h2 * _a0 + h3 * _a1 + h4 * _v1 + h5 * _x1;
+                }
+
+                typedef Affine::Rotation::Quaternion Quaternion;
+
+                // Bone tracks in the order of the first appearance: sorted by frame, one key per frame (the last one in the
+                // file wins, as when MMD loads it), each rotation on the hemisphere of the previous one
+                void collectTracks(const ContentVMD &_vmd, std::map<std::string, size_t> &_ids, std::vector<std::vector<BoneKeyframe>> &_tracks) {
+                    for (size_t i = 0u; i < _vmd.keyframes_bone.size(); ++i) {
+                        const std::string __name = rawName(_vmd.keyframes_bone[i]);
+                        std::map<std::string, size_t>::iterator __it = _ids.find(__name);
+                        if (__it == _ids.end()) {
+                            __it = _ids.insert(std::make_pair(__name, _tracks.size())).first;
+                            _tracks.push_back(std::vector<BoneKeyframe>());
+                        }
+                        _tracks[__it->second].push_back(_vmd.keyframes_bone[i]);
+                    }
+                    for (size_t t = 0u; t < _tracks.size(); ++t) {
+                        std::vector<BoneKeyframe> &__keys = _tracks[t];
+                        std::stable_sort(__keys.begin(), __keys.end(),
+                                         [](const BoneKeyframe &_a, const BoneKeyframe &_b) { return _a.frame_id < _b.frame_id; });
+                        size_t __n = 0u;
+                        for (size_t i = 0u; i < __keys.size(); ++i) {
+                            if (__n > 0u && __keys[__n - 1u].frame_id == __keys[i].frame_id) __keys[__n - 1u] = __keys[i];
+                            else __keys[__n++] = __keys[i];
+                        }
+                        __keys.resize(__n);
+                        for (size_t i = 1u; i < __n; ++i)
+                            if (Math::dot(__keys[i - 1u].rotation, __keys[i].rotation) < 0.f) __keys[i].rotation = -1.f * __keys[i].rotation;
+                    }
+                }
+
+                // A key of a full-key track: '_base' (name, physics switch) with linear curves
+                BoneKeyframe fullKey(const BoneKeyframe &_base, uint32_t _frame, const vec3f &_position, const Quaternion &_rotation) {
+                    ContentVMD::InterpolationInfo __linear;
+                    __linear.mov_x = __linear.mov_y = __linear.mov_z = __linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
+                    BoneKeyframe __kf = _base;
+                    __kf.frame_id = _frame;
+                    __kf.position = _position;
+                    __kf.rotation = Affine::Rotation::unitOrIdentity(_rotation);
+                    const uint8_t __flags[2] = { __kf.int_info[2], __kf.int_info[3] };
+                    ContentVMD::SetInterpolation(__kf, __linear);
+                    __kf.int_info[2] = __flags[0];
+                    __kf.int_info[3] = __flags[1];
+                    return __kf;
+                }
+
+                // The weight of the MMD curve '_c' at '_u' (linear curves, including the all-zero ones, are the identity)
+                float curveWeight(const vec4u8 &_c, float _u) {
+                    if (curveLinear(_c)) return _u;
+                    return ContentVMD::interpolateForMMD(_u, vec2f{float(_c.x), float(_c.y)}, vec2f{float(_c.z), float(_c.w)});
+                }
+
+                // A baked track: the pose at every frame from 'first' (held before the first and after the last key)
+                struct Baked {
+                    uint32_t first = 0u, last = 0u;     // the frames of the first and the last key
+                    std::vector<vec3f> position;
+                    std::vector<Quaternion> rotation;
+                };
+
+                void bake(std::vector<BoneKeyframe> &_keys, uint32_t _from, uint32_t _to, Baked &_out) {
+                    _out.first = _keys.front().frame_id;
+                    _out.last  = _keys.back ().frame_id;
+                    const size_t __count = _to - _from + 1u;
+                    _out.position.resize(__count);
+                    _out.rotation.resize(__count);
+                    size_t __k = 0u;
+                    for (size_t s = 0u; s < __count; ++s) {
+                        const uint32_t __frame = _from + (uint32_t)s;
+                        while (__k + 1u < _keys.size() && _keys[__k + 1u].frame_id <= __frame) ++__k;
+                        const BoneKeyframe &__a = _keys[__k];
+                        if (__frame <= __a.frame_id || __k + 1u == _keys.size()) {
+                            _out.position[s] = __a.position;
+                            _out.rotation[s] = __a.rotation;
+                            continue;
+                        }
+                        BoneKeyframe &__b = _keys[__k + 1u];
+                        const float __u = float(__frame - __a.frame_id) / float(__b.frame_id - __a.frame_id);
+                        const ContentVMD::InterpolationInfo __info = ContentVMD::GetInterpolation(__b);
+                        _out.position[s] = vec3f{ __a.position.x + (__b.position.x - __a.position.x) * curveWeight(__info.mov_x, __u),
+                                                  __a.position.y + (__b.position.y - __a.position.y) * curveWeight(__info.mov_y, __u),
+                                                  __a.position.z + (__b.position.z - __a.position.z) * curveWeight(__info.mov_z, __u) };
+                        _out.rotation[s] = Interpolation::Slerp::Interpolate(curveWeight(__info.rot, __u), __a.rotation, __b.rotation);
+                    }
+                    for (size_t s = 1u; s < __count; ++s)
+                        if (Math::dot(_out.rotation[s - 1u], _out.rotation[s]) < 0.f) _out.rotation[s] = -1.f * _out.rotation[s];
+                }
+
+                // Gaussian lowpass of a rotation track (componentwise, the ends held), normalized
+                void lowpass(const std::vector<Quaternion> &_in, float _sigma, std::vector<Quaternion> &_out) {
+                    const int32_t __n = (int32_t)_in.size(), __r = std::max(1, (int32_t)std::ceil(3.f * _sigma));
+                    std::vector<float> __w(2 * __r + 1);
+                    float __sum = 0.f;
+                    for (int32_t i = -__r; i <= __r; ++i) __sum += (__w[i + __r] = std::exp(-0.5f * float(i * i) / (_sigma * _sigma)));
+                    for (size_t i = 0u; i < __w.size(); ++i) __w[i] /= __sum;
+                    _out.resize(_in.size());
+                    for (int32_t t = 0; t < __n; ++t) {
+                        Quaternion __acc(0.f, 0.f, 0.f, 0.f);
+                        for (int32_t i = -__r; i <= __r; ++i)
+                            __acc = __acc + __w[i + __r] * _in[std::max(0, std::min(__n - 1, t + i))];
+                        _out[t] = Affine::Rotation::unitOrIdentity(__acc);
+                    }
+                }
+
+                // The deviation of '_in' from its trend (rotation vectors in the bone's frame)
+                void deviation(const std::vector<Quaternion> &_in, float _sigma, std::vector<vec3f> &_out) {
+                    std::vector<Quaternion> __trend;
+                    lowpass(_in, _sigma, __trend);
+                    _out.resize(_in.size());
+                    for (size_t t = 0u; t < _in.size(); ++t) _out[t] = Affine::Rotation::rotationVector(__trend[t].conjugate() * _in[t]);
+                }
+
+                // child(t) = exp(gain * dev(t - delay)) * child(t) over [_from, _to)
+                void transfer(const std::vector<vec3f> &_dev, float _gain, uint32_t _delay, size_t _from, size_t _to,
+                              const std::vector<Quaternion> &_child, std::vector<Quaternion> &_out) {
+                    _out = _child;
+                    if (_gain == 0.f) return;
+                    for (size_t t = _from; t < _to; ++t) {
+                        const vec3f &__d = _dev[t >= _from + _delay ? t - _delay : _from];
+                        _out[t] = Affine::Rotation::fromRotationVector(vec3f{ __d.x * _gain, __d.y * _gain, __d.z * _gain }) * _child[t];
+                    }
+                }
+
+                float rmsDegrees(const std::vector<vec3f> &_v) {
+                    double __sum = 0.;
+                    for (size_t t = 0u; t < _v.size(); ++t) __sum += double(_v[t].x * _v[t].x + _v[t].y * _v[t].y + _v[t].z * _v[t].z);
+                    return _v.empty() ? 0.f : float(std::sqrt(__sum / double(_v.size()))) * 57.29578f;
+                }
+
+                float meanSquareDiff(const std::vector<float> &_a, const std::vector<float> &_b) {
+                    float __sum = 0.f;
+                    for (size_t i = 0u; i < _a.size(); ++i) __sum += (_a[i] - _b[i]) * (_a[i] - _b[i]);
+                    return _a.empty() ? 0.f : __sum / float(_a.size());
+                }
+
+                std::string rawBoneName(const std::string &_name) {
+                    std::map<std::string, std::string>::const_iterator __it = ContentVMD::bone_name_mappings.find(_name);
+                    return __it != ContentVMD::bone_name_mappings.end() ? __it->second : _name;
+                }
+
+                bool readFloats(const ContentJSON::JSONNode &_node, std::vector<float> &_out) {
+                    if (_node.node_type != JSON_TYPE_ARR) return false;
+                    _out.clear();
+                    for (size_t i = 0u; i < _node.value_arr_obj.size(); ++i) {
+                        if (_node.value_arr_obj[i].node_type != JSON_TYPE_NUM) return false;
+                        _out.push_back(float(_node.value_arr_obj[i].value_num));
+                    }
+                    return true;
                 }
             }; // anonymous END
 
@@ -104,18 +256,9 @@ namespace Simple {
                     if (__it != ContentVMD::bone_name_mappings.end()) __skip_raw.push_back(__it->second);
                 }
 
-                // Tracks in the order of the first appearance
                 std::map<std::string, size_t> __track_ids;
                 std::vector<std::vector<BoneKeyframe>> __tracks;
-                for (size_t i = 0u; i < _vmd.keyframes_bone.size(); ++i) {
-                    const std::string __name = rawName(_vmd.keyframes_bone[i]);
-                    std::map<std::string, size_t>::iterator __it = __track_ids.find(__name);
-                    if (__it == __track_ids.end()) {
-                        __it = __track_ids.insert(std::make_pair(__name, __tracks.size())).first;
-                        __tracks.push_back(std::vector<BoneKeyframe>());
-                    }
-                    __tracks[__it->second].push_back(_vmd.keyframes_bone[i]);
-                }
+                collectTracks(_vmd, __track_ids, __tracks);
 
                 std::vector<BoneKeyframe> __result;
                 __result.reserve(_vmd.keyframes_bone.size());
@@ -125,18 +268,7 @@ namespace Simple {
 
                 for (size_t t = 0u; t < __tracks.size(); ++t) {
                     std::vector<BoneKeyframe> &__keys = __tracks[t];
-                    std::stable_sort(__keys.begin(), __keys.end(),
-                                     [](const BoneKeyframe &_a, const BoneKeyframe &_b) { return _a.frame_id < _b.frame_id; });
-                    // One key per frame (the last one in the file wins, as when MMD loads it)
-                    size_t __n = 0u;
-                    for (size_t i = 0u; i < __keys.size(); ++i) {
-                        if (__n > 0u && __keys[__n - 1u].frame_id == __keys[i].frame_id) __keys[__n - 1u] = __keys[i];
-                        else __keys[__n++] = __keys[i];
-                    }
-                    __keys.resize(__n);
-                    // Rotation signs: each key on the hemisphere of the previous one
-                    for (size_t i = 1u; i < __n; ++i)
-                        if (Math::dot(__keys[i - 1u].rotation, __keys[i].rotation) < 0.f) __keys[i].rotation = -1.f * __keys[i].rotation;
+                    const size_t __n = __keys.size();
 
                     const std::string __name = rawName(__keys.front());
                     bool __skip = __n < 2u || std::find(__skip_raw.begin(), __skip_raw.end(), __name) != __skip_raw.end();
@@ -207,25 +339,241 @@ namespace Simple {
                     }
 
                     // One key per frame with linear curves; name and the other bytes (physics switch) from the key in effect
-                    ContentVMD::InterpolationInfo __linear;
-                    __linear.mov_x = __linear.mov_y = __linear.mov_z = __linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
                     size_t __src = 0u;
                     for (size_t s = 0u; s < __samples[0].size(); ++s) {
                         const uint32_t __frame = __frames.front() + (uint32_t)s;
                         while (__src + 1u < __n && __frames[__src + 1u] <= __frame) ++__src;
-                        BoneKeyframe __kf = __keys[__src];
-                        __kf.frame_id = __frame;
-                        __kf.position = vec3f{ __samples[0][s], __samples[1][s], __samples[2][s] };
-                        __kf.rotation = Affine::Rotation::unitOrIdentity(Affine::Rotation::Quaternion(__samples[3][s], __samples[4][s], __samples[5][s], __samples[6][s]));
-                        const uint8_t __flags[2] = { __kf.int_info[2], __kf.int_info[3] };
-                        ContentVMD::SetInterpolation(__kf, __linear);
-                        __kf.int_info[2] = __flags[0];
-                        __kf.int_info[3] = __flags[1];
-                        __result.push_back(__kf);
+                        __result.push_back(fullKey(__keys[__src], __frame, vec3f{ __samples[0][s], __samples[1][s], __samples[2][s] },
+                                                   Quaternion(__samples[3][s], __samples[4][s], __samples[5][s], __samples[6][s])));
                     }
                     ++__report.bones_processed;
                 }
 
+                _vmd.keyframes_bone.swap(__result);
+                __report.keys_after = (uint32_t)_vmd.keyframes_bone.size();
+                return __report;
+            }
+
+            void coupling(const std::vector<Quaternion> &_parent, const std::vector<Quaternion> &_child, std::vector<float> &_out) {
+                const size_t __n = std::min(_parent.size(), _child.size());
+                std::vector<vec3f> __wp(__n > 0u ? __n - 1u : 0u), __wc(__wp.size());
+                for (size_t t = 0u; t + 1u < __n; ++t) {
+                    __wp[t] = Affine::Rotation::rotationVector(_parent[t].conjugate() * _parent[t + 1u]);
+                    __wc[t] = _child[t].rotateByUnit(Affine::Rotation::rotationVector(_child[t].conjugate() * _child[t + 1u]));
+                }
+                for (size_t l = 0u; l < _out.size(); ++l) {
+                    double __ab = 0., __aa = 0., __bb = 0.;
+                    for (size_t t = 0u; t + l < __wp.size(); ++t) {
+                        const vec3f &__a = __wp[t], &__b = __wc[t + l];
+                        __ab += double(__a.x * __b.x + __a.y * __b.y + __a.z * __b.z);
+                        __aa += double(__a.x * __a.x + __a.y * __a.y + __a.z * __a.z);
+                        __bb += double(__b.x * __b.x + __b.y * __b.y + __b.z * __b.z);
+                    }
+                    _out[l] = __aa > 0. && __bb > 0. ? float(__ab / std::sqrt(__aa * __bb)) : 0.f;
+                }
+            }
+
+
+            bool loadChainProfile(const std::string &_path, ChainProfile &_out, std::string &_error) {
+                std::ifstream __file(_path.c_str(), std::ios::binary);
+                if (!__file) { _error = "Could not open '" + _path + "'"; return false; }
+                std::stringstream __text;
+                __text << __file.rdbuf();
+                const std::string __str = __text.str();
+                ContentJSON __json;
+                __json.readFromString(__str.c_str());
+                const ContentJSON::JSONNode &__root = __json.root_node;
+                const ContentJSON::JSONNode *__chain = __root.find("chain");
+                const ContentJSON::JSONNode *__pairs = __chain != nullptr ? __chain->find("pairs") : nullptr;
+                if (__pairs == nullptr || __pairs->node_type != JSON_TYPE_ARR) { _error = "'" + _path + "' has no \"chain\": {\"pairs\": [...]}"; return false; }
+
+                ChainProfile __profile;
+                for (size_t i = 0u; i < __pairs->value_arr_obj.size(); ++i) {
+                    const ContentJSON::JSONNode &__p = __pairs->value_arr_obj[i];
+                    const ContentJSON::JSONNode *__target = __p.find("target");
+                    ChainPair __pair;
+                    __pair.parent = __p.getStr("parent", "");
+                    __pair.child  = __p.getStr("child",  "");
+                    if (__pair.parent.empty() || __pair.child.empty() || __target == nullptr || !readFloats(*__target, __pair.target) || __pair.target.empty()) {
+                        _error = "'" + _path + "': chain pair " + std::to_string(i) + " needs \"parent\", \"child\" and \"target\"";
+                        return false;
+                    }
+                    __profile.pairs.push_back(__pair);
+                }
+                std::vector<float> __values;
+                const ContentJSON::JSONNode *__node;
+                if ((__node = __chain->find("gains" )) != nullptr && readFloats(*__node, __values) && !__values.empty()) __profile.gains  = __values;
+                if ((__node = __chain->find("sigmas")) != nullptr && readFloats(*__node, __values) && !__values.empty()) __profile.sigmas = __values;
+                __profile.max_added_deg = float(__chain->getNum("max_added_deg", double(__profile.max_added_deg)));
+                if ((__node = __chain->find("delays")) != nullptr && readFloats(*__node, __values) && !__values.empty()) {
+                    __profile.delays.clear();
+                    for (size_t i = 0u; i < __values.size(); ++i) __profile.delays.push_back((uint32_t)std::max(0.f, __values[i]));
+                }
+                const ContentJSON::JSONNode *__jitter = __root.find("jitter");
+                if (__jitter != nullptr) {
+                    __profile.jitter_frames = float(__jitter->getNum("frames", double(__profile.jitter_frames)));
+                    __profile.jitter_rate   = float(__jitter->getNum("rate",   double(__profile.jitter_rate)));
+                    const ContentJSON::JSONNode *__bones = __jitter->find("bones");
+                    if (__bones != nullptr && __bones->node_type == JSON_TYPE_ARR)
+                        for (size_t i = 0u; i < __bones->value_arr_obj.size(); ++i)
+                            if (__bones->value_arr_obj[i].node_type == JSON_TYPE_STR) __profile.jitter_bones.push_back(__bones->value_arr_obj[i].value_str);
+                }
+                _out = __profile;
+                return true;
+            }
+
+
+            ChainReport chainBones(ContentVMD &_vmd, const ChainProfile &_profile, const ChainSettings &_settings) {
+                ChainReport __report;
+                __report.keys_before = (uint32_t)_vmd.keyframes_bone.size();
+
+                std::map<std::string, size_t> __track_ids;
+                std::vector<std::vector<BoneKeyframe>> __tracks;
+                collectTracks(_vmd, __track_ids, __tracks);
+
+                // The tracks involved (raw names) and the frames they cover
+                struct Use { size_t track; std::string raw; };
+                std::vector<std::pair<size_t, size_t>> __pairs;  // indices in '__used' of parent and child
+                std::vector<size_t> __pair_ids;                  // in '_profile.pairs'
+                std::vector<size_t> __jitter;                    // indices in '__used'
+                std::vector<Use> __used;
+                const auto __use = [&](const std::string &_name) -> int64_t {
+                    const std::string __raw = rawBoneName(_name);
+                    std::map<std::string, size_t>::const_iterator __it = __track_ids.find(__raw);
+                    if (__it == __track_ids.end() || __tracks[__it->second].empty()) return -1;
+                    for (size_t i = 0u; i < __used.size(); ++i) if (__used[i].track == __it->second) return (int64_t)i;
+                    __used.push_back(Use{ __it->second, __raw });
+                    return (int64_t)__used.size() - 1;
+                };
+                for (size_t p = 0u; p < _profile.pairs.size(); ++p) {
+                    const int64_t __a = __use(_profile.pairs[p].parent), __b = __use(_profile.pairs[p].child);
+                    if (__a < 0 || __b < 0 || __a == __b) continue;
+                    __pairs.push_back(std::make_pair((size_t)__a, (size_t)__b));
+                    __pair_ids.push_back(p);
+                }
+                const float __jitter_frames = _profile.jitter_frames * _settings.jitter;
+                if (__jitter_frames > 0.f)
+                    for (size_t j = 0u; j < _profile.jitter_bones.size(); ++j) {
+                        const int64_t __b = __use(_profile.jitter_bones[j]);
+                        if (__b >= 0 && std::find(__jitter.begin(), __jitter.end(), (size_t)__b) == __jitter.end()) __jitter.push_back((size_t)__b);
+                    }
+                if (__used.empty()) { __report.keys_after = __report.keys_before; return __report; }
+
+                uint32_t __from = UINT32_MAX, __to = 0u;
+                for (size_t i = 0u; i < __used.size(); ++i) {
+                    __from = std::min(__from, __tracks[__used[i].track].front().frame_id);
+                    __to   = std::max(__to,   __tracks[__used[i].track].back ().frame_id);
+                }
+                std::vector<Baked> __orig(__used.size());
+                for (size_t i = 0u; i < __used.size(); ++i) bake(__tracks[__used[i].track], __from, __to, __orig[i]);
+                std::vector<std::vector<Quaternion>> __rot(__used.size());
+                for (size_t i = 0u; i < __used.size(); ++i) __rot[i] = __orig[i].rotation;
+                std::vector<uint8_t> __changed(__used.size(), 0u);
+
+                // Pairs from the root: fit on the frames both bones have keys for, against the parent as changed by its own pair
+                const float __strength = std::max(0.f, _settings.strength);
+                std::vector<float> __coup;
+                std::vector<vec3f> __dev;
+                std::vector<Quaternion> __trial;
+                for (size_t p = 0u; p < __pairs.size(); ++p) {
+                    const ChainPair &__pair = _profile.pairs[__pair_ids[p]];
+                    const Baked &__parent = __orig[__pairs[p].first];
+                    const size_t __child = __pairs[p].second;
+                    const size_t __lo = std::max(__parent.first, __orig[__child].first) - __from;
+                    const size_t __hi = std::min(__parent.last,  __orig[__child].last ) - __from + 1u;
+                    ChainPairReport __rep;
+                    __rep.parent = __pair.parent;
+                    __rep.child  = __pair.child;
+                    __coup.resize(__pair.target.size());
+                    if (__hi < __lo + 2u * __coup.size() + 2u) continue; // too short to tell
+                    const std::vector<Quaternion> __p_win(__rot[__pairs[p].first].begin() + __lo, __rot[__pairs[p].first].begin() + __hi);
+                    const std::vector<Quaternion> __c_win(__rot[__child].begin() + __lo, __rot[__child].begin() + __hi);
+                    coupling(__p_win, __c_win, __coup);
+                    __rep.error_before = __rep.error_after = meanSquareDiff(__coup, __pair.target);
+                    std::vector<vec3f> __best_dev;
+                    for (size_t si = 0u; si < _profile.sigmas.size(); ++si) {
+                        deviation(__p_win, std::max(1.f, _profile.sigmas[si]), __dev);
+                        const float __dev_deg = rmsDegrees(__dev);
+                        for (size_t di = 0u; di < _profile.delays.size(); ++di)
+                            for (size_t gi = 0u; gi < _profile.gains.size(); ++gi) {
+                                if (_profile.gains[gi] <= 0.f || _profile.gains[gi] * __strength * __dev_deg > _profile.max_added_deg) continue;
+                                transfer(__dev, _profile.gains[gi], _profile.delays[di], 0u, __dev.size(), __c_win, __trial);
+                                coupling(__p_win, __trial, __coup);
+                                const float __err = meanSquareDiff(__coup, __pair.target);
+                                if (__err < __rep.error_after) {
+                                    __rep.error_after = __err;
+                                    __rep.gain  = _profile.gains[gi];
+                                    __rep.delay = _profile.delays[di];
+                                    __rep.sigma = _profile.sigmas[si];
+                                    __best_dev  = __dev;
+                                }
+                            }
+                    }
+                    __rep.gain *= __strength;
+                    if (__rep.gain > 0.f) {
+                        // Applied over all the frames of the pair's window; the rotation added is 'gain * dev'
+                        transfer(__best_dev, __rep.gain, __rep.delay, 0u, __best_dev.size(), __c_win, __trial);
+                        for (size_t t = 0u; t < __trial.size(); ++t) __rot[__child][__lo + t] = __trial[t];
+                        __rep.added_deg = rmsDegrees(__best_dev) * __rep.gain;
+                        if (__strength != 1.f) {
+                            coupling(__p_win, __trial, __coup);
+                            __rep.error_after = meanSquareDiff(__coup, __pair.target);
+                        }
+                        __changed[__child] = 1u;
+                    } else __rep.error_after = __rep.error_before;
+                    __report.pairs.push_back(__rep);
+                }
+
+                // Timing jitter: each bone is sampled at t + tau(t), tau smooth noise with the rms 'jitter_frames'
+                std::vector<std::vector<vec3f>> __pos(__used.size());
+                for (size_t i = 0u; i < __used.size(); ++i) __pos[i] = __orig[i].position;
+                const Noise::NoisePerlin __noise(_settings.seed);
+                const size_t __count = __to - __from + 1u;
+                std::vector<float> __tau(__count);
+                for (size_t j = 0u; j < __jitter.size(); ++j) {
+                    const size_t __b = __jitter[j];
+                    double __sum = 0.;
+                    for (size_t t = 0u; t < __count; ++t) {
+                        // Note: off the lattice (gradient noise is 0 on it); every bone along its own line
+                        __tau[t] = __noise.sample(vec4f{ float(__from + t) * _profile.jitter_rate / 30.f, 0.5f + 7.31f * float(j), 0.37f, 0.71f });
+                        __sum += double(__tau[t]) * double(__tau[t]);
+                    }
+                    const float __rms = float(std::sqrt(__sum / double(__count)));
+                    if (__rms <= 1e-6f) continue;
+                    const float __scale = __jitter_frames / __rms;
+                    const std::vector<Quaternion> __src_rot = __rot[__b];
+                    const std::vector<vec3f>      __src_pos = __pos[__b];
+                    for (size_t t = 0u; t < __count; ++t) {
+                        const float __at = std::max(0.f, std::min(float(__count - 1u), float(t) + __tau[t] * __scale));
+                        const size_t __i0 = std::min((size_t)__at, __count - 1u), __i1 = std::min(__i0 + 1u, __count - 1u);
+                        const float __u = __at - float(__i0);
+                        __rot[__b][t] = Interpolation::Slerp::Interpolate(__u, __src_rot[__i0], __src_rot[__i1]);
+                        __pos[__b][t] = vec3f{ __src_pos[__i0].x + (__src_pos[__i1].x - __src_pos[__i0].x) * __u,
+                                               __src_pos[__i0].y + (__src_pos[__i1].y - __src_pos[__i0].y) * __u,
+                                               __src_pos[__i0].z + (__src_pos[__i1].z - __src_pos[__i0].z) * __u };
+                    }
+                    __changed[__b] = 1u;
+                    ++__report.bones_jittered;
+                }
+
+                // The changed tracks get one key per frame over [__from, __to]
+                std::vector<uint8_t> __replace(__tracks.size(), 0u);
+                for (size_t i = 0u; i < __used.size(); ++i) __replace[__used[i].track] = __changed[i];
+                std::vector<BoneKeyframe> __result;
+                __result.reserve(_vmd.keyframes_bone.size() + __count * __used.size());
+                for (size_t t = 0u; t < __tracks.size(); ++t)
+                    if (!__replace[t]) __result.insert(__result.end(), __tracks[t].begin(), __tracks[t].end());
+                for (size_t i = 0u; i < __used.size(); ++i) {
+                    if (!__changed[i]) continue;
+                    const std::vector<BoneKeyframe> &__keys = __tracks[__used[i].track];
+                    size_t __src = 0u;
+                    for (size_t t = 0u; t < __count; ++t) {
+                        const uint32_t __frame = __from + (uint32_t)t;
+                        while (__src + 1u < __keys.size() && __keys[__src + 1u].frame_id <= __frame) ++__src;
+                        __result.push_back(fullKey(__keys[__src], __frame, __pos[i][t], __rot[i][t]));
+                    }
+                    ++__report.bones_written;
+                }
                 _vmd.keyframes_bone.swap(__result);
                 __report.keys_after = (uint32_t)_vmd.keyframes_bone.size();
                 return __report;

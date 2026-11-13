@@ -8,6 +8,7 @@
 
 // What to test
 #include "math/vectors.h"
+#include "math/randvec.h"
 #include "main/image.h"
 #include "sound/player.h"
 #include "sound/tracker.h"
@@ -136,6 +137,34 @@ namespace Simple {
         const Quat q(vec3{0.f, 0.f, 1.f}, 0.7f);
         const mat4 r = rigidTransform(q, {1.f, 2.f, 3.f});
         Test::testAssert((transformPoint(r, {1.f, 0.f, 0.f}) - (q.rotateByUnit({1.f, 0.f, 0.f}) + vec3{1.f, 2.f, 3.f})).norm() < 1e-5f, "rigidTransform");
+    }
+
+    SVKFW_ADD_TEST(NoiseSmooth, "Noise: Perlin and simplex are continuous, in [-1, 1], not flat, negative coordinates too") {
+        const Noise::NoisePerlin perlin(7u);
+        const Noise::NoiseSimplex simplex(7u);
+        const float step = 0.001f;
+        float max_abs[3] = { 0.f, 0.f, 0.f }, max_step[3] = { 0.f, 0.f, 0.f }, prev[3] = { 0.f, 0.f, 0.f };
+        double sum2[3] = { 0., 0., 0. };
+        int count = 0;
+        for (float t = -40.f; t < 40.f; t += step, ++count) {
+            // A line through all the axes, crossing the cells and the simplices at odd angles
+            const vec4f c4{ 0.61f * t, 0.37f * t - 3.f, -0.53f * t + 0.2f, 0.29f * t + 1.1f };
+            const float v[3] = { perlin.sample(c4), simplex.sample(vec3f{ c4.x, c4.y, c4.z }), simplex.sample(c4) };
+            for (int n = 0; n < 3; ++n) {
+                max_abs[n] = std::max(max_abs[n], std::fabs(v[n]));
+                if (count > 0) max_step[n] = std::max(max_step[n], std::fabs(v[n] - prev[n]));
+                sum2[n] += double(v[n]) * double(v[n]);
+                prev[n] = v[n];
+            }
+        }
+        const char *names[3] = { "Perlin 4D", "simplex 3D", "simplex 4D" };
+        for (int n = 0; n < 3; ++n) {
+            const float rms = float(std::sqrt(sum2[n] / double(count)));
+            Test::testAssert(max_abs[n] <= 1.05f && rms > 0.1f, std::string(names[n]) + ": range " + std::to_string(max_abs[n]) + ", rms " + std::to_string(rms));
+            // Smooth noise changes by at most a few units per unit of distance
+            Test::testAssert(max_step[n] < 10.f * step, std::string(names[n]) + ": no jumps, max step " + std::to_string(max_step[n]));
+        }
+        Test::testAssert(Noise::NoisePerlin(8u).sample(vec4f{ 0.3f, 0.4f, 0.5f, 0.6f }) != perlin.sample(vec4f{ 0.3f, 0.4f, 0.5f, 0.6f }), "the seed changes the noise");
     }
 
 #undef  SVKFW_TEST_GROUP
@@ -1042,6 +1071,74 @@ namespace Simple {
         float pos_hold_err = 0.f;
         for (uint32_t f = 12u; f <= 30u; ++f) pos_hold_err = std::max(pos_hold_err, std::fabs(vmd.keyframes_bone[f].position.y - 1.2f));
         Test::testAssert(pos_hold_err < 1e-6f, "position hold kept while the rotation moves, error " + std::to_string(pos_hold_err));
+    }
+
+    SVKFW_ADD_TEST(VMDMocapChain, "VMD: mocap-like chain transfer moves the coupling to the profile, jitter stays smooth") {
+        typedef File::ContentVMD VMD;
+        typedef Affine::Rotation::Quaternion Quaternion;
+        VMD::InterpolationInfo linear;
+        linear.mov_x = linear.mov_y = linear.mov_z = linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
+        const auto addKey = [&](VMD &_vmd, const std::string &_name, uint32_t _frame, const vec3 &_axis, float _angle) {
+            VMD::BoneKeyframe kf{};
+            const std::string raw = VMD::bone_name_mappings.at(_name);
+            strncpy(kf.bone_name, raw.c_str(), sizeof(kf.bone_name) - 1u);
+            kf.frame_id = _frame;
+            kf.rotation = Quaternion(_axis, _angle);
+            VMD::SetInterpolation(kf, linear);
+            _vmd.keyframes_bone.push_back(kf);
+        };
+        // Parent: a sway around Y keyed every 7 frames; child: its own nod around X keyed every 9 frames (no coupling)
+        const vec3 axis_y{0.f, 1.f, 0.f}, axis_x{1.f, 0.f, 0.f};
+        VMD vmd;
+        for (uint32_t f = 0u; f <= 210u; f += 7u) addKey(vmd, "spine",  f, axis_y, 0.3f * std::sin(6.2831853f * float(f) / 40.f));
+        for (uint32_t f = 0u; f <= 207u; f += 9u) addKey(vmd, "spine2", f, axis_x, 0.4f * std::sin(6.2831853f * float(f) / 27.f + 1.f));
+
+        std::vector<Quaternion> sway(211u);
+        for (size_t f = 0u; f < sway.size(); ++f) sway[f] = Quaternion(vec3{0.f, 1.f, 0.f}, 0.3f * std::sin(6.2831853f * float(f) / 40.f));
+        std::vector<float> self(3u);
+        File::VMDMocap::coupling(sway, sway, self);
+        Test::testAssert(std::fabs(self[0] - 1.f) < 1e-3f, "a bone turning with its parent: coupling 1, got " + std::to_string(self[0]));
+
+        File::VMDMocap::ChainProfile profile;
+        File::VMDMocap::ChainPair pair;
+        pair.parent = "spine";
+        pair.child  = "spine2";
+        pair.target = { 0.4f, 0.4f, 0.35f, 0.3f, 0.2f, 0.1f, 0.05f };
+        profile.pairs.push_back(pair);
+        File::VMDMocap::ChainSettings settings;
+        settings.jitter = 0.f;
+
+        VMD off = vmd;
+        settings.strength = 0.f;
+        const File::VMDMocap::ChainReport rep_off = File::VMDMocap::chainBones(off, profile, settings);
+        Test::testAssert(rep_off.bones_written == 0u && off.keyframes_bone.size() == vmd.keyframes_bone.size(), "strength 0 changes nothing");
+
+        settings.strength = 1.f;
+        const File::VMDMocap::ChainReport rep = File::VMDMocap::chainBones(vmd, profile, settings);
+        Test::testAssert(rep.pairs.size() == 1u && rep.pairs[0].gain > 0.f, "the pair is fitted");
+        Test::testAssert(rep.pairs[0].error_after < 0.5f * rep.pairs[0].error_before,
+                         "coupling closer to the profile: " + std::to_string(rep.pairs[0].error_before) + " -> " + std::to_string(rep.pairs[0].error_after));
+        Test::testAssert(rep.pairs[0].added_deg <= profile.max_added_deg + 1e-3f, "added rotation bounded, " + std::to_string(rep.pairs[0].added_deg) + " deg");
+        Test::testAssert(rep.bones_written == 1u && vmd.keyframes_bone.size() == 31u + 211u, "the child gets one key per frame, keys " + std::to_string(vmd.keyframes_bone.size()));
+
+        // Jitter only: the parent is played a little ahead or behind, without jumps
+        VMD jit;
+        for (uint32_t f = 0u; f <= 210u; f += 7u) addKey(jit, "spine", f, axis_y, 0.3f * std::sin(6.2831853f * float(f) / 40.f));
+        File::VMDMocap::ChainProfile jitter_profile;
+        jitter_profile.jitter_bones = { "spine" };
+        settings.jitter = 1.f;
+        const File::VMDMocap::ChainReport rep_jit = File::VMDMocap::chainBones(jit, jitter_profile, settings);
+        Test::testAssert(rep_jit.bones_jittered == 1u && jit.keyframes_bone.size() == 211u, "jittered bone gets one key per frame");
+        float max_step = 0.f, max_shift = 0.f;
+        for (size_t f = 1u; f < jit.keyframes_bone.size(); ++f) {
+            const float a0 = Affine::Rotation::rotationVector(jit.keyframes_bone[f - 1u].rotation).y;
+            const float a1 = Affine::Rotation::rotationVector(jit.keyframes_bone[f].rotation).y;
+            max_step  = std::max(max_step, std::fabs(a1 - a0));
+            max_shift = std::max(max_shift, std::fabs(a1 - Affine::Rotation::rotationVector(sway[f]).y));
+        }
+        // The sway moves at most 0.047 rad per frame
+        Test::testAssert(max_step < 0.08f, "no jumps, max step " + std::to_string(max_step));
+        Test::testAssert(max_shift > 0.005f && max_shift < 0.2f, "shifted in time by a little, max change " + std::to_string(max_shift));
     }
 
 #undef  SVKFW_TEST_GROUP

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "about": "Mocap-like fix of hand-keyed VMD motions, stage B. 'target': coupling of the angular velocities of parent and child at the lags 0..6 frames (child later), mean of 4 captured dance motions (IA Conqueror full key, Hibikase, Rabbit hole, kamippoina; left and right pooled). Measured once, the donors are not needed at run time",
+  "chain": {
+    "gains": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+    "delays": [0, 1, 2, 3],
+    "sigmas": [10, 20],
+    "max_added_deg": 6,
+    "pairs": [
+      { "parent": "spine", "child": "spine2", "target": [0.16, 0.16, 0.15, 0.12, 0.07, 0.04, 0.01] },
+      { "parent": "spine2", "child": "neck", "target": [0.08, 0.09, 0.08, 0.04, -0.02, -0.06, -0.08] },
+      { "parent": "neck", "child": "head", "target": [0.34, 0.32, 0.28, 0.19, 0.10, 0.02, -0.02] },
+      { "parent": "spine2", "child": "shoulder_r", "target": [0.29, 0.27, 0.20, 0.12, 0.05, 0.00, -0.04] },
+      { "parent": "spine2", "child": "shoulder_l", "target": [0.29, 0.27, 0.20, 0.12, 0.05, 0.00, -0.04] },
+      { "parent": "shoulder_r", "child": "uparm_r", "target": [0.13, 0.20, 0.24, 0.21, 0.15, 0.08, 0.02] },
+      { "parent": "shoulder_l", "child": "uparm_l", "target": [0.13, 0.20, 0.24, 0.21, 0.15, 0.08, 0.02] },
+      { "parent": "uparm_r", "child": "lowarm_r", "target": [-0.05, -0.01, 0.05, 0.08, 0.08, 0.06, 0.04] },
+      { "parent": "uparm_l", "child": "lowarm_l", "target": [-0.05, -0.01, 0.05, 0.08, 0.08, 0.06, 0.04] },
+      { "parent": "lowarm_r", "child": "hand_r", "target": [0.17, 0.15, 0.10, 0.05, 0.01, -0.02, -0.03] },
+      { "parent": "lowarm_l", "child": "hand_l", "target": [0.17, 0.15, 0.10, 0.05, 0.01, -0.02, -0.03] }
+    ]
+  },
+  "jitter": {
+    "frames": 0.6,
+    "rate": 0.8,
+    "bones": ["spine2", "neck", "head", "shoulder_r", "shoulder_l", "uparm_r", "uparm_l", "lowarm_r", "lowarm_l", "hand_r", "hand_l"]
+  }
+}
