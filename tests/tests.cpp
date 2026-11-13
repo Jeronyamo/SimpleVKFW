@@ -13,6 +13,7 @@
 #include "sound/tracker.h"
 #include "interface/rtaudio_wrap.h"
 #include "data/codecs.h"
+#include "data/vmd_mocap.h"
 #include "core/etcs_base.h"
 #include "core/event_handler.h"
 #include "systems/physics.h"
@@ -989,6 +990,58 @@ namespace Simple {
                                    scene.world[part].M[0][2] * scene.world[part].M[0][2] - 0.25f) < 1e-3f, "the node keeps its scale");
         bodies.clear();
         Test::testAssert(!ecs.isValid(body) && !ecs.isValid(model) && bodies.modelCount() == 0u, "'clear' removes the model and its bodies");
+    }
+
+#undef  SVKFW_TEST_GROUP
+#define SVKFW_TEST_GROUP "VMD"
+
+    SVKFW_ADD_TEST(VMDMocapSmooth, "VMD: mocap-like smoothing keeps poses, holds and cuts") {
+        typedef File::ContentVMD VMD;
+        VMD vmd;
+        const std::string bone = VMD::bone_name_mappings.at("lowarm_r");
+        VMD::InterpolationInfo linear;
+        linear.mov_x = linear.mov_y = linear.mov_z = linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
+        // Frames: 0 -> 6 -> 12 move, 12 -> 20 hold, 20 -> 21 cut, 21 -> 30 move
+        const uint32_t frames[6] = { 0u, 6u, 12u, 20u, 21u, 30u };
+        const float angles[6] = { 0.f, 0.5f, 1.2f, 1.2f, 0.2f, 0.6f };
+        for (int i = 0; i < 6; ++i) {
+            VMD::BoneKeyframe kf{};
+            strncpy(kf.bone_name, bone.c_str(), sizeof(kf.bone_name) - 1u);
+            kf.frame_id = frames[i];
+            kf.rotation = Affine::Rotation::Quaternion(vec3{0.f, 0.f, 1.f}, angles[i]);
+            kf.position = vec3f{ 0.f, frames[i] < 12u ? float(frames[i]) * 0.1f : 1.2f, 0.f };
+            VMD::SetInterpolation(kf, linear);
+            vmd.keyframes_bone.push_back(kf);
+        }
+        const File::VMDMocap::Report rep = File::VMDMocap::smoothBones(vmd);
+        Test::testAssert(rep.bones_processed == 1u && vmd.keyframes_bone.size() == 31u, "one key per frame, keys " + std::to_string(vmd.keyframes_bone.size()));
+
+        std::vector<float> angle(31u);
+        bool sorted = true;
+        for (size_t i = 0u; i < vmd.keyframes_bone.size(); ++i) {
+            const VMD::BoneKeyframe &kf = vmd.keyframes_bone[i];
+            sorted = sorted && kf.frame_id == i;
+            angle[i] = Affine::Rotation::rotationVector(kf.rotation).z; // signed angle around Z
+        }
+        Test::testAssert(sorted, "keys are at frames 0..30");
+        float key_err = 0.f;
+        for (int i = 0; i < 6; ++i) key_err = std::max(key_err, std::fabs(angle[frames[i]] - angles[i]));
+        Test::testAssert(key_err < 1e-4f, "key poses kept, error " + std::to_string(key_err));
+        float hold_err = 0.f;
+        for (uint32_t f = 12u; f <= 20u; ++f) hold_err = std::max(hold_err, std::fabs(angle[f] - 1.2f));
+        Test::testAssert(hold_err < 1e-4f, "hold kept, error " + std::to_string(hold_err));
+        // No velocity break at the key 6: one-sided second order derivatives from both sides agree (the linear motion jumps
+        // from 0.083 to 0.117 rad per frame there)
+        const float v_left  = 0.5f * ( 3.f * angle[6] - 4.f * angle[5] + angle[4]);
+        const float v_right = 0.5f * (-3.f * angle[6] + 4.f * angle[7] - angle[8]);
+        Test::testAssert(std::fabs(v_right - v_left) < 0.005f, "no velocity break at a key: " + std::to_string(v_left) + " vs " + std::to_string(v_right));
+        // Eases into the hold, no overshoot past it
+        float max_angle = 0.f;
+        for (uint32_t f = 0u; f <= 20u; ++f) max_angle = std::max(max_angle, angle[f]);
+        Test::testAssert(max_angle < 1.2f + 1e-4f && angle[11] > 1.15f, "eases into the hold without overshoot");
+        float pos_hold_err = 0.f;
+        for (uint32_t f = 12u; f <= 30u; ++f) pos_hold_err = std::max(pos_hold_err, std::fabs(vmd.keyframes_bone[f].position.y - 1.2f));
+        Test::testAssert(pos_hold_err < 1e-6f, "position hold kept while the rotation moves, error " + std::to_string(pos_hold_err));
     }
 
 #undef  SVKFW_TEST_GROUP

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <stdexcept>
 
+#include "data/vmd_mocap.h"
 #include "platform_dependent/pd_encoding.h"
 #include "scene/scene_pmx.h"
 #include "sound/player.h"
@@ -970,11 +971,18 @@ namespace Simple {
                         }
                         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Keeps the blink morph in [0.01, 0.99]");
                         ImGui::SameLine();
-                        if (ImGui::Button("Reinterpolate bones")) {
+                        if (ImGui::Button("Mocap: smooth")) {
                             __motion->beginEdit();
-                            __motion->vmd.reinterpolateBones();
+                            const File::VMDMocap::Report __rep = File::VMDMocap::smoothBones(__motion->vmd);
                             motionChanged_(*__motion);
+                            char __buf[160];
+                            snprintf(__buf, sizeof(__buf), "Mocap smooth: %u bones (%u left as is), bone keys %u -> %u",
+                                     __rep.bones_processed, __rep.bones_skipped, __rep.keys_before, __rep.keys_after);
+                            status = __buf;
                         }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Stage A of the mocap-like fix: smooth (C2) curves through the key poses, one key per frame.\n"
+                                              "Key poses, holds and 1-frame cuts are kept; non-linear Bezier segments keep their curve");
                     } else if (ImGui::Button("Reinterpolate camera")) {
                         __motion->beginEdit();
                         __motion->vmd.reinterpolateCamera();
