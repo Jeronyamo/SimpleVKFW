@@ -38,6 +38,8 @@ namespace Simple {
         //       mmd.update(frame_time);                                  // each frame, before the animation phase
         //       ... time.sim_dt = mmd.sim_dt; engine.runPhase(...) ...   // simulations follow the playback
         //       mmd.applyCamera(camera.proj_class, view, proj);          // the VMD camera, if one is loaded and on
+        //       if (mmd.sequenceCapture(file)) capture.request(..., file);  // frame sequence: the image of this frame
+        //       ... after the fence of that frame: capture.save(...) -> mmd.sequenceSaved();
         //
         //       Events (simulations such as 'Physics::SceneBodies' listen to them, no direct calls):
         //         EV_TYPE_SCENE_MODEL_ADDED  a model was loaded (or added again by a rebuild), dispatched immediately;
@@ -114,6 +116,31 @@ namespace Simple {
         }; // MMDModel END
 
 
+        // Frame sequence rendering ("Render frames" in the scene window): the MMD frames [first, last] sampled at 'fps' (30: an
+        // image per MMD frame, 120: four), one PNG of the scene (without the UI) per sample in a new folder of 'root'. If 'last'
+        // is the second of two camera keys on adjacent frames (a camera cut), the samples stop before it, so the last MMD frame
+        // keeps all its samples and none shows the new shot. The time moves on only after the image of a sample is written, so
+        // the result doesn't depend on the rendering speed; the simulations step 1 / fps seconds per sample and start from a
+        // reset at the first sample ('preroll' MMD frames before 'first' are simulated without images)
+        struct MMDFrameSequence {
+            int32_t     first = 0, last = 0;      // MMD frames (30 per second)
+            int32_t     fps = 60;
+            int32_t     preroll = 0;
+            std::string root = "out/screenshots";
+
+        // Run state
+            bool        active = false;
+            bool        waiting = false;          // the image of the current sample is being taken
+            uint32_t    index = 0u;               // the current sample, preroll samples first
+            uint32_t    preroll_samples = 0u, image_count = 0u;
+            std::string directory;                // the folder of this run
+
+            uint32_t total() const { return preroll_samples + image_count; }
+            // MMD frame of the sample '_index' (negative for preroll samples before frame 0)
+            double time(uint32_t _index) const;
+        }; // MMDFrameSequence END
+
+
         struct MMDStudio : ImGUI::WidgetItf {
             enum TrackType { TRACK_NONE = 0, TRACK_BONE, TRACK_MORPH, TRACK_CAMERA };
 
@@ -144,6 +171,7 @@ namespace Simple {
             float                   fps = 30.f;
             double                  play_clock = 0.;    // seconds since the start of playback (without audio)
             float                   play_start = 0.f;
+            MMDFrameSequence        sequence;
 
         // UI state
             bool show_scene = false, show_timeline = false, show_keyframe = false;
@@ -201,6 +229,16 @@ namespace Simple {
             void stop();
             float length() const; // frames: the longest motion or the audio
 
+            // Frame sequence (see 'MMDFrameSequence'): 'startSequence' stops the playback and makes the folder (false and
+            // '_error' if it can't); call 'sequenceCapture' after 'update' each frame: true when this frame's scene must be saved
+            // to '_file'; 'sequenceSaved' when that file is written
+            bool startSequence(std::string &_error);
+            void cancelSequence();
+            bool sequenceCapture(std::string &_file);
+            void sequenceSaved();
+            // The camera motion cuts at '_frame': it has keys on '_frame - 1' and '_frame' (and is used)
+            bool cameraCutAt(int32_t _frame) const;
+
             virtual bool      begin() override;
             virtual void        end() override;
             virtual void     render() override;
@@ -208,6 +246,7 @@ namespace Simple {
 
         // Windows
             void windowScene();
+            void sequenceUI_();
             void windowTimeline();
             void windowKeyframe();
 

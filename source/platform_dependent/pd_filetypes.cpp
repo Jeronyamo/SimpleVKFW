@@ -257,5 +257,30 @@ namespace Simple {
             std::sort(__res.begin(), __res.end());
             return __res;
         }
+
+        bool makeDirectories(const std::string &_dir) {
+            std::string __dir = _dir;
+            std::replace(__dir.begin(), __dir.end(), '\\', '/');
+            while (__dir.size() > 1u && __dir[__dir.size() - 1u] == '/') __dir.erase(__dir.size() - 1u);
+            if (__dir.empty()) return false;
+            // Each prefix that ends before a '/' (the drive "C:" and the root fail harmlessly), then the whole path
+            bool __ok = false;
+            for (size_t __pos = 0u; __pos != std::string::npos; ) {
+                __pos = __dir.find('/', __pos + 1u);
+                const std::string __part = __dir.substr(0u, __pos);
+#ifdef WIN32
+                const int __wsize = MultiByteToWideChar(CP_UTF8, 0, __part.c_str(), -1, NULL, 0);
+                std::vector<wchar_t> __wpart(size_t(std::max(__wsize, 1)), L'\0');
+                MultiByteToWideChar(CP_UTF8, 0, __part.c_str(), -1, __wpart.data(), __wsize);
+                const DWORD __attr = GetFileAttributesW(__wpart.data());
+                __ok = __attr != INVALID_FILE_ATTRIBUTES ? (__attr & FILE_ATTRIBUTE_DIRECTORY) != 0 : CreateDirectoryW(__wpart.data(), NULL) != 0;
+#else
+                // TODO: check setups where this solution works (MinGW-only or not)
+                struct stat __st;
+                __ok = stat(__part.c_str(), &__st) == 0 ? S_ISDIR(__st.st_mode) : mkdir(__part.c_str(), 0755) == 0;
+#endif
+            }
+            return __ok;
+        }
     }; // File END
 }; // Simple END

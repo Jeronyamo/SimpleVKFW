@@ -347,7 +347,7 @@ namespace Simple {
 
             VKFW::Graph::FrameCapture capture;
             Target      targets[Actions::SCREENSHOT_COUNT];
-            std::string directory = "screenshots";
+            std::string directory = "out/screenshots"; // created on the first screenshot
 
             ScreenshotHandler();
 
@@ -486,8 +486,22 @@ namespace Simple {
             float  marker_size_default = 2.f;
             bool show_window = false;
 
+            // Saved camera positions ("Saved cameras" in the window): '<cameras_dir>/<name>.json' with the view (look_at, yaw,
+            // pitch, distance, up; degrees) and the fovy; need '_view' ('_proj' for the fovy)
+            std::string cameras_dir = "out/cameras";
+            char        camera_name[64];
+            std::vector<std::string> camera_files;   // found in 'cameras_dir'
+            int32_t     camera_selected = -1;
+            bool        cameras_scanned = false;
+            std::string camera_status;
+
             CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj = nullptr,
                                  ViewCentered *_view = nullptr, ImGUI::ImGuiHandler *_imgui = nullptr);
+
+            // The current position to '_path' / from '_path'; false (and a warning) if the file can't be written / read
+            bool saveCamera(const std::string &_path) const;
+            bool loadCamera(const std::string &_path);
+            void scanCameras();
 
             bool      begin() override;
             void        end() override;

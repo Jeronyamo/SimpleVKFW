@@ -75,6 +75,8 @@ namespace Simple {
 
             WindowInput::DefaultHandler    main_window_controls{main_window.window};
             WindowInput::ScreenshotHandler screenshots;
+            // The images of the MMD frame sequence (the scene without ImGui); separate from the screenshots of the keys
+            FrameCapture sequence_capture;
 
         // Widgets
             // Music: instrument library, song and tracker windows; its keys go right after ImGui, above the camera
@@ -215,7 +217,7 @@ namespace Simple {
 
             graph.compile(); // after the swapchain creation and after every recreation
 
-            // Screenshots (PNG in 'screenshots/'): the scene without ImGui, the whole frame, depth, stencil
+            // Screenshots (PNG in 'out/screenshots/'): the scene without ImGui, the whole frame, depth, stencil
             // Note: the copy is made in the next frame and the file is written when its fence is waited (see 'frame')
             screenshots.setTarget(WindowInput::Actions::SCREENSHOT_SCENE,   FrameCapture::VKFW_CAPTURE_COLOR,   scene_pass, backbuffer);
             screenshots.setTarget(WindowInput::Actions::SCREENSHOT_FRAME,   FrameCapture::VKFW_CAPTURE_COLOR,   ui_pass,    backbuffer);
@@ -286,6 +288,7 @@ namespace Simple {
 
             if (!frames.begin()) return !main_window.shouldClose(); // the swapchain was out of date (recreated) or not ready
             screenshots.save(frames.frame); // the copy of this frame in flight (if any) is ready after its fence
+            if (sequence_capture.save(frames.frame)) mmd_studio.sequenceSaved();
 
             // MMD playback (poses, the VMD camera); the simulation time follows the playback (0 while paused)
             mmd_studio.update(main_window_handler.frame_time);
@@ -299,8 +302,8 @@ namespace Simple {
             view = main_view_centered_proj.getView();
             proj = main_view_centered_proj.getProj();
             const bool vmd_camera = mmd_studio.applyCamera(main_view_centered_proj.getClassProj(), view, proj);
-            show_marker = !vmd_camera && (main_view_centered_proj.cursorRotates() || main_view_centered_proj.cursorPans() ||
-                                          main_view_centered_proj.cursorDollies());
+            show_marker = !vmd_camera && !mmd_studio.sequence.active &&
+                          (main_view_centered_proj.cursorRotates() || main_view_centered_proj.cursorPans() || main_view_centered_proj.cursorDollies());
             scene.updateSkins(); // the poses changed since the last frame (animations: see 'scene/scene_animation.h')
             engine.runPhase(Core::PHASE_PREPARE, time);
             scene_renderer.update(frames.frame, view, proj);
@@ -309,6 +312,11 @@ namespace Simple {
             main_window_handler.imgui_handler.newFrame();
             main_window_handler.imgui_handler.render();
             screenshots.record(graph, frames.frame);
+            std::string sequence_file;
+            if (mmd_studio.sequenceCapture(sequence_file))
+                sequence_capture.request(FrameCapture::VKFW_CAPTURE_COLOR, scene_pass, backbuffer, sequence_file);
+            sequence_capture.record(graph, frames.frame);
+            if (mmd_studio.sequence.waiting && !sequence_capture.pending()) mmd_studio.cancelSequence(); // the copy was dropped
             engine.runPhase(Core::PHASE_RENDER, time);
             // Note: 'RenderGraph::readbackAfter' (as the screenshots use it) copies a resource after a pass into an 'ImageReadback',
             //       readable after the fence of this frame
@@ -326,6 +334,7 @@ namespace Simple {
 
             if (frames_) frames_->destroy(); // waits for the device
             screenshots.destroy(); // writes the last one, the device is idle
+            sequence_capture.destroy();
 
             // ImGUI widgets destruction
             main_window_handler.imgui_handler.destroyContext();

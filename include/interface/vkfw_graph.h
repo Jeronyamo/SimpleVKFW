@@ -540,7 +540,7 @@ namespace Simple {
             std::string   file_name;
             uint32_t      recorded_frame = UINT32_MAX; // the frame of the recorded copy, UINT32_MAX if there is none
 
-            // The copy holds '_res' as the pass '_after' left it; '_file_name' is written as is (e.g. "screenshots/scene.png").
+            // The copy holds '_res' as the pass '_after' left it; '_file_name' is written as is (e.g. "out/screenshots/scene.png").
             // Returns false if a capture is already requested or recorded
             bool request(Kind _kind, PassId _after, ResourceId _res, const std::string &_file_name);
             bool pending() const;

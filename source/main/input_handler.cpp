@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <sstream>
@@ -674,6 +675,8 @@ namespace Simple {
             const size_t __time_len = strftime(__time_str, sizeof(__time_str), "%Y-%m-%d_%H-%M-%S", localtime(&__now_sec));
             snprintf(__time_str + __time_len, sizeof(__time_str) - __time_len, "-%03ld", __now_ms);
 
+            if (!File::makeDirectories(directory))
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput::ScreenshotHandler", "could not create '%s'\n"), directory.c_str());
             if (!capture.request(__target.kind, __target.after, __target.res, directory + "/" + __time_str + "_" + __target.name + ".png")) {
                 printf(SVKFW_WRAPINFO("WindowInput::ScreenshotHandler", "A screenshot is already being taken\n"));
                 return false;
@@ -880,7 +883,85 @@ namespace Simple {
     // CameraSettingsWidget
 
         CameraSettingsWidget::CameraSettingsWidget(CameraControlsBase *_controls, ProjPerspective *_proj, ViewCentered *_view, ImGUI::ImGuiHandler *_imgui)
-                                : controls{_controls}, proj{_proj}, view{_view}, imgui{_imgui} {}
+                                : controls{_controls}, proj{_proj}, view{_view}, imgui{_imgui} {
+            snprintf(camera_name, sizeof(camera_name), "camera");
+        }
+
+        namespace {
+            typedef File::ContentJSON::JSONNode JSONNode;
+
+            void setVec3(JSONNode &_node, const vec3f &_v) {
+                for (int i = 0; i < 3; ++i) _node.pushBack().setValueNum(double(_v[i]));
+            }
+
+            bool getVec3(const JSONNode &_root, const std::string &_key, vec3f &_out) {
+                const JSONNode *__arr = _root.find(_key);
+                if (__arr == nullptr || __arr->node_type != File::JSON_TYPE_ARR || __arr->value_arr_obj.size() != 3u) return false;
+                for (int i = 0; i < 3; ++i) {
+                    const JSONNode &__n = __arr->value_arr_obj[i];
+                    if (__n.node_type != File::JSON_TYPE_NUM) return false;
+                    _out[i] = float(__n.value_num);
+                }
+                return true;
+            }
+        } // anonymous namespace END
+
+        bool CameraSettingsWidget::saveCamera(const std::string &_path) const {
+            if (view == nullptr) return false;
+            File::ContentJSON __json;
+            JSONNode &__root = __json.root_node;
+            __root.addMember("version").setValueNum(1.);
+            setVec3(__root.addMember("look_at"), view->look_at);
+            __root.addMember("yaw").setValueNum(double(view->yaw));
+            __root.addMember("pitch").setValueNum(double(view->pitch));
+            __root.addMember("distance").setValueNum(double(view->dist));
+            setVec3(__root.addMember("up"), view->up_vect);
+            if (proj != nullptr) __root.addMember("fovy").setValueNum(double(proj->fovy));
+            setVec3(__root.addMember("position"), view->calcCamPos()); // for reading only: 'loadCamera' uses the angles
+
+            const size_t __sep = _path.find_last_of("/\\");
+            if (__sep != std::string::npos) File::makeDirectories(_path.substr(0u, __sep));
+            std::ofstream __file(_path.c_str(), std::ios::binary);
+            __file << __json.writeToString(2u);
+            if (!__file) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput::CameraSettingsWidget :: saveCamera", "could not write '%s'\n"), _path.c_str());
+                return false;
+            }
+            return true;
+        }
+
+        bool CameraSettingsWidget::loadCamera(const std::string &_path) {
+            if (view == nullptr) return false;
+            std::ifstream __file(_path.c_str(), std::ios::binary);
+            if (!__file) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput::CameraSettingsWidget :: loadCamera", "could not open '%s'\n"), _path.c_str());
+                return false;
+            }
+            std::stringstream __text;
+            __text << __file.rdbuf();
+            const std::string __str = __text.str();
+            File::ContentJSON __json;
+            __json.readFromString(__str.c_str());
+            const JSONNode &__root = __json.root_node;
+            vec3f __look_at, __up;
+            if (__root.node_type != File::JSON_TYPE_OBJ || !getVec3(__root, "look_at", __look_at)) {
+                fprintf(svkfwwarn, SVKFW_WRAPWARN("WindowInput::CameraSettingsWidget :: loadCamera", "'%s' has no \"look_at\"\n"), _path.c_str());
+                return false;
+            }
+            view->look_at = __look_at;
+            view->yaw     = float(__root.getNum("yaw",   double(view->yaw)));
+            view->pitch   = float(__root.getNum("pitch", double(view->pitch)));
+            view->dist    = Math::clampCL(float(__root.getNum("distance", double(view->dist))), CameraControlsBase::DistMin, CameraControlsBase::DistMax);
+            if (getVec3(__root, "up", __up)) view->up_vect = __up;
+            if (proj != nullptr) proj->fovy = float(__root.getNum("fovy", double(proj->fovy)));
+            return true;
+        }
+
+        void CameraSettingsWidget::scanCameras() {
+            camera_files = File::listFiles(cameras_dir, {".json"}, false);
+            if (camera_selected >= (int32_t)camera_files.size()) camera_selected = -1;
+            cameras_scanned = true;
+        }
 
         bool CameraSettingsWidget::begin() { return true; }
 
@@ -925,6 +1006,41 @@ namespace Simple {
                 float __fovy = proj->fovy;
                 if (ImGui::SliderFloat("Fovy", &__fovy, controls->fovy_min, controls->fovy_max, "%.1f deg", ImGuiSliderFlags_AlwaysClamp))
                     proj->fovy = __fovy;
+            }
+
+            if (view != nullptr) {
+                ImGui::SeparatorText("Saved cameras");
+                if (!cameras_scanned) scanCameras();
+                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.f);
+                ImGui::InputText("##camera_name", camera_name, sizeof(camera_name));
+                ImGui::SameLine();
+                if (ImGui::Button("Save##camera")) {
+                    std::string __name = camera_name;
+                    for (size_t i = 0u; i < __name.size(); ++i)
+                        if (strchr("/\\:*?\"<>|", __name[i]) != nullptr) __name[i] = '_';
+                    if (__name.empty()) __name = "camera";
+                    const std::string __path = cameras_dir + "/" + __name + ".json";
+                    camera_status = saveCamera(__path) ? "Saved " + __path : "Could not save " + __path;
+                    scanCameras();
+                }
+                ImGui::SetItemTooltip("Writes '%s/<name>.json' (an existing one is replaced)", cameras_dir.c_str());
+                const std::string __preview = camera_selected >= 0 ? camera_files[camera_selected].substr(camera_files[camera_selected].find_last_of('/') + 1u) : std::string("(none)");
+                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.f);
+                if (ImGui::BeginCombo("##camera_files", __preview.c_str())) {
+                    for (size_t i = 0u; i < camera_files.size(); ++i) {
+                        const std::string __file = camera_files[i].substr(camera_files[i].find_last_of('/') + 1u);
+                        if (ImGui::Selectable(__file.c_str(), camera_selected == (int32_t)i)) camera_selected = (int32_t)i;
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Load##camera") && camera_selected >= 0) {
+                    const std::string &__path = camera_files[camera_selected];
+                    camera_status = loadCamera(__path) ? "Loaded " + __path : "Could not load " + __path;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Refresh##camera")) scanCameras();
+                if (!camera_status.empty()) ImGui::TextDisabled("%s", camera_status.c_str());
             }
 
             if (marker_size != nullptr) {

@@ -1,9 +1,11 @@
 #include "editor/mmd_editor.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <stdexcept>
 
@@ -456,6 +458,113 @@ namespace Simple {
             pose_changed = true;
         }
 
+//  == === ==== >  MMDStudio: frame sequence
+
+        double MMDFrameSequence::time(uint32_t _index) const {
+            return double(first) + (double(_index) - double(preroll_samples)) * 30. / double(std::max(fps, 1));
+        }
+
+        bool MMDStudio::cameraCutAt(int32_t _frame) const {
+            if (!use_camera || !camera_motion.loaded) return false;
+            const std::vector<SG::CameraKey> &__keys = camera_motion.camera.keys;
+            for (size_t i = 1u; i < __keys.size(); ++i)
+                if (__keys[i].frame == float(_frame) && __keys[i].frame - __keys[i - 1u].frame <= 1.f) return true;
+            return false;
+        }
+
+        bool MMDStudio::startSequence(std::string &_error) {
+            MMDFrameSequence &s = sequence;
+            s.fps     = std::max(s.fps, 1);
+            s.first   = std::max(s.first, 0);
+            s.last    = std::max(s.last, s.first);
+            s.preroll = std::max(s.preroll, 0);
+            // Samples first + i * step: up to 'last', or before it if the camera cuts there
+            const double __step = 30. / double(s.fps), __span = double(s.last - s.first) / __step;
+            s.image_count = s.last > s.first && cameraCutAt(s.last) ? (uint32_t)std::ceil(__span - 1e-6) : (uint32_t)std::floor(__span + 1e-6) + 1u;
+            s.preroll_samples = (uint32_t)std::ceil(double(s.preroll) / __step - 1e-6);
+
+            const time_t __now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            char __time_str[32];
+            strftime(__time_str, sizeof(__time_str), "%Y-%m-%d_%H-%M-%S", localtime(&__now));
+            char __name[96];
+            snprintf(__name, sizeof(__name), "%s_mmd_%d-%d_%dfps", __time_str, s.first, s.last, s.fps);
+            s.directory = s.root + "/" + __name;
+            if (!File::makeDirectories(s.directory)) { _error = "Could not create '" + s.directory + "'"; return false; }
+
+            if (playing) stop();
+            s.index   = 0u;
+            s.waiting = false;
+            s.active  = true;
+            edit_active = false;
+            return true;
+        }
+
+        void MMDStudio::cancelSequence() {
+            if (!sequence.active) return;
+            sequence.active = false;
+            sequence.waiting = false;
+            status = "Frame sequence cancelled: " + std::to_string(std::max(int64_t(sequence.index) - int64_t(sequence.preroll_samples), int64_t(0))) +
+                     " images in " + sequence.directory;
+            seek(frame);
+        }
+
+        bool MMDStudio::sequenceCapture(std::string &_file) {
+            MMDFrameSequence &s = sequence;
+            if (!s.active || s.waiting) return false;
+            if (s.index < s.preroll_samples) { ++s.index; return false; } // simulated only
+            char __name[32];
+            snprintf(__name, sizeof(__name), "/%06u.png", s.index - s.preroll_samples);
+            _file = s.directory + __name;
+            s.waiting = true;
+            return true;
+        }
+
+        void MMDStudio::sequenceSaved() {
+            MMDFrameSequence &s = sequence;
+            if (!s.active || !s.waiting) return;
+            s.waiting = false;
+            if (++s.index < s.total()) return;
+            s.active = false;
+            status = "Frame sequence: " + std::to_string(s.image_count) + " images in " + s.directory;
+            printf(SVKFW_WRAPINFO("Editor::MMDStudio", "%s\n"), status.c_str());
+            seek(frame);
+        }
+
+        void MMDStudio::sequenceUI_() {
+            MMDFrameSequence &s = sequence;
+            if (s.active) {
+                const uint32_t __images = s.index > s.preroll_samples ? s.index - s.preroll_samples : 0u;
+                char __text[64];
+                if (s.index < s.preroll_samples) snprintf(__text, sizeof(__text), "preroll %u / %u", s.index, s.preroll_samples);
+                else snprintf(__text, sizeof(__text), "%u / %u", __images, s.image_count);
+                ImGui::ProgressBar(s.total() ? float(s.index) / float(s.total()) : 0.f, ImVec2(-ImGui::GetFontSize() * 6.f, 0.f), __text);
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel##sequence")) cancelSequence();
+                ImGui::TextDisabled("%s", s.directory.c_str());
+                return;
+            }
+            const int32_t __len = (int32_t)std::ceil(length());
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.f);
+            ImGui::DragIntRange2("Frames", &s.first, &s.last, 1.f, 0, std::max(__len, 0), "from %d", "to %d", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SameLine();
+            if (ImGui::Button("All##sequence")) { s.first = 0; s.last = __len; }
+            ImGui::SameLine();
+            if (ImGui::Button("From here")) { s.first = (int32_t)std::floor(frame); s.last = std::max(s.last, s.first); }
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.f);
+            ImGui::SliderInt("FPS", &s.fps, 30, 120, "%d", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SetItemTooltip("Images per second of the motion: 30 - one per MMD frame, 120 - four");
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.f);
+            ImGui::DragInt("Preroll", &s.preroll, 1.f, 0, 3000, "%d frames", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SetItemTooltip("MMD frames simulated before the first one without images (physics settles)");
+            if (s.last > s.first && cameraCutAt(s.last))
+                ImGui::TextDisabled("The camera cuts at %d: the images stop before it", s.last);
+            if (ImGui::Button("Render frames")) {
+                std::string __error;
+                if (!startSequence(__error)) status = __error;
+            }
+            ImGui::SetItemTooltip("PNGs of the scene without the UI in a new folder of '%s'", s.root.c_str());
+        }
+
         bool MMDStudio::applyCamera(const ProjPerspective &_base, mat4 &_view, mat4 &_proj) const {
             const bool __editing = edit_active && sel_type == TRACK_CAMERA;
             if (!use_camera || (!__editing && (!camera_motion.loaded || camera_motion.camera.empty()))) return false;
@@ -475,7 +584,17 @@ namespace Simple {
 
         void MMDStudio::update(double _dt) {
             const float __dt = (float)std::max(_dt, 0.);
-            if (playing) {
+            float __seq_dt = 0.f;
+            if (sequence.active) {
+                // Frame sequence: the sample's time; the simulations step one sample (the first one starts from a reset)
+                playing = false;
+                if (!sequence.waiting) {
+                    frame = (float)std::max(sequence.time(sequence.index), 0.);
+                    if (sequence.index == 0u) pose_changed = true;
+                    else __seq_dt = 1.f / float(sequence.fps);
+                }
+            }
+            else if (playing) {
                 play_clock += __dt;
                 frame = play_start + float(play_clock * fps);
                 // The audio: started when the play head reaches it, the clock follows it when they drift apart
@@ -511,7 +630,7 @@ namespace Simple {
             applyEdit_();
 
             if (pose_changed && events) events->dispatch(Event::Event(Event::EV_TYPE_SCENE_RESET));
-            sim_dt = playing ? __dt : 0.f;
+            sim_dt = sequence.active ? __seq_dt : (playing ? __dt : 0.f);
             pose_changed = false;
             scene.updateTransforms();
         }
@@ -933,6 +1052,9 @@ namespace Simple {
                 if (ImGui::SliderFloat("Volume", &__volume, 0.f, 2.f)) audio.volume.store(__volume);
                 if (ImGui::DragFloat("Start frame", &audio_offset, 0.25f, -100000.f, 100000.f, "%.1f")) seek(frame);
             }
+
+            // Frame sequence: images of an interval for comparisons and videos
+            if (ImGui::CollapsingHeader("Frame sequence")) sequenceUI_();
 
             // The motion of the timeline target: saving and processing (the former VMD Editor)
             MMDMotion *__motion = targetMotion_();

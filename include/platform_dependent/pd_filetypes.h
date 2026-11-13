@@ -45,6 +45,8 @@ namespace Simple {
         // The files in '_dir' (UTF-8 paths with '/', sorted) whose extension is one of '_extensions' (lower case, with the dot,
         // e.g. ".pmx"; empty: all files); with '_recursive' the subfolders too. An unreadable folder gives no files
         std::vector<std::string> listFiles(const std::string &_dir, const std::vector<std::string> &_extensions, bool _recursive = true);
+        // Creates '_dir' (a UTF-8 path, '/' or '\\') with the missing parent folders; true if it exists afterwards
+        bool makeDirectories(const std::string &_dir);
     }; // File END
 }; // Simple END
 

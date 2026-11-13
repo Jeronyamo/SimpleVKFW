@@ -7,8 +7,10 @@ tests/out/
 !tests/out/.gitkeep
 
 # Output
-screenshots/*
-!screenshots/.gitkeep
+out/screenshots/*
+!out/screenshots/.gitkeep
+out/cameras/*
+!out/cameras/.gitkeep
 
 resources/assets/*
 !resources/assets/.gitkeep
