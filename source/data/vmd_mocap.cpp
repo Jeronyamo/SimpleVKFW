@@ -197,16 +197,16 @@ namespace Simple {
                 }
 
                 // Gaussian smoothing of a scalar track (the ends held)
-                void smoothScalar(std::vector<float> &_x, float _sigma) {
-                    if (_x.empty() || _sigma <= 0.f) return;
-                    const int32_t __n = (int32_t)_x.size(), __r = std::max(1, (int32_t)std::ceil(3.f * _sigma));
-                    std::vector<float> __w(2 * __r + 1), __in(_x);
+                void smoothScalar(std::vector<float> &_track, float _sigma) {
+                    if (_track.empty() || _sigma <= 0.f) return;
+                    const int32_t __n = (int32_t)_track.size(), __r = std::max(1, (int32_t)std::ceil(3.f * _sigma));
+                    std::vector<float> __w(2 * __r + 1), __in_track(_track);
                     float __sum = 0.f;
                     for (int32_t i = -__r; i <= __r; ++i) __sum += (__w[i + __r] = std::exp(-0.5f * float(i * i) / (_sigma * _sigma)));
                     for (int32_t t = 0; t < __n; ++t) {
                         float __acc = 0.f;
-                        for (int32_t i = -__r; i <= __r; ++i) __acc += __w[i + __r] * __in[std::max(0, std::min(__n - 1, t + i))];
-                        _x[t] = __acc / __sum;
+                        for (int32_t i = -__r; i <= __r; ++i) __acc += __w[i + __r] * __in_track[std::max(0, std::min(__n - 1, t + i))];
+                        _track[t] = __acc / __sum;
                     }
                 }
 
