@@ -1209,6 +1209,65 @@ namespace Simple {
         Test::testAssert(std::fabs((hi - lo) - 2.f) < 0.2f, "breath peak to peak " + std::to_string(hi - lo) + " deg of 2");
     }
 
+    SVKFW_ADD_TEST(VMDMocapNoiseLink, "VMD: a linked child's noise follows its parent's, an unlinked one doesn't") {
+        typedef File::ContentVMD VMD;
+        const auto addKey = [](VMD &_vmd, const std::string &_name, uint32_t _frame) {
+            VMD::BoneKeyframe kf{};
+            const std::string raw = VMD::bone_name_mappings.at(_name);
+            strncpy(kf.bone_name, raw.c_str(), sizeof(kf.bone_name) - 1u);
+            kf.frame_id = _frame;
+            kf.rotation = Affine::Rotation::Quaternion(1.f, 0.f, 0.f, 0.f);
+            VMD::InterpolationInfo linear;
+            linear.mov_x = linear.mov_y = linear.mov_z = linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
+            VMD::SetInterpolation(kf, linear);
+            _vmd.keyframes_bone.push_back(kf);
+        };
+        File::VMDMocap::NoiseProfile profile;
+        profile.bands_lo = { 1.f };
+        profile.bands_hi = { 4.f };
+        profile.band_scale = { 1.f };
+        File::VMDMocap::NoiseGroup group;
+        group.name = "neck and head";
+        group.bones = { "neck", "head" };
+        group.rest = { 20.f };
+        group.per_speed = { 0.f };
+        profile.groups.push_back(group);
+
+        // Correlation of the frame to frame turns of neck and head
+        const auto correlation = [](const VMD &_vmd) -> float {
+            const std::string neck = VMD::bone_name_mappings.at("neck"), head = VMD::bone_name_mappings.at("head");
+            std::vector<vec3> a, b;
+            for (size_t i = 0u; i < _vmd.keyframes_bone.size(); ++i) {
+                const VMD::BoneKeyframe &kf = _vmd.keyframes_bone[i];
+                const vec3 r = Affine::Rotation::rotationVector(kf.rotation);
+                if (neck == kf.bone_name) a.push_back(r); else if (head == kf.bone_name) b.push_back(r);
+            }
+            double ab = 0., aa = 0., bb = 0.;
+            for (size_t f = 1u; f < std::min(a.size(), b.size()); ++f) {
+                const vec3 da = a[f] - a[f - 1u], db = b[f] - b[f - 1u];
+                ab += double(da.x * db.x + da.y * db.y + da.z * db.z);
+                aa += double(da.norm2());
+                bb += double(db.norm2());
+            }
+            return aa > 0. && bb > 0. ? float(ab / std::sqrt(aa * bb)) : 0.f;
+        };
+        VMD free_vmd;
+        for (const char *bone : { "neck", "head" }) { addKey(free_vmd, bone, 0u); addKey(free_vmd, bone, 900u); }
+        VMD linked_vmd = free_vmd;
+        File::VMDMocap::NoiseSettings settings;
+        settings.breathing = 0.f;
+        File::VMDMocap::addNoise(free_vmd, profile, settings);
+        File::VMDMocap::NoiseLink link;
+        link.parent = "neck";
+        link.child  = "head";
+        link.share  = 0.6f;
+        profile.links.push_back(link);
+        File::VMDMocap::addNoise(linked_vmd, profile, settings);
+        const float r_free = correlation(free_vmd), r_linked = correlation(linked_vmd);
+        Test::testAssert(std::fabs(r_free) < 0.15f, "unlinked noises are unrelated, correlation " + std::to_string(r_free));
+        Test::testAssert(r_linked > 0.4f, "the linked head follows the neck, correlation " + std::to_string(r_linked));
+    }
+
 #undef  SVKFW_TEST_GROUP
 #define SVKFW_TEST_GROUP "Engine"
 

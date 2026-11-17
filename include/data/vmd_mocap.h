@@ -129,6 +129,13 @@ namespace Simple {
                 vec3f axes{ 0.577f, 0.577f, 0.577f };  // share of each local axis (unit length)
             };
 
+            // The child's noise repeats a share of the parent's (same band, same frames): in captured motions the small
+            // motion of the head follows the neck's, the wrist's the elbow's (correlation about 0.2); other neighbors don't
+            struct NoiseLink {
+                std::string parent, child;
+                float share = 0.f;                  // the parent's share in the child's noise source, 0..1
+            };
+
             struct BreathBone {
                 std::string bone;
                 vec3f degrees{ 0.f, 0.f, 0.f };    // rotation at the full breath (local axes)
@@ -141,13 +148,14 @@ namespace Simple {
                 // the captured spectrum is mostly the dance itself, only its quiet level is a sway to add)
                 std::vector<uint8_t> band_follows_speed;
                 std::vector<NoiseGroup> groups;
+                std::vector<NoiseLink>  links;
                 float speed_window = 1.f;               // seconds (the window of the speed and the band rms)
                 // Breathing: the rate goes from 'rest' to 'active' with the speed of the upper body (degrees per second)
                 std::vector<BreathBone> breath;
                 float breath_rest_hz = 0.25f, breath_active_hz = 0.5f, breath_active_speed = 120.f;
             };
 
-            // Reads the "noise" and "breathing" sections of '_path'; false and '_error' if it can't
+            // Reads the "noise" (with its "links") and "breathing" sections of '_path'; false and '_error' if it can't
             bool loadNoiseProfile(const std::string &_path, NoiseProfile &_out, std::string &_error);
 
             struct NoiseSettings {

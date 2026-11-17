@@ -26,7 +26,7 @@
     "bones": ["spine2", "neck", "head", "shoulder_r", "shoulder_l", "uparm_r", "uparm_l", "lowarm_r", "lowarm_l", "hand_r", "hand_l"]
   },
   "noise": {
-    "about": "Velocity spectrum of captured dances: per 1 s window, rms of the bone's angular (center: linear) velocity in each band = rest + per_speed * speed of the bone in the window (degrees or units per second; the speed taken in [min_speed, max_speed]: 5% and 95% of the donors' speeds). Noise fills only what the motion lacks in a band; axes: share of each local axis. The rest level of the bands from 1 Hz is set to 0: in the donors it is mostly capture noise, which makes a still pose tremble. The center has no rest level at all: its slow donor motion is mostly the up and down of the dance, which makes a still pose squat",
+    "about": "Velocity spectrum of captured dances: per 1 s window, rms of the bone's angular (center: linear) velocity in each band = rest + per_speed * speed of the bone in the window (degrees or units per second; the speed taken in [min_speed, max_speed]: 5% and 95% of the donors' speeds). Noise fills only what the motion lacks in a band; axes: share of each local axis; links: share of the parent's noise in the child's, set so that the added motion correlates as the donors' small motion does at lag 0 (neck > head 0.25, elbow > wrist 0.22, other neighbors under 0.1; Baam gets 0.27, 0.16-0.20). The rest level of the bands from 1 Hz is set to 0: in the donors it is mostly capture noise, which makes a still pose tremble. The center has no rest level at all: its slow donor motion is mostly the up and down of the dance, which makes a still pose squat",
     "bands": [[0.25, 0.5], [0.5, 1], [1, 2], [2, 4], [4, 8]],
     "band_scale": [1, 1, 1, 1, 1],
     "band_follows_speed": [false, false, true, true, true],
@@ -56,6 +56,11 @@
         "rest": [2.215, 0.959, 0, 0, 0], "per_speed": [0.1994, 0.3819, 0.5536, 0.5675, 0.4764], "axes": [0.665, 0.421, 0.617] },
       { "name": "center", "position": true, "bones": ["center"], "min_speed": 0.0, "max_speed": 10.3,
         "rest": [0, 0, 0, 0, 0], "per_speed": [0.1898, 0.2376, 0.3343, 0.3159, 0.1478], "axes": [0.396, 0.852, 0.344] }
+    ],
+    "links": [
+      { "parent": "neck", "child": "head", "share": 0.34 },
+      { "parent": "lowarm_r", "child": "hand_r", "share": 0.32 },
+      { "parent": "lowarm_l", "child": "hand_l", "share": 0.32 }
     ]
   },
   "breathing": {

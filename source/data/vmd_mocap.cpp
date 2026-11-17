@@ -684,6 +684,16 @@ namespace Simple {
                     }
                     __profile.groups.push_back(__group);
                 }
+                const ContentJSON::JSONNode *__links = __noise->find("links");
+                if (__links != nullptr && __links->node_type == JSON_TYPE_ARR)
+                    for (size_t i = 0u; i < __links->value_arr_obj.size(); ++i) {
+                        const ContentJSON::JSONNode &__l = __links->value_arr_obj[i];
+                        NoiseLink __link;
+                        __link.parent = __l.getStr("parent", "");
+                        __link.child  = __l.getStr("child",  "");
+                        __link.share  = std::max(0.f, std::min(1.f, float(__l.getNum("share", 0.))));
+                        if (!__link.parent.empty() && !__link.child.empty() && __link.share > 0.f) __profile.links.push_back(__link);
+                    }
                 const ContentJSON::JSONNode *__breath = __root.find("breathing");
                 if (__breath != nullptr) {
                     __profile.breath_rest_hz      = float(__breath->getNum("rest_hz",      double(__profile.breath_rest_hz)));
@@ -795,6 +805,24 @@ namespace Simple {
                 // Noise: per band one Perlin line per axis (its spectrum is centered on 0.24 cycles per cell) limited to the
                 // band, scaled so that its velocity in the band has the rms 1, times what the motion lacks in the band:
                 // sqrt(target^2 - current^2), both rms over the window
+                // Links: the noise source of a child mixes in its parent's (the parent must be noised too)
+                std::vector<int64_t> __link_parent(__targets.size(), -1);
+                std::vector<float>   __link_share(__targets.size(), 0.f);
+                for (size_t l = 0u; l < _profile.links.size(); ++l) {
+                    int64_t __p = -1, __c = -1;
+                    for (size_t i = 0u; i < __targets.size(); ++i) {
+                        if (__targets[i].group == nullptr) continue;
+                        if (__targets[i].name == _profile.links[l].parent) __p = (int64_t)i;
+                        if (__targets[i].name == _profile.links[l].child)  __c = (int64_t)i;
+                    }
+                    if (__p < 0 || __c < 0 || __p == __c) continue;
+                    __link_parent[__c] = __p;
+                    __link_share[__c]  = _profile.links[l].share;
+                }
+                const auto __source = [&](size_t _target, size_t _frame, uint32_t _axis, size_t _band, float _cells) -> float {
+                    return __noise.sample(vec4f{ float(__from + _frame) * _cells, 0.5f + 7.31f * float(_target) + 1.93f * float(_axis), 0.37f + 2.17f * float(_band), 0.71f });
+                };
+
                 std::vector<vec3f> __band, __shape, __shape_v;
                 std::vector<float> __have(__count), __lack(__count);
                 std::vector<vec3f> __added(__count);
@@ -823,9 +851,12 @@ namespace Simple {
                             // The noise shape: band limited, its band velocity of rms 1 (split over the axes by their shares)
                             const float __cells = std::sqrt(__lo * __hi) / 0.243f / __fps;
                             __shape.resize(__count);
+                            const int64_t __parent = __link_parent[i];
+                            const float   __share  = __link_share[i], __own = std::sqrt(1.f - __share * __share);
                             for (size_t f = 0u; f < __count; ++f)
                                 for (uint32_t k = 0u; k < 3u; ++k)
-                                    __shape[f][k] = __noise.sample(vec4f{ float(__from + f) * __cells, 0.5f + 7.31f * float(i) + 1.93f * float(k), 0.37f + 2.17f * float(b), 0.71f });
+                                    __shape[f][k] = __parent < 0 ? __source(i, f, k, b, __cells)
+                                                                 : __own * __source(i, f, k, b, __cells) + __share * __source((size_t)__parent, f, k, b, __cells);
                             bandpass(__shape, __lo, __hi, __fps, __band);
                             __shape_v.resize(__count);
                             for (size_t f = 0u; f + 1u < __count; ++f) __shape_v[f] = (__band[f + 1u] - __band[f]) * __fps;
