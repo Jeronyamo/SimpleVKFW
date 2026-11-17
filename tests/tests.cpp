@@ -1141,6 +1141,74 @@ namespace Simple {
         Test::testAssert(max_shift > 0.005f && max_shift < 0.2f, "shifted in time by a little, max change " + std::to_string(max_shift));
     }
 
+    SVKFW_ADD_TEST(VMDMocapNoise, "VMD: mocap-like noise fills a still bone a little, smoothly; breathing has its amplitude") {
+        typedef File::ContentVMD VMD;
+        typedef Affine::Rotation::Quaternion Quaternion;
+        const auto addKey = [](VMD &_vmd, const std::string &_name, uint32_t _frame) {
+            VMD::BoneKeyframe kf{};
+            const std::string raw = VMD::bone_name_mappings.at(_name);
+            strncpy(kf.bone_name, raw.c_str(), sizeof(kf.bone_name) - 1u);
+            kf.frame_id = _frame;
+            kf.rotation = Quaternion(1.f, 0.f, 0.f, 0.f);
+            VMD::InterpolationInfo linear;
+            linear.mov_x = linear.mov_y = linear.mov_z = linear.rot = vec4u8{(uint8_t)20, (uint8_t)20, (uint8_t)107, (uint8_t)107};
+            VMD::SetInterpolation(kf, linear);
+            _vmd.keyframes_bone.push_back(kf);
+        };
+        // A still head and chest over 10 s
+        VMD vmd;
+        addKey(vmd, "head", 0u);
+        addKey(vmd, "head", 300u);
+        addKey(vmd, "spine2", 0u);
+        addKey(vmd, "spine2", 300u);
+
+        File::VMDMocap::NoiseProfile profile;
+        profile.bands_lo = { 1.f, 2.f };
+        profile.bands_hi = { 2.f, 4.f };
+        profile.band_scale = { 1.f, 1.f };
+        File::VMDMocap::NoiseGroup head;
+        head.name = "head";
+        head.bones = { "head" };
+        head.rest = { 10.f, 10.f };         // degrees per second in each band
+        head.per_speed = { 0.f, 0.f };
+        profile.groups.push_back(head);
+        File::VMDMocap::BreathBone chest;
+        chest.bone = "spine2";
+        chest.degrees = vec3f{ 2.f, 0.f, 0.f };
+        profile.breath.push_back(chest);
+
+        File::VMDMocap::NoiseSettings settings;
+        settings.strength = settings.breathing = 0.f;
+        VMD off = vmd;
+        const File::VMDMocap::NoiseReport rep_off = File::VMDMocap::addNoise(off, profile, settings);
+        Test::testAssert(rep_off.bones_noised == 0u && off.keyframes_bone.size() == 4u, "strength and breathing 0 change nothing");
+
+        settings.strength = settings.breathing = 1.f;
+        const File::VMDMocap::NoiseReport rep = File::VMDMocap::addNoise(vmd, profile, settings);
+        Test::testAssert(rep.bones_noised == 1u && rep.bones_breathing == 1u && vmd.keyframes_bone.size() == 2u * 301u,
+                         "both bones get one key per frame, keys " + std::to_string(vmd.keyframes_bone.size()));
+        const std::string head_raw = VMD::bone_name_mappings.at("head"), chest_raw = VMD::bone_name_mappings.at("spine2");
+        std::vector<vec3> head_rot, chest_rot;
+        for (size_t i = 0u; i < vmd.keyframes_bone.size(); ++i) {
+            const VMD::BoneKeyframe &kf = vmd.keyframes_bone[i];
+            const vec3 r = Affine::Rotation::rotationVector(kf.rotation) * 57.29578f;
+            if (head_raw == kf.bone_name) head_rot.push_back(r); else if (chest_raw == kf.bone_name) chest_rot.push_back(r);
+        }
+        // Band velocity rms of 10 deg/s at 1-4 Hz is a turn of about one degree
+        double sum = 0.;
+        float max_step = 0.f;
+        for (size_t f = 0u; f < head_rot.size(); ++f) {
+            sum += double(head_rot[f].norm2());
+            if (f > 0u) max_step = std::max(max_step, (head_rot[f] - head_rot[f - 1u]).norm());
+        }
+        const float rms = float(std::sqrt(sum / double(head_rot.size())));
+        Test::testAssert(rms > 0.2f && rms < 3.f, "the still head moves a little, rms " + std::to_string(rms) + " deg");
+        Test::testAssert(max_step < 2.f, "no jumps, max step " + std::to_string(max_step) + " deg");
+        float lo = 1e9f, hi = -1e9f;
+        for (size_t f = 0u; f < chest_rot.size(); ++f) { lo = std::min(lo, chest_rot[f].x); hi = std::max(hi, chest_rot[f].x); }
+        Test::testAssert(std::fabs((hi - lo) - 2.f) < 0.2f, "breath peak to peak " + std::to_string(hi - lo) + " deg of 2");
+    }
+
 #undef  SVKFW_TEST_GROUP
 #define SVKFW_TEST_GROUP "Engine"
 

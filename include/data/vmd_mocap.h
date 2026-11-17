@@ -16,6 +16,8 @@ namespace Simple {
         //   A. smooth: C2 (velocity and acceleration continuous) curves through the key poses instead of linear segments
         //   B. chain: the parent's motion carried over to the child (with a delay), as captured bodies do, and small timing
         //      jitter, so the bones stop moving in sync
+        //   C. noise: the small motion keys can't hold (smooth noise in frequency bands, larger while the bone moves fast),
+        //      and breathing
         // Note: measured on hand-keyed vs captured dance motions: hand keys put all the acceleration on the key frames (the
         //       velocity changes stepwise there); captured motions have no such breaks. In hand keys 90-99% of the child keys
         //       are on the frames of the parent keys and the angular velocities of parent and child are not coupled (or are
@@ -114,6 +116,59 @@ namespace Simple {
             // are the local rotations, one per frame
             void coupling(const std::vector<Affine::Rotation::Quaternion> &_parent, const std::vector<Affine::Rotation::Quaternion> &_child,
                           std::vector<float> &_out);
+
+            // Stage C profile: per group of bones, the velocity spectrum of captured dances (measured once on donor motions):
+            // the rms of the bone's velocity in each band over a window = rest + per_speed * speed of the bone in the window.
+            // The noise adds to a band only what the motion lacks there, so a band the motion already has gets nothing
+            struct NoiseGroup {
+                std::string name;
+                std::vector<std::string> bones;     // names from 'ContentVMD::bone_name_mappings'
+                bool  position = false;             // the noise moves the bone (units) instead of turning it (degrees)
+                std::vector<float> rest, per_speed; // one per band; degrees (units) per second, per_speed: per degree (unit) per second
+                float min_speed = 0.f, max_speed = 1e9f; // the speed is taken in this range (the donors' range)
+                vec3f axes{ 0.577f, 0.577f, 0.577f };  // share of each local axis (unit length)
+            };
+
+            struct BreathBone {
+                std::string bone;
+                vec3f degrees{ 0.f, 0.f, 0.f };    // rotation at the full breath (local axes)
+            };
+
+            struct NoiseProfile {
+                std::vector<float> bands_lo, bands_hi;  // band edges, Hz
+                std::vector<float> band_scale;          // scales what is added in each band (1: up to the captured spectrum)
+                // Bands whose target follows the bone's speed; the others take the target at 'min_speed' (in the slow bands
+                // the captured spectrum is mostly the dance itself, only its quiet level is a sway to add)
+                std::vector<uint8_t> band_follows_speed;
+                std::vector<NoiseGroup> groups;
+                float speed_window = 1.f;               // seconds (the window of the speed and the band rms)
+                // Breathing: the rate goes from 'rest' to 'active' with the speed of the upper body (degrees per second)
+                std::vector<BreathBone> breath;
+                float breath_rest_hz = 0.25f, breath_active_hz = 0.5f, breath_active_speed = 120.f;
+            };
+
+            // Reads the "noise" and "breathing" sections of '_path'; false and '_error' if it can't
+            bool loadNoiseProfile(const std::string &_path, NoiseProfile &_out, std::string &_error);
+
+            struct NoiseSettings {
+                float    strength  = 1.f;           // scales the noise of all bands
+                float    breathing = 1.f;           // scales the breath amplitudes
+                uint32_t seed      = 1u;
+            };
+
+            struct NoiseReport {
+                uint32_t bones_noised   = 0u;
+                uint32_t bones_breathing = 0u;
+                float    max_rms_deg    = 0.f;      // the largest rms of added rotation of a bone (noise and breath)
+                std::string max_bone;
+                uint32_t keys_before    = 0u;
+                uint32_t keys_after     = 0u;
+            };
+
+            // Stage C: adds the noise of the profile's groups and the breathing to the bones found in '_vmd' (bones with one
+            // key too: they get the noise over the frames of the whole motion). The noise of a band is smooth noise limited to
+            // the band, its velocity scaled to what the band lacks at each frame. The changed bones get one key per frame
+            NoiseReport addNoise(ContentVMD &_vmd, const NoiseProfile &_profile, const NoiseSettings &_settings = NoiseSettings());
         }; // VMDMocap END
     }; // File END
 }; // Simple END

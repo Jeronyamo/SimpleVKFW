@@ -198,6 +198,7 @@ namespace Simple {
             float    mocap_strength = 1.f, mocap_jitter = 1.f;
             int32_t  mocap_seed = 1;
             std::vector<std::string> mocap_fit; // the last fit, one line per pair
+            float    mocap_noise = 1.f, mocap_breath = 1.f; // stage C (see 'File::VMDMocap::addNoise')
             std::string confirm_text;
             std::function<void()> confirm_action;
 

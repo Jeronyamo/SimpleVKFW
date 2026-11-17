@@ -1157,6 +1157,34 @@ namespace Simple {
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(70.f);
                         ImGui::InputInt("Seed##mocap", &mocap_seed, 0);
+                        if (ImGui::Button("Mocap: noise")) {
+                            File::VMDMocap::NoiseProfile __profile;
+                            std::string __err;
+                            if (!File::VMDMocap::loadNoiseProfile(mocap_profile, __profile, __err)) status = __err;
+                            else {
+                                File::VMDMocap::NoiseSettings __settings;
+                                __settings.strength  = mocap_noise;
+                                __settings.breathing = mocap_breath;
+                                __settings.seed      = (uint32_t)std::max(0, mocap_seed);
+                                __motion->beginEdit();
+                                const File::VMDMocap::NoiseReport __rep = File::VMDMocap::addNoise(__motion->vmd, __profile, __settings);
+                                motionChanged_(*__motion);
+                                char __buf[200];
+                                snprintf(__buf, sizeof(__buf), "Mocap noise: %u bones, %u breathing, largest %.1f deg rms (%s), bone keys %u -> %u",
+                                         __rep.bones_noised, __rep.bones_breathing, __rep.max_rms_deg, __rep.max_bone.c_str(), __rep.keys_before, __rep.keys_after);
+                                status = __buf;
+                            }
+                        }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Stage C of the mocap-like fix (run after 'Mocap: chain'): smooth noise in the frequency bands\n"
+                                              "where the bone moves less than captured dances do at its speed, and breathing (profile in\n"
+                                              "resources/motion)");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(90.f);
+                        ImGui::SliderFloat("Noise##mocap", &mocap_noise, 0.f, 2.f, "%.2f");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(90.f);
+                        ImGui::SliderFloat("Breath##mocap", &mocap_breath, 0.f, 3.f, "%.2f");
                         if (!mocap_fit.empty() && ImGui::TreeNode("Last chain fit")) {
                             for (size_t i = 0u; i < mocap_fit.size(); ++i) ImGui::TextDisabled("%s", mocap_fit[i].c_str());
                             ImGui::TreePop();

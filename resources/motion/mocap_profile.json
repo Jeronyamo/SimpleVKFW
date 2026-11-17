@@ -24,5 +24,50 @@
     "frames": 0.6,
     "rate": 0.8,
     "bones": ["spine2", "neck", "head", "shoulder_r", "shoulder_l", "uparm_r", "uparm_l", "lowarm_r", "lowarm_l", "hand_r", "hand_l"]
+  },
+  "noise": {
+    "about": "Velocity spectrum of captured dances: per 1 s window, rms of the bone's angular (center: linear) velocity in each band = rest + per_speed * speed of the bone in the window (degrees or units per second; the speed taken in [min_speed, max_speed]: 5% and 95% of the donors' speeds). Noise fills only what the motion lacks in a band; axes: share of each local axis. The rest level of the bands from 1 Hz is set to 0: in the donors it is mostly capture noise, which makes a still pose tremble. The center has no rest level at all: its slow donor motion is mostly the up and down of the dance, which makes a still pose squat",
+    "bands": [[0.25, 0.5], [0.5, 1], [1, 2], [2, 4], [4, 8]],
+    "band_scale": [1, 1, 1, 1, 1],
+    "band_follows_speed": [false, false, true, true, true],
+    "speed_window": 1,
+    "groups": [
+      { "name": "lower", "bones": ["waist"], "min_speed": 0.0, "max_speed": 169.7,
+        "rest": [0.000, 0.000, 0, 0, 0], "per_speed": [0.3308, 0.3346, 0.2797, 0.2097, 0.1400], "axes": [0.434, 0.803, 0.410] },
+      { "name": "spine", "bones": ["spine"], "min_speed": 0.0, "max_speed": 179.5,
+        "rest": [0.000, 0.000, 0, 0, 0], "per_speed": [0.3940, 0.3815, 0.2696, 0.1359, 0.0672], "axes": [0.448, 0.782, 0.434] },
+      { "name": "spine2", "bones": ["spine2"], "min_speed": 0.0, "max_speed": 67.1,
+        "rest": [1.913, 0.000, 0, 0, 0], "per_speed": [0.0896, 0.3056, 0.4653, 0.3807, 0.2132], "axes": [0.398, 0.589, 0.704] },
+      { "name": "neck", "bones": ["neck"], "min_speed": 0.0, "max_speed": 132.9,
+        "rest": [4.739, 0.000, 0, 0, 0], "per_speed": [0.1048, 0.3645, 0.5108, 0.4070, 0.2204], "axes": [0.536, 0.498, 0.682] },
+      { "name": "head", "bones": ["head"], "min_speed": 0.0, "max_speed": 122.0,
+        "rest": [3.468, 0.000, 0, 0, 0], "per_speed": [0.1262, 0.3836, 0.4824, 0.3850, 0.2212], "axes": [0.569, 0.681, 0.460] },
+      { "name": "shoulder", "bones": ["shoulder_r", "shoulder_l"], "min_speed": 0.0, "max_speed": 135.0,
+        "rest": [4.725, 2.109, 0, 0, 0], "per_speed": [0.0547, 0.2222, 0.4209, 0.4379, 0.3331], "axes": [0.468, 0.484, 0.739] },
+      { "name": "uparm", "bones": ["uparm_r", "uparm_l"], "min_speed": 0.0, "max_speed": 281.9,
+        "rest": [6.320, 0.632, 0, 0, 0], "per_speed": [0.1283, 0.2907, 0.4318, 0.3746, 0.2485], "axes": [0.534, 0.592, 0.604] },
+      { "name": "lowarm", "bones": ["lowarm_r", "lowarm_l"], "min_speed": 0.0, "max_speed": 365.3,
+        "rest": [14.066, 9.393, 0, 0, 0], "per_speed": [0.0931, 0.2358, 0.4630, 0.4849, 0.3189], "axes": [0.581, 0.717, 0.384] },
+      { "name": "hand", "bones": ["hand_r", "hand_l"], "min_speed": 0.0, "max_speed": 310.3,
+        "rest": [8.078, 2.664, 0, 0, 0], "per_speed": [0.0794, 0.2170, 0.4314, 0.4803, 0.3715], "axes": [0.412, 0.366, 0.834] },
+      { "name": "finger", "bones": ["f_index01_r", "f_index01_l", "f_index02_r", "f_index02_l", "f_index03_r", "f_index03_l", "f_middle01_r", "f_middle01_l", "f_middle02_r", "f_middle02_l", "f_middle03_r", "f_middle03_l", "f_ring01_r", "f_ring01_l", "f_ring02_r", "f_ring02_l", "f_ring03_r", "f_ring03_l", "f_little01_r", "f_little01_l", "f_little02_r", "f_little02_l", "f_little03_r", "f_little03_l"], "min_speed": 0.0, "max_speed": 133.5,
+        "rest": [4.025, 0.000, 0, 0, 0], "per_speed": [0.2666, 0.5298, 0.6952, 0.6733, 0.5353], "axes": [0.133, 0.122, 0.984] },
+      { "name": "thumb", "bones": ["f_thumb01_r", "f_thumb01_l", "f_thumb02_r", "f_thumb02_l", "f_thumb03_r", "f_thumb03_l"], "min_speed": 0.0, "max_speed": 91.4,
+        "rest": [2.215, 0.959, 0, 0, 0], "per_speed": [0.1994, 0.3819, 0.5536, 0.5675, 0.4764], "axes": [0.665, 0.421, 0.617] },
+      { "name": "center", "position": true, "bones": ["center"], "min_speed": 0.0, "max_speed": 10.3,
+        "rest": [0, 0, 0, 0, 0], "per_speed": [0.1898, 0.2376, 0.3343, 0.3159, 0.1478], "axes": [0.396, 0.852, 0.344] }
+    ]
+  },
+  "breathing": {
+    "about": "Not measured (dance captures show no clear breath): a small chest and shoulder motion, faster when the upper body moves fast. degrees: peak to peak, local axes",
+    "rest_hz": 0.25,
+    "active_hz": 0.5,
+    "active_speed": 120,
+    "bones": [
+      { "bone": "spine", "degrees": [0.4, 0, 0] },
+      { "bone": "spine2", "degrees": [1.0, 0, 0] },
+      { "bone": "shoulder_r", "degrees": [0, 0, 1.2] },
+      { "bone": "shoulder_l", "degrees": [0, 0, -1.2] }
+    ]
   }
 }

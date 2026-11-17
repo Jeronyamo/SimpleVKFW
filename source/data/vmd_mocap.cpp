@@ -188,6 +188,53 @@ namespace Simple {
                     }
                     return true;
                 }
+
+                bool readVec3(const ContentJSON::JSONNode *_node, vec3f &_out) {
+                    std::vector<float> __v;
+                    if (_node == nullptr || !readFloats(*_node, __v) || __v.size() != 3u) return false;
+                    _out = vec3f{ __v[0], __v[1], __v[2] };
+                    return true;
+                }
+
+                // Gaussian smoothing of a scalar track (the ends held)
+                void smoothScalar(std::vector<float> &_x, float _sigma) {
+                    if (_x.empty() || _sigma <= 0.f) return;
+                    const int32_t __n = (int32_t)_x.size(), __r = std::max(1, (int32_t)std::ceil(3.f * _sigma));
+                    std::vector<float> __w(2 * __r + 1), __in(_x);
+                    float __sum = 0.f;
+                    for (int32_t i = -__r; i <= __r; ++i) __sum += (__w[i + __r] = std::exp(-0.5f * float(i * i) / (_sigma * _sigma)));
+                    for (int32_t t = 0; t < __n; ++t) {
+                        float __acc = 0.f;
+                        for (int32_t i = -__r; i <= __r; ++i) __acc += __w[i + __r] * __in[std::max(0, std::min(__n - 1, t + i))];
+                        _x[t] = __acc / __sum;
+                    }
+                }
+
+                // Gaussian lowpass of a vector track (the ends held); '_sigma' in frames
+                void smoothVec3(const std::vector<vec3f> &_in, float _sigma, std::vector<vec3f> &_out) {
+                    const int32_t __n = (int32_t)_in.size(), __r = std::max(1, (int32_t)std::ceil(3.f * _sigma));
+                    std::vector<float> __w(2 * __r + 1);
+                    float __sum = 0.f;
+                    for (int32_t i = -__r; i <= __r; ++i) __sum += (__w[i + __r] = std::exp(-0.5f * float(i * i) / (_sigma * _sigma)));
+                    for (size_t i = 0u; i < __w.size(); ++i) __w[i] /= __sum;
+                    _out.resize(_in.size());
+                    for (int32_t t = 0; t < __n; ++t) {
+                        vec3f __acc{ 0.f, 0.f, 0.f };
+                        for (int32_t i = -__r; i <= __r; ++i) __acc = __acc + _in[std::max(0, std::min(__n - 1, t + i))] * __w[i + __r];
+                        _out[t] = __acc;
+                    }
+                }
+
+                // Sigma (frames) of the Gaussian lowpass with the gain 1/2 at '_hz'
+                float halfGainSigma(float _hz, float _fps) { return _fps * 1.17741f / (6.2831853f * _hz); }
+
+                // Band [_lo, _hi] Hz of a track: the difference of two Gaussian lowpasses
+                void bandpass(const std::vector<vec3f> &_in, float _lo, float _hi, float _fps, std::vector<vec3f> &_out) {
+                    std::vector<vec3f> __wide;
+                    smoothVec3(_in, halfGainSigma(_hi, _fps), _out);
+                    smoothVec3(_in, halfGainSigma(_lo, _fps), __wide);
+                    for (size_t t = 0u; t < _out.size(); ++t) _out[t] = _out[t] - __wide[t];
+                }
             }; // anonymous END
 
 
@@ -573,6 +620,258 @@ namespace Simple {
                         __result.push_back(fullKey(__keys[__src], __frame, __pos[i][t], __rot[i][t]));
                     }
                     ++__report.bones_written;
+                }
+                _vmd.keyframes_bone.swap(__result);
+                __report.keys_after = (uint32_t)_vmd.keyframes_bone.size();
+                return __report;
+            }
+
+            bool loadNoiseProfile(const std::string &_path, NoiseProfile &_out, std::string &_error) {
+                std::ifstream __file(_path.c_str(), std::ios::binary);
+                if (!__file) { _error = "Could not open '" + _path + "'"; return false; }
+                std::stringstream __text;
+                __text << __file.rdbuf();
+                const std::string __str = __text.str();
+                ContentJSON __json;
+                __json.readFromString(__str.c_str());
+                const ContentJSON::JSONNode &__root = __json.root_node;
+                const ContentJSON::JSONNode *__noise = __root.find("noise");
+                const ContentJSON::JSONNode *__bands = __noise != nullptr ? __noise->find("bands") : nullptr;
+                const ContentJSON::JSONNode *__groups = __noise != nullptr ? __noise->find("groups") : nullptr;
+                if (__bands == nullptr || __bands->node_type != JSON_TYPE_ARR || __groups == nullptr || __groups->node_type != JSON_TYPE_ARR) {
+                    _error = "'" + _path + "' has no \"noise\": {\"bands\": [...], \"groups\": [...]}";
+                    return false;
+                }
+                NoiseProfile __profile;
+                for (size_t i = 0u; i < __bands->value_arr_obj.size(); ++i) {
+                    std::vector<float> __edges;
+                    if (!readFloats(__bands->value_arr_obj[i], __edges) || __edges.size() != 2u || !(__edges[0] > 0.f && __edges[1] > __edges[0])) {
+                        _error = "'" + _path + "': noise band " + std::to_string(i) + " must be [low Hz, high Hz]";
+                        return false;
+                    }
+                    __profile.bands_lo.push_back(__edges[0]);
+                    __profile.bands_hi.push_back(__edges[1]);
+                }
+                const size_t __band_count = __profile.bands_lo.size();
+                const ContentJSON::JSONNode *__scale = __noise->find("band_scale");
+                if (__scale == nullptr || !readFloats(*__scale, __profile.band_scale) || __profile.band_scale.size() != __band_count)
+                    __profile.band_scale.assign(__band_count, 1.f);
+                __profile.band_follows_speed.assign(__band_count, 1u);
+                const ContentJSON::JSONNode *__follows = __noise->find("band_follows_speed");
+                if (__follows != nullptr && __follows->node_type == JSON_TYPE_ARR && __follows->value_arr_obj.size() == __band_count)
+                    for (size_t b = 0u; b < __band_count; ++b) __profile.band_follows_speed[b] = __follows->value_arr_obj[b].node_type == JSON_TYPE_BOOL && !__follows->value_arr_obj[b].value_bool ? 0u : 1u;
+                __profile.speed_window = float(__noise->getNum("speed_window", double(__profile.speed_window)));
+                for (size_t i = 0u; i < __groups->value_arr_obj.size(); ++i) {
+                    const ContentJSON::JSONNode &__g = __groups->value_arr_obj[i];
+                    NoiseGroup __group;
+                    __group.name     = __g.getStr("name", "group " + std::to_string(i));
+                    __group.position = __g.getBool("position", false);
+                    __group.min_speed = float(__g.getNum("min_speed", double(__group.min_speed)));
+                    __group.max_speed = float(__g.getNum("max_speed", double(__group.max_speed)));
+                    const ContentJSON::JSONNode *__bones = __g.find("bones"), *__rest = __g.find("rest"), *__per = __g.find("per_speed");
+                    if (__bones != nullptr && __bones->node_type == JSON_TYPE_ARR)
+                        for (size_t b = 0u; b < __bones->value_arr_obj.size(); ++b)
+                            if (__bones->value_arr_obj[b].node_type == JSON_TYPE_STR) __group.bones.push_back(__bones->value_arr_obj[b].value_str);
+                    if (__group.bones.empty() || __rest == nullptr || __per == nullptr || !readFloats(*__rest, __group.rest) || !readFloats(*__per, __group.per_speed) ||
+                        __group.rest.size() != __band_count || __group.per_speed.size() != __band_count) {
+                        _error = "'" + _path + "': noise group '" + __group.name + "' needs \"bones\" and \"rest\", \"per_speed\" for every band";
+                        return false;
+                    }
+                    vec3f __axes;
+                    if (readVec3(__g.find("axes"), __axes)) {
+                        const float __len = std::sqrt(__axes.x * __axes.x + __axes.y * __axes.y + __axes.z * __axes.z);
+                        if (__len > 0.f) __group.axes = vec3f{ __axes.x / __len, __axes.y / __len, __axes.z / __len };
+                    }
+                    __profile.groups.push_back(__group);
+                }
+                const ContentJSON::JSONNode *__breath = __root.find("breathing");
+                if (__breath != nullptr) {
+                    __profile.breath_rest_hz      = float(__breath->getNum("rest_hz",      double(__profile.breath_rest_hz)));
+                    __profile.breath_active_hz    = float(__breath->getNum("active_hz",    double(__profile.breath_active_hz)));
+                    __profile.breath_active_speed = float(__breath->getNum("active_speed", double(__profile.breath_active_speed)));
+                    const ContentJSON::JSONNode *__bones = __breath->find("bones");
+                    if (__bones != nullptr && __bones->node_type == JSON_TYPE_ARR)
+                        for (size_t b = 0u; b < __bones->value_arr_obj.size(); ++b) {
+                            const ContentJSON::JSONNode &__n = __bones->value_arr_obj[b];
+                            BreathBone __bone;
+                            __bone.bone = __n.getStr("bone", "");
+                            if (!__bone.bone.empty() && readVec3(__n.find("degrees"), __bone.degrees)) __profile.breath.push_back(__bone);
+                        }
+                }
+                _out = __profile;
+                return true;
+            }
+
+
+            NoiseReport addNoise(ContentVMD &_vmd, const NoiseProfile &_profile, const NoiseSettings &_settings) {
+                NoiseReport __report;
+                __report.keys_before = __report.keys_after = (uint32_t)_vmd.keyframes_bone.size();
+
+                std::map<std::string, size_t> __track_ids;
+                std::vector<std::vector<BoneKeyframe>> __tracks;
+                collectTracks(_vmd, __track_ids, __tracks);
+                if (__tracks.empty()) return __report;
+                uint32_t __from = UINT32_MAX, __to = 0u;
+                for (size_t t = 0u; t < __tracks.size(); ++t) {
+                    __from = std::min(__from, __tracks[t].front().frame_id);
+                    __to   = std::max(__to,   __tracks[t].back ().frame_id);
+                }
+                const size_t __count = __to - __from + 1u;
+                if (__count < 2u) return __report;
+
+                // The bones changed: noise group (or none) and breath amplitude
+                struct Target { size_t track; std::string name; const NoiseGroup *group; vec3f breath; Baked baked; };
+                std::vector<Target> __targets;
+                const auto __target = [&](const std::string &_name) -> Target* {
+                    std::map<std::string, size_t>::const_iterator __it = __track_ids.find(rawBoneName(_name));
+                    if (__it == __track_ids.end()) return nullptr;
+                    for (size_t i = 0u; i < __targets.size(); ++i) if (__targets[i].track == __it->second) return &__targets[i];
+                    Target __t;
+                    __t.track  = __it->second;
+                    __t.name   = _name;
+                    __t.group  = nullptr;
+                    __t.breath = vec3f{ 0.f, 0.f, 0.f };
+                    __targets.push_back(__t);
+                    return &__targets.back();
+                };
+                const float __strength = std::max(0.f, _settings.strength), __breathing = std::max(0.f, _settings.breathing);
+                if (__strength > 0.f)
+                    for (size_t g = 0u; g < _profile.groups.size(); ++g)
+                        for (size_t b = 0u; b < _profile.groups[g].bones.size(); ++b) {
+                            Target *__t = __target(_profile.groups[g].bones[b]);
+                            if (__t != nullptr) __t->group = &_profile.groups[g];
+                        }
+                if (__breathing > 0.f)
+                    for (size_t b = 0u; b < _profile.breath.size(); ++b) {
+                        Target *__t = __target(_profile.breath[b].bone);
+                        if (__t != nullptr) __t->breath = _profile.breath[b].degrees * __breathing;
+                    }
+                if (__targets.empty()) return __report;
+                for (size_t i = 0u; i < __targets.size(); ++i) bake(__tracks[__targets[i].track], __from, __to, __targets[i].baked);
+
+                // Velocities (degrees or units per second, local axes) and speeds averaged over the window; the upper body's
+                // speed sets the breath rate
+                const float __fps = 30.f, __deg = 57.29578f;
+                const float __sigma = 0.5f * _profile.speed_window * __fps;
+                std::vector<std::vector<vec3f>> __velocity(__targets.size());
+                std::vector<std::vector<float>> __speed(__targets.size());
+                std::vector<float> __activity(__count, 0.f);
+                uint32_t __active_bones = 0u;
+                for (size_t i = 0u; i < __targets.size(); ++i) {
+                    const Baked &__b = __targets[i].baked;
+                    const bool __pos = __targets[i].group != nullptr && __targets[i].group->position;
+                    std::vector<vec3f> &__v = __velocity[i];
+                    std::vector<float> &__sp = __speed[i];
+                    __v.assign(__count, vec3f{ 0.f, 0.f, 0.f });
+                    __sp.assign(__count, 0.f);
+                    for (size_t t = 0u; t + 1u < __count; ++t)
+                        __v[t] = __pos ? (__b.position[t + 1u] - __b.position[t]) * __fps
+                                       : Affine::Rotation::rotationVector(__b.rotation[t].conjugate() * __b.rotation[t + 1u]) * (__fps * __deg);
+                    __v[__count - 1u] = __v[__count - 2u];
+                    for (size_t t = 0u; t < __count; ++t) __sp[t] = std::sqrt(__v[t].x * __v[t].x + __v[t].y * __v[t].y + __v[t].z * __v[t].z);
+                    if (!__pos) {
+                        for (size_t t = 0u; t < __count; ++t) __activity[t] += __sp[t];
+                        ++__active_bones;
+                    }
+                    smoothScalar(__sp, __sigma);
+                }
+                if (__active_bones > 0u) for (size_t t = 0u; t < __count; ++t) __activity[t] /= float(__active_bones);
+                smoothScalar(__activity, 2.f * __fps);
+
+                // Breath: 0..1, the inhale faster than the exhale; the rate follows the activity and drifts a little
+                const Noise::NoisePerlin __noise(_settings.seed);
+                std::vector<float> __breath(__count, 0.f);
+                double __phase = 0.;
+                for (size_t t = 0u; t < __count; ++t) {
+                    const float __act  = std::min(1.f, __activity[t] / std::max(1e-3f, _profile.breath_active_speed));
+                    const float __rate = (_profile.breath_rest_hz + (_profile.breath_active_hz - _profile.breath_rest_hz) * __act) *
+                                         (1.f + 0.3f * __noise.sample(vec4f{ float(__from + t) * 0.1f / __fps, 91.5f, 0.37f, 0.71f }));
+                    const double __x = __phase - std::floor(__phase);
+                    const double __u = __x + 0.08 * std::sin(6.283185307 * __x);
+                    __breath[t] = float(0.5 - 0.5 * std::cos(6.283185307 * __u)) - 0.5f;
+                    __phase += double(__rate) / double(__fps);
+                }
+
+                // Noise: per band one Perlin line per axis (its spectrum is centered on 0.24 cycles per cell) limited to the
+                // band, scaled so that its velocity in the band has the rms 1, times what the motion lacks in the band:
+                // sqrt(target^2 - current^2), both rms over the window
+                std::vector<vec3f> __band, __shape, __shape_v;
+                std::vector<float> __have(__count), __lack(__count);
+                std::vector<vec3f> __added(__count);
+                for (size_t i = 0u; i < __targets.size(); ++i) {
+                    Target &__t = __targets[i];
+                    for (size_t f = 0u; f < __count; ++f) __added[f] = vec3f{ 0.f, 0.f, 0.f };
+                    if (__t.group != nullptr) {
+                        const NoiseGroup &__g = *__t.group;
+                        for (size_t b = 0u; b < _profile.bands_lo.size(); ++b) {
+                            const float __scale = __strength * _profile.band_scale[b];
+                            if (__scale <= 0.f) continue;
+                            const float __lo = _profile.bands_lo[b], __hi = _profile.bands_hi[b];
+                            const bool  __follows = b >= _profile.band_follows_speed.size() || _profile.band_follows_speed[b] != 0u;
+                            // What the motion has and lacks in the band
+                            bandpass(__velocity[i], __lo, __hi, __fps, __band);
+                            for (size_t f = 0u; f < __count; ++f) __have[f] = __band[f].x * __band[f].x + __band[f].y * __band[f].y + __band[f].z * __band[f].z;
+                            smoothScalar(__have, __sigma);
+                            bool __any = false;
+                            for (size_t f = 0u; f < __count; ++f) {
+                                const float __sp = __follows ? std::max(__g.min_speed, std::min(__g.max_speed, __speed[i][f])) : __g.min_speed;
+                                const float __target = __g.rest[b] + __g.per_speed[b] * __sp;
+                                __lack[f] = __scale * std::sqrt(std::max(0.f, __target * __target - std::max(0.f, __have[f])));
+                                __any = __any || __lack[f] > 0.f;
+                            }
+                            if (!__any) continue;
+                            // The noise shape: band limited, its band velocity of rms 1 (split over the axes by their shares)
+                            const float __cells = std::sqrt(__lo * __hi) / 0.243f / __fps;
+                            __shape.resize(__count);
+                            for (size_t f = 0u; f < __count; ++f)
+                                for (uint32_t k = 0u; k < 3u; ++k)
+                                    __shape[f][k] = __noise.sample(vec4f{ float(__from + f) * __cells, 0.5f + 7.31f * float(i) + 1.93f * float(k), 0.37f + 2.17f * float(b), 0.71f });
+                            bandpass(__shape, __lo, __hi, __fps, __band);
+                            __shape_v.resize(__count);
+                            for (size_t f = 0u; f + 1u < __count; ++f) __shape_v[f] = (__band[f + 1u] - __band[f]) * __fps;
+                            __shape_v[__count - 1u] = __shape_v[__count - 2u];
+                            for (uint32_t k = 0u; k < 3u; ++k) {
+                                double __sum = 0.;
+                                for (size_t f = 0u; f < __count; ++f) __sum += double(__shape_v[f][k]) * double(__shape_v[f][k]);
+                                const float __rms = float(std::sqrt(__sum / double(__count)));
+                                if (__rms <= 1e-9f || __g.axes[k] <= 0.f) continue;
+                                const float __k = __g.axes[k] / __rms;
+                                for (size_t f = 0u; f < __count; ++f) __added[f][k] += __k * __lack[f] * __band[f][k];
+                            }
+                        }
+                    }
+                    for (size_t f = 0u; f < __count; ++f) __added[f] = __added[f] + __t.breath * __breath[f];
+
+                    double __sum = 0.;
+                    const bool __pos = __t.group != nullptr && __t.group->position;
+                    for (size_t f = 0u; f < __count; ++f) {
+                        const vec3f &__a = __added[f];
+                        __sum += double(__a.x * __a.x + __a.y * __a.y + __a.z * __a.z);
+                        if (__pos) __t.baked.position[f] = __t.baked.position[f] + __a;
+                        else       __t.baked.rotation[f] = __t.baked.rotation[f] * Affine::Rotation::fromRotationVector(__a * (1.f / __deg));
+                    }
+                    const float __rms = float(std::sqrt(__sum / double(__count)));
+                    if (!__pos && __rms > __report.max_rms_deg) { __report.max_rms_deg = __rms; __report.max_bone = __t.name; }
+                    if (__t.group != nullptr) ++__report.bones_noised;
+                    if (__t.breath.x != 0.f || __t.breath.y != 0.f || __t.breath.z != 0.f) ++__report.bones_breathing;
+                }
+
+                // The changed tracks get one key per frame over the frames of the motion
+                std::vector<uint8_t> __replace(__tracks.size(), 0u);
+                for (size_t i = 0u; i < __targets.size(); ++i) __replace[__targets[i].track] = 1u;
+                std::vector<BoneKeyframe> __result;
+                __result.reserve(_vmd.keyframes_bone.size() + __count * __targets.size());
+                for (size_t t = 0u; t < __tracks.size(); ++t)
+                    if (!__replace[t]) __result.insert(__result.end(), __tracks[t].begin(), __tracks[t].end());
+                for (size_t i = 0u; i < __targets.size(); ++i) {
+                    const std::vector<BoneKeyframe> &__keys = __tracks[__targets[i].track];
+                    const Baked &__b = __targets[i].baked;
+                    size_t __src = 0u;
+                    for (size_t t = 0u; t < __count; ++t) {
+                        const uint32_t __frame = __from + (uint32_t)t;
+                        while (__src + 1u < __keys.size() && __keys[__src + 1u].frame_id <= __frame) ++__src;
+                        __result.push_back(fullKey(__keys[__src], __frame, __b.position[t], __b.rotation[t]));
+                    }
                 }
                 _vmd.keyframes_bone.swap(__result);
                 __report.keys_after = (uint32_t)_vmd.keyframes_bone.size();
